@@ -578,14 +578,11 @@ async function orderClustersByRoad(
       clusterRepresentative(cluster)
     );
 
-    let durations: number[];
-    try {
-      durations = await computeDriveTimes(currentRepresentative, destinationRepresentatives, googleKey);
-    } catch {
-      durations = destinationRepresentatives.map((rep) =>
-        distanceLatLng(currentRepresentative, rep)
-      );
-    }
+    const durations = await computeDriveTimes(
+      currentRepresentative,
+      destinationRepresentatives,
+      googleKey
+    );
 
     let bestIndex = 0;
     let bestDuration = Number.POSITIVE_INFINITY;
@@ -594,17 +591,6 @@ async function orderClustersByRoad(
       if (Number.isFinite(duration) && duration < bestDuration) {
         bestDuration = duration;
         bestIndex = i;
-      }
-    }
-
-    if (!Number.isFinite(bestDuration)) {
-      let fallbackDistance = Number.POSITIVE_INFINITY;
-      for (let i = 0; i < destinationRepresentatives.length; i += 1) {
-        const distance = distanceLatLng(currentRepresentative, destinationRepresentatives[i]);
-        if (distance < fallbackDistance) {
-          fallbackDistance = distance;
-          bestIndex = i;
-        }
       }
     }
 
@@ -692,10 +678,16 @@ async function computeDriveTimes(
 
     const statusCode = entry?.status?.code;
     if (statusCode && statusCode !== 'OK') {
-      continue;
+      throw new Error(
+        `Google route matrix returned status ${statusCode} for destination ${destinationIndex}`
+      );
     }
 
     durations[destinationIndex] = parseDuration(entry.duration);
+  }
+
+  if (durations.some((value) => !Number.isFinite(value))) {
+    throw new Error('Google route matrix did not return finite travel times for all destinations.');
   }
 
   return durations;
