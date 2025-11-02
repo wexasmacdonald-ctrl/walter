@@ -397,8 +397,10 @@ async function computeOptimizedRoute(
   }
 
   const clusters = clusterStops(stops);
-  const orderedClusters = orderClusters(clusters, stops[0]);
-  const clusterCentroids = orderedClusters.map(clusterCentroid);
+  const orderedClusters = await orderClustersByRoad(clusters, stops[0], googleKey);
+  const clusterRepresentatives = orderedClusters.map((cluster, index) =>
+    index === 0 ? clusterRepresentative(cluster, stops[0]) : clusterRepresentative(cluster)
+  );
 
   const collectedStops: GeocodeSuccess[] = [];
   let previousLastStop: GeocodeSuccess | null = null;
@@ -412,9 +414,10 @@ async function computeOptimizedRoute(
       moveStopToFront(cluster, stops[0]);
     }
 
-    const nextCentroid = i < clusterCentroids.length - 1 ? clusterCentroids[i + 1] : null;
-    if (nextCentroid && cluster.length > 1) {
-      moveClosestToCoordToEnd(cluster, nextCentroid);
+    const nextRepresentative =
+      i < clusterRepresentatives.length - 1 ? clusterRepresentatives[i + 1] : null;
+    if (nextRepresentative && cluster.length > 1) {
+      moveClosestToCoordToEnd(cluster, nextRepresentative);
     }
 
     const optimizedChunk = await optimizeChunk(cluster, googleKey);
@@ -546,10 +549,11 @@ function clusterStops(stops: GeocodeSuccess[]): GeocodeSuccess[][] {
   return clusters;
 }
 
-function orderClusters(
+async function orderClustersByRoad(
   clusters: GeocodeSuccess[][],
-  start: GeocodeSuccess
-): GeocodeSuccess[][] {
+  start: GeocodeSuccess,
+  googleKey: string
+): Promise<GeocodeSuccess[][]> {
   if (clusters.length <= 1) {
     return clusters;
   }
@@ -567,27 +571,146 @@ function orderClusters(
 
   let currentCluster = pending.splice(currentIndex, 1)[0];
   ordered.push(currentCluster);
-  let currentCentroid = clusterCentroid(currentCluster);
+  let currentRepresentative = clusterRepresentative(currentCluster, start);
 
   while (pending.length > 0) {
-    let bestIndex = 0;
-    let bestDistance = Number.POSITIVE_INFINITY;
+    const destinationRepresentatives = pending.map((cluster) =>
+      clusterRepresentative(cluster)
+    );
 
-    for (let i = 0; i < pending.length; i += 1) {
-      const centroid = clusterCentroid(pending[i]);
-      const distance = distanceLatLng(currentCentroid, centroid);
-      if (distance < bestDistance) {
-        bestDistance = distance;
+    let durations: number[];
+    try {
+      durations = await computeDriveTimes(currentRepresentative, destinationRepresentatives, googleKey);
+    } catch {
+      durations = destinationRepresentatives.map((rep) =>
+        distanceLatLng(currentRepresentative, rep)
+      );
+    }
+
+    let bestIndex = 0;
+    let bestDuration = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < durations.length; i += 1) {
+      const duration = durations[i];
+      if (Number.isFinite(duration) && duration < bestDuration) {
+        bestDuration = duration;
         bestIndex = i;
+      }
+    }
+
+    if (!Number.isFinite(bestDuration)) {
+      let fallbackDistance = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < destinationRepresentatives.length; i += 1) {
+        const distance = distanceLatLng(currentRepresentative, destinationRepresentatives[i]);
+        if (distance < fallbackDistance) {
+          fallbackDistance = distance;
+          bestIndex = i;
+        }
       }
     }
 
     currentCluster = pending.splice(bestIndex, 1)[0];
     ordered.push(currentCluster);
-    currentCentroid = clusterCentroid(currentCluster);
+    currentRepresentative = clusterRepresentative(currentCluster);
   }
 
   return ordered;
+}
+
+async function computeDriveTimes(
+  origin: LatLng,
+  destinations: LatLng[],
+  googleKey: string
+): Promise<number[]> {
+  if (destinations.length === 0) {
+    return [];
+  }
+
+  const requestBody = {
+    origins: [
+      {
+        waypoint: {
+          location: {
+            latLng: {
+              latitude: origin.lat,
+              longitude: origin.lng,
+            },
+          },
+        },
+      },
+    ],
+    destinations: destinations.map((destination) => ({
+      waypoint: {
+        location: {
+          latLng: {
+            latitude: destination.lat,
+            longitude: destination.lng,
+          },
+        },
+      },
+    })),
+    travelMode: 'DRIVE',
+    routingPreference: 'TRAFFIC_AWARE_OPTIMAL',
+  };
+
+  const response = await fetch('https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': googleKey,
+      'X-Goog-FieldMask': 'originIndex,destinationIndex,duration,status',
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `Google route matrix failed (${response.status}): ${createBodySnippet(text) ?? text}`
+    );
+  }
+
+  const lines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const durations = Array(destinations.length).fill(Number.POSITIVE_INFINITY);
+
+  for (const line of lines) {
+    let entry: any;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+
+    const destinationIndex = entry?.destinationIndex;
+    if (typeof destinationIndex !== 'number' || destinationIndex < 0 || destinationIndex >= durations.length) {
+      continue;
+    }
+
+    const statusCode = entry?.status?.code;
+    if (statusCode && statusCode !== 'OK') {
+      continue;
+    }
+
+    durations[destinationIndex] = parseDuration(entry.duration);
+  }
+
+  return durations;
+}
+
+function clusterRepresentative(cluster: GeocodeSuccess[], preferred?: GeocodeSuccess): LatLng {
+  if (preferred && cluster.some((stop) => sameStop(stop, preferred))) {
+    return { lat: preferred.lat, lng: preferred.lng };
+  }
+
+  const first = cluster[0];
+  if (first) {
+    return { lat: first.lat, lng: first.lng };
+  }
+  return clusterCentroid(cluster);
 }
 
 function buildCluster(
@@ -683,6 +806,15 @@ function clusterCentroid(cluster: GeocodeSuccess[]): LatLng {
     lat: sum.lat / cluster.length,
     lng: sum.lng / cluster.length,
   };
+}
+
+function parseDuration(duration?: { seconds?: string | number; nanos?: number }): number {
+  if (!duration) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const seconds = Number(duration.seconds ?? 0);
+  const nanos = Number(duration.nanos ?? 0);
+  return seconds + nanos / 1e9;
 }
 
 function moveStopToFront(cluster: GeocodeSuccess[], stop: GeocodeSuccess) {
