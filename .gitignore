@@ -1,0 +1,4 @@
+**/.wrangler/
+worker/blow-app/
+node_modules/
+
