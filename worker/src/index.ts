@@ -388,23 +388,46 @@ async function computeOptimizedRoute(
     return [];
   }
 
-  const ordered: OrderedStop[] = [];
-  let orderCounter = 0;
-
-  for (let index = 0; index < stops.length; index += GOOGLE_OPTIMIZE_LIMIT) {
-    const chunk = stops.slice(index, Math.min(index + GOOGLE_OPTIMIZE_LIMIT, stops.length));
-    const optimizedChunk = await optimizeChunk(chunk, googleKey);
-
-    optimizedChunk.forEach((stop) => {
-      ordered.push({
-        ...stop,
-        order: orderCounter,
-      });
-      orderCounter += 1;
-    });
+  if (stops.length <= GOOGLE_OPTIMIZE_LIMIT) {
+    const optimized = await optimizeChunk([...stops], googleKey);
+    return optimized.map((stop, index) => ({
+      ...stop,
+      order: index,
+    }));
   }
 
-  return ordered;
+  const clusters = clusterStops(stops);
+  const orderedClusters = orderClusters(clusters, stops[0]);
+  const clusterCentroids = orderedClusters.map(clusterCentroid);
+
+  const collectedStops: GeocodeSuccess[] = [];
+  let previousLastStop: GeocodeSuccess | null = null;
+
+  for (let i = 0; i < orderedClusters.length; i += 1) {
+    const cluster = [...orderedClusters[i]];
+
+    if (previousLastStop) {
+      moveClosestToPointToFront(cluster, previousLastStop);
+    } else {
+      moveStopToFront(cluster, stops[0]);
+    }
+
+    const nextCentroid = i < clusterCentroids.length - 1 ? clusterCentroids[i + 1] : null;
+    if (nextCentroid && cluster.length > 1) {
+      moveClosestToCoordToEnd(cluster, nextCentroid);
+    }
+
+    const optimizedChunk = await optimizeChunk(cluster, googleKey);
+    optimizedChunk.forEach((stop) => collectedStops.push(stop));
+    previousLastStop = optimizedChunk[optimizedChunk.length - 1];
+  }
+
+  return collectedStops.map((stop, index) => ({
+    address: stop.address,
+    lat: stop.lat,
+    lng: stop.lng,
+    order: index,
+  }));
 }
 
 async function optimizeChunk(stops: GeocodeSuccess[], googleKey: string): Promise<GeocodeSuccess[]> {
@@ -498,6 +521,249 @@ async function optimizeChunk(stops: GeocodeSuccess[], googleKey: string): Promis
   orderedStops.push(destination);
 
   return orderedStops;
+}
+
+type LatLng = { lat: number; lng: number };
+
+function clusterStops(stops: GeocodeSuccess[]): GeocodeSuccess[][] {
+  if (stops.length <= GOOGLE_OPTIMIZE_LIMIT) {
+    return [stops];
+  }
+
+  const limit = GOOGLE_OPTIMIZE_LIMIT;
+  const remaining = stops.slice(1);
+  const clusters: GeocodeSuccess[][] = [];
+  const startStop = stops[0];
+
+  clusters.push(buildCluster(startStop, remaining, limit));
+
+  while (remaining.length > 0) {
+    const seedIndex = findFarthestSeedIndex(remaining, clusters);
+    const [seed] = remaining.splice(seedIndex, 1);
+    clusters.push(buildCluster(seed, remaining, limit));
+  }
+
+  return clusters;
+}
+
+function orderClusters(
+  clusters: GeocodeSuccess[][],
+  start: GeocodeSuccess
+): GeocodeSuccess[][] {
+  if (clusters.length <= 1) {
+    return clusters;
+  }
+
+  const pending = clusters.slice();
+  const ordered: GeocodeSuccess[][] = [];
+
+  let currentIndex = pending.findIndex((cluster) =>
+    cluster.some((stop) => sameStop(stop, start))
+  );
+
+  if (currentIndex === -1) {
+    currentIndex = 0;
+  }
+
+  let currentCluster = pending.splice(currentIndex, 1)[0];
+  ordered.push(currentCluster);
+  let currentCentroid = clusterCentroid(currentCluster);
+
+  while (pending.length > 0) {
+    let bestIndex = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (let i = 0; i < pending.length; i += 1) {
+      const centroid = clusterCentroid(pending[i]);
+      const distance = distanceLatLng(currentCentroid, centroid);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = i;
+      }
+    }
+
+    currentCluster = pending.splice(bestIndex, 1)[0];
+    ordered.push(currentCluster);
+    currentCentroid = clusterCentroid(currentCluster);
+  }
+
+  return ordered;
+}
+
+function buildCluster(
+  seed: GeocodeSuccess,
+  pool: GeocodeSuccess[],
+  limit: number
+): GeocodeSuccess[] {
+  const cluster: GeocodeSuccess[] = [seed];
+
+  while (cluster.length < limit && pool.length > 0) {
+    const closestIndex = findClosestPointIndex(pool, cluster);
+    if (closestIndex === -1) {
+      break;
+    }
+    const [next] = pool.splice(closestIndex, 1);
+    cluster.push(next);
+  }
+
+  return cluster;
+}
+
+function findClosestPointIndex(pool: GeocodeSuccess[], cluster: GeocodeSuccess[]): number {
+  let bestIndex = -1;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (let i = 0; i < pool.length; i += 1) {
+    const distance = distanceToCluster(pool[i], cluster);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = i;
+    }
+  }
+
+  return bestIndex;
+}
+
+function distanceToCluster(point: GeocodeSuccess, cluster: GeocodeSuccess[]): number {
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const stop of cluster) {
+    const distance = distanceBetweenStops(point, stop);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+    }
+  }
+
+  return bestDistance;
+}
+
+function findFarthestSeedIndex(
+  pool: GeocodeSuccess[],
+  existingClusters: GeocodeSuccess[][]
+): number {
+  if (existingClusters.length === 0) {
+    return 0;
+  }
+
+  const centroids = existingClusters.map(clusterCentroid);
+  let bestIndex = 0;
+  let bestDistance = -1;
+
+  for (let i = 0; i < pool.length; i += 1) {
+    const point = pool[i];
+    let minDistance = Number.POSITIVE_INFINITY;
+
+    for (const centroid of centroids) {
+      const distance = distanceStopToCoord(point, centroid);
+      if (distance < minDistance) {
+        minDistance = distance;
+      }
+    }
+
+    if (minDistance > bestDistance) {
+      bestDistance = minDistance;
+      bestIndex = i;
+    }
+  }
+
+  return bestIndex;
+}
+
+function clusterCentroid(cluster: GeocodeSuccess[]): LatLng {
+  const sum = cluster.reduce(
+    (acc, stop) => {
+      acc.lat += stop.lat;
+      acc.lng += stop.lng;
+      return acc;
+    },
+    { lat: 0, lng: 0 }
+  );
+
+  return {
+    lat: sum.lat / cluster.length,
+    lng: sum.lng / cluster.length,
+  };
+}
+
+function moveStopToFront(cluster: GeocodeSuccess[], stop: GeocodeSuccess) {
+  const index = cluster.findIndex((candidate) => sameStop(candidate, stop));
+  if (index > 0) {
+    const [item] = cluster.splice(index, 1);
+    cluster.unshift(item);
+  }
+}
+
+function moveClosestToPointToFront(cluster: GeocodeSuccess[], point: GeocodeSuccess) {
+  if (cluster.length <= 1) {
+    return;
+  }
+  let bestIndex = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (let i = 0; i < cluster.length; i += 1) {
+    const distance = distanceBetweenStops(cluster[i], point);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = i;
+    }
+  }
+
+  if (bestIndex > 0) {
+    const [item] = cluster.splice(bestIndex, 1);
+    cluster.unshift(item);
+  }
+}
+
+function moveClosestToCoordToEnd(cluster: GeocodeSuccess[], target: LatLng) {
+  if (cluster.length <= 1) {
+    return;
+  }
+
+  let bestIndex = -1;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (let i = 1; i < cluster.length; i += 1) {
+    const distance = distanceStopToCoord(cluster[i], target);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = i;
+    }
+  }
+
+  if (bestIndex >= 0 && bestIndex !== cluster.length - 1) {
+    const [item] = cluster.splice(bestIndex, 1);
+    cluster.push(item);
+  }
+}
+
+function sameStop(a: GeocodeSuccess, b: GeocodeSuccess): boolean {
+  return a.address === b.address && a.lat === b.lat && a.lng === b.lng;
+}
+
+function distanceBetweenStops(a: GeocodeSuccess, b: GeocodeSuccess): number {
+  return distanceLatLng({ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng });
+}
+
+function distanceStopToCoord(stop: GeocodeSuccess, coord: LatLng): number {
+  return distanceLatLng({ lat: stop.lat, lng: stop.lng }, coord);
+}
+
+function distanceLatLng(a: LatLng, b: LatLng): number {
+  const R = 6371e3; // metres
+  const phi1 = (a.lat * Math.PI) / 180;
+  const phi2 = (b.lat * Math.PI) / 180;
+  const deltaPhi = ((b.lat - a.lat) * Math.PI) / 180;
+  const deltaLambda = ((b.lng - a.lng) * Math.PI) / 180;
+
+  const sinDeltaPhi = Math.sin(deltaPhi / 2);
+  const sinDeltaLambda = Math.sin(deltaLambda / 2);
+
+  const aa =
+    sinDeltaPhi * sinDeltaPhi +
+    Math.cos(phi1) * Math.cos(phi2) * sinDeltaLambda * sinDeltaLambda;
+  const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+
+  return R * c;
 }
 
 function createBodySnippet(source: string | null | undefined, maxLength = 400): string | undefined {
