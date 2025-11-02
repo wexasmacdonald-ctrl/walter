@@ -533,33 +533,22 @@ function clusterStops(stops: GeocodeSuccess[]): GeocodeSuccess[][] {
     return [stops];
   }
 
-  const center = computeSweepCenter(stops);
-  const sortedStops = [...stops].sort((a, b) => sweepAngle(center, a) - sweepAngle(center, b));
-
+  const limit = GOOGLE_OPTIMIZE_LIMIT;
+  const remaining = stops.slice(1);
   const clusters: GeocodeSuccess[][] = [];
-  let currentCluster: GeocodeSuccess[] = [];
+  const startStop = stops[0];
 
-  for (const stop of sortedStops) {
-    if (currentCluster.length === 0) {
-      currentCluster.push(stop);
-      continue;
-    }
+  clusters.push(buildCluster(startStop, remaining, limit));
 
-    if (currentCluster.length >= GOOGLE_OPTIMIZE_LIMIT) {
-      clusters.push(currentCluster);
-      currentCluster = [stop];
-      continue;
-    }
-
-    currentCluster.push(stop);
-  }
-
-  if (currentCluster.length > 0) {
-    clusters.push(currentCluster);
+  while (remaining.length > 0) {
+    const seedIndex = findFarthestSeedIndex(remaining, clusters);
+    const [seed] = remaining.splice(seedIndex, 1);
+    clusters.push(buildCluster(seed, remaining, limit));
   }
 
   return clusters;
 }
+
 async function orderClustersByRoad(
   clusters: GeocodeSuccess[][],
   start: GeocodeSuccess,
@@ -733,6 +722,66 @@ function buildCluster(
   }
 
   return cluster;
+}
+
+function findClosestPointIndex(pool: GeocodeSuccess[], cluster: GeocodeSuccess[]): number {
+  let bestIndex = -1;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (let i = 0; i < pool.length; i += 1) {
+    const distance = distanceToCluster(pool[i], cluster);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = i;
+    }
+  }
+
+  return bestIndex;
+}
+
+function distanceToCluster(point: GeocodeSuccess, cluster: GeocodeSuccess[]): number {
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const stop of cluster) {
+    const distance = distanceBetweenStops(point, stop);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+    }
+  }
+
+  return bestDistance;
+}
+
+function findFarthestSeedIndex(
+  pool: GeocodeSuccess[],
+  existingClusters: GeocodeSuccess[][]
+): number {
+  if (existingClusters.length === 0) {
+    return 0;
+  }
+
+  const centroids = existingClusters.map(clusterCentroid);
+  let bestIndex = 0;
+  let bestDistance = -1;
+
+  for (let i = 0; i < pool.length; i += 1) {
+    const point = pool[i];
+    let minDistance = Number.POSITIVE_INFINITY;
+
+    for (const centroid of centroids) {
+      const distance = distanceStopToCoord(point, centroid);
+      if (distance < minDistance) {
+        minDistance = distance;
+      }
+    }
+
+    if (minDistance > bestDistance) {
+      bestDistance = minDistance;
+      bestIndex = i;
+    }
+  }
+
+  return bestIndex;
 }
 
 function clusterCentroid(cluster: GeocodeSuccess[]): LatLng {
@@ -920,23 +969,3 @@ function extractCoordinates(node: any): { lat: number; lng: number } | null {
 
   return null;
 }
-function computeSweepCenter(stops: GeocodeSuccess[]): LatLng {
-  const sum = stops.reduce(
-    (acc, stop) => {
-      acc.lat += stop.lat;
-      acc.lng += stop.lng;
-      return acc;
-    },
-    { lat: 0, lng: 0 }
-  );
-  return {
-    lat: sum.lat / stops.length,
-    lng: sum.lng / stops.length,
-  };
-}
-
-function sweepAngle(center: LatLng, stop: GeocodeSuccess): number {
-  const angle = Math.atan2(stop.lat - center.lat, stop.lng - center.lng);
-  return angle >= 0 ? angle : angle + 2 * Math.PI;
-}
-
