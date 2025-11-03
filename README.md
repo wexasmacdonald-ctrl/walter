@@ -1,50 +1,143 @@
-# Welcome to your Expo app ðŸ‘‹
+# Blow Pins App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+This project turns newline-delimited addresses into map pins so drivers can see every stop on a map. No routing or batching is performed—only geocoding plus GPS display.
 
-## Get started
+It contains two pieces:
 
-1. Install dependencies
+1. **Expo front end** – textarea form + map preview (native) / info banner (web).
+2. **Cloudflare Worker** (walter/worker/src/index.ts) – proxies Mapbox Search v6 to geocode up to 150 addresses per request and returns { pins: [...] }.
 
-   ```bash
-   npm install
-   ```
+---
 
-2. Start the app
+## Front End Quick Start
 
-   ```bash
-   npx expo start
-   ```
+`ash
+npm install
+npx expo start
+`
 
-In the output, you'll find options to open the app in a
+What you get:
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- **Geocode form** – paste newline-delimited addresses, hit “Geocode”, and the worker responds with pins.
+- **Map preview** – native builds render the pins with eact-native-maps plus the device’s GPS location; the web build shows guidance and counts.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+API_BASE lives in eatures/route-planner/api.ts and points at the Cloudflare worker (default: https://blow-api.wexasmacdonald.workers.dev).
 
-## Get a fresh project
+---
 
-When you're ready, run:
+## Worker Overview
 
-```bash
-npm run reset-project
-```
+File: walter/worker/src/index.ts
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Only one secret is required:
 
-## Learn more
+- MAPBOX_ACCESS_TOKEN – Mapbox Search v6 token with batch geocoding access.
 
-To learn more about developing your project with Expo, look at the following resources:
+Endpoints:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+| Method | Path        | Description                                                                             |
+|--------|-------------|-----------------------------------------------------------------------------------------|
+| GET    | /health   | Returns { ok: true }.                                                                 |
+| POST   | /geocode  | Normalizes input, geocodes via Mapbox, returns { pins: [...] }.                       |
+| POST   | /optimize | Alias of /geocode so the legacy client keeps working.                                |
+| OPTIONS| *         | CORS preflight handled automatically.                                                  |
 
-## Join the community
+### Input shape
 
-Join our community of developers creating universal apps.
+`json
+{
+  "addresses": [
+    "123 Main St, City, ST",
+    "456 Pine Ave, Town, ST"
+  ]
+}
+`
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+...or a newline string:
+
+`json
+{
+  "addresses": "123 Main St, City, ST\n456 Pine Ave, Town, ST"
+}
+`
+
+Legacy keys (stops, input, etc.) are still accepted but always normalized to a trimmed array.
+
+### Mapbox calls
+
+- 1 address ? GET https://api.mapbox.com/search/geocode/v6/forward?q=...&access_token=...
+- >1 address ? POST https://api.mapbox.com/search/geocode/v6/batch?access_token=... with body [{ "q": "addr" }, ...]
+
+If Mapbox returns a non-200 or omits coordinates, the worker responds with MAPBOX_GEOCODE_FAILED, listing every failed address plus the upstream status/body snippet.
+
+### Limits
+
+- Rejects empty input (INVALID_INPUT).
+- Caps at 150 addresses per request (TOO_MANY_ADDRESSES).
+- Enforces Mapbox’s batch limit of 1,000 (TOO_MANY_ADDRESSES_FOR_BATCH).
+
+Returned payload:
+
+`json
+{
+  "pins": [
+    { "id": "1", "address": "123 Main St", "lat": 38.8977, "lng": -77.0365 },
+    { "id": "2", "address": "456 Pine Ave", "lat": 38.8893, "lng": -77.0502 }
+  ]
+}
+`
+
+---
+
+## Deploying the Worker
+
+From walter/worker:
+
+`ash
+npm install   # only if dependencies changed
+npx wrangler deploy
+`
+
+Successful deploy shows:
+
+`
+https://blow-api.wexasmacdonald.workers.dev
+Current Version ID: 32254276-0838-4c57-aa39-4cce1753e12e
+`
+
+### Manual verification
+
+Health check:
+
+`ash
+curl https://blow-api.wexasmacdonald.workers.dev/health
+`
+
+Geocode test:
+
+`ash
+curl -X POST https://blow-api.wexasmacdonald.workers.dev/geocode \
+  -H "Content-Type: application/json" \
+  --data '{ "addresses": [
+    "1600 Pennsylvania Ave NW, Washington, DC",
+    "Lincoln Memorial, Washington, DC"
+  ] }'
+`
+
+---
+
+## Common Failure Cases
+
+- **HTTP 404** – request path was not /geocode, /optimize, or /health.
+- **INVALID_INPUT** – no usable addresses after trimming.
+- **MAPBOX_GEOCODE_FAILED** – Mapbox rejected or could not locate one or more addresses; see ailed array in the response.
+- **TOO_MANY_ADDRESSES** – more than 150 addresses were submitted.
+
+---
+
+## Files of Interest
+
+- pp/index.tsx – Expo entry point (form + map preview).
+- eatures/route-planner/PinsForm.tsx – textarea form, fetches /geocode.
+- eatures/route-planner/MapScreen.* – map preview components.
+- walter/worker/src/index.ts – Cloudflare worker that calls Mapbox and returns pins.

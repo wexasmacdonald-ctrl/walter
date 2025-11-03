@@ -9,7 +9,13 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "config": {
+        "googleMapsApiKey": "${GOOGLE_MAPS_IOS_KEY}"
+      },
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Allow my-app to access your location to show your position on the map."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +25,16 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "${GOOGLE_MAPS_ANDROID_KEY}"
+        }
+      }
     },
     "web": {
       "output": "static",
@@ -27,6 +42,12 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow my-app to access your location so we can display nearby stops."
+        }
+      ],
       [
         "expo-splash-screen",
         {
