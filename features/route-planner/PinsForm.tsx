@@ -126,9 +126,9 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
     });
   };
 
-  const handleStartEditing = (id: string, address: string) => {
+  const handleStartEditing = (id: string, address: string | undefined) => {
     setActiveId(id);
-    setEditingValue(address);
+    setEditingValue(address ?? '');
     setIsEditing(true);
   };
 
@@ -141,7 +141,7 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
     if (!activeId) {
       return;
     }
-    const trimmed = editingValue.trim();
+    const trimmed = (editingValue ?? '').trim();
     if (!trimmed) {
       return;
     }
@@ -472,13 +472,13 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
                               <Pressable
                                 accessibilityRole="button"
                                 onPress={handleSaveEditing}
-                                disabled={editingValue.trim().length === 0}
+                                disabled={(editingValue ?? '').trim().length === 0}
                                 style={({ pressed }) => [
                                   styles.addressActionButton,
                                   styles.addressActionPrimary,
-                                  editingValue.trim().length === 0 && styles.addressActionDisabled,
+                                  (editingValue ?? '').trim().length === 0 && styles.addressActionDisabled,
                                   pressed &&
-                                    editingValue.trim().length > 0 &&
+                                    (editingValue ?? '').trim().length > 0 &&
                                     styles.addressActionPressed,
                                 ]}
                               >

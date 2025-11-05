@@ -17,7 +17,7 @@ export default function PinPlannerScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.title}>Drop Pins From Addresses</Text>
-      <PinsForm onPinsChange={setPins} onLoadingChange={setLoading} />
+      <PinsForm pins={pins} onPinsChange={setPins} onLoadingChange={setLoading} />
       <MapScreen pins={pins} loading={loading} />
       <View style={styles.summary}>
         <Text style={styles.summaryText}>

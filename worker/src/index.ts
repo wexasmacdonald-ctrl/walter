@@ -138,8 +138,14 @@ export default {
 
     if (!isOptimize) {
       return jsonResponse({
+        pins: mapboxResult.successes.map((stop, index) => ({
+          id: String(index + 1),
+          address: stop.address,
+          lat: stop.lat,
+          lng: stop.lng,
+        })),
         success: mapboxResult.successes,
-        failed: [],
+        failed: mapboxResult.failures,
       });
     }
 
