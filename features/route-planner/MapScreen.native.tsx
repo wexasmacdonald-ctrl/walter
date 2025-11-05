@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import MapView, { Marker, type LatLng } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -18,7 +26,17 @@ type UserLocation = {
 
 const PIN_COLOR = '#2563eb';
 const CONFIRMED_PIN_COLOR = '#22c55e';
-const UNDO_WINDOW_MS = 20_000;
+const SELECTED_PIN_COLOR = '#60a5fa';
+const SELECTED_CONFIRMED_PIN_COLOR = '#86efac';
+
+function extractHouseNumber(address: string | null | undefined): string | null {
+  if (!address) {
+    return null;
+  }
+
+  const match = address.trim().match(/^(\d+[A-Za-z0-9-]*)\b/);
+  return match ? match[1] : null;
+}
 
 export function MapScreen({ pins, loading }: MapScreenProps) {
   const [location, setLocation] = useState<UserLocation | null>(null);
@@ -27,7 +45,6 @@ export function MapScreen({ pins, loading }: MapScreenProps) {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [selectedPinKey, setSelectedPinKey] = useState<string | null>(null);
   const [confirmedPins, setConfirmedPins] = useState<Record<string, number>>({});
-  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
     let mounted = true;
@@ -71,11 +88,6 @@ export function MapScreen({ pins, loading }: MapScreenProps) {
     return () => {
       mounted = false;
     };
-  }, []);
-
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
   }, []);
 
   const coordinates = useMemo<LatLng[]>(() => {
@@ -127,25 +139,29 @@ export function MapScreen({ pins, loading }: MapScreenProps) {
     return pins
       .map((pin, index) => ({ pin, index }))
       .filter(({ pin }) => typeof pin.lat === 'number' && typeof pin.lng === 'number')
-      .map(({ pin, index }) => ({
-        key: pin.id ?? String(index),
-        label: String(index + 1),
-        title: pin.address,
-        coordinate: {
-          latitude: pin.lat as number,
-          longitude: pin.lng as number,
-        },
-      }));
+      .map(({ pin, index }) => {
+        const label =
+          typeof pin.label === 'string' && pin.label.trim()
+            ? pin.label.trim()
+            : extractHouseNumber(pin.address) ?? String(index + 1);
+        return {
+          key: pin.id ?? String(index),
+          label,
+          title: pin.address,
+          coordinate: {
+            latitude: pin.lat as number,
+            longitude: pin.lng as number,
+          },
+        };
+      });
   }, [pins]);
 
   useEffect(() => {
-    if (selectedPinKey && markers.some((marker) => marker.key === selectedPinKey)) {
+    if (!selectedPinKey) {
       return;
     }
 
-    if (markers.length > 0) {
-      setSelectedPinKey(markers[0].key);
-    } else {
+    if (!markers.some((marker) => marker.key === selectedPinKey)) {
       setSelectedPinKey(null);
     }
   }, [markers, selectedPinKey]);
@@ -154,12 +170,6 @@ export function MapScreen({ pins, loading }: MapScreenProps) {
     () => markers.find((marker) => marker.key === selectedPinKey),
     [markers, selectedPinKey]
   );
-  const selectedPinConfirmedAt = selectedPinKey ? confirmedPins[selectedPinKey] : undefined;
-  const undoDeadline = selectedPinConfirmedAt ? selectedPinConfirmedAt + UNDO_WINDOW_MS : null;
-  const undoCountdown = undoDeadline ? Math.max(0, Math.ceil((undoDeadline - now) / 1000)) : 0;
-  const undoAvailable = Boolean(undoDeadline && now < undoDeadline);
-  const isSelectedConfirmed = Boolean(selectedPinConfirmedAt);
-
   const mapRef = useRef<MapView | null>(null);
   const modalMapRef = useRef<MapView | null>(null);
   const hasCoords = markers.length > 0;
@@ -228,27 +238,99 @@ export function MapScreen({ pins, loading }: MapScreenProps) {
       showsMyLocationButton
       showsCompass
       mapType="satellite"
+      onPress={(event) => {
+        if (event?.nativeEvent?.action !== 'marker-press') {
+          setSelectedPinKey(null);
+        }
+      }}
     >
-      {markers.map((marker) => (
-        <Marker
-          key={marker.key}
-          coordinate={marker.coordinate}
-          title={marker.title}
-          tracksViewChanges={false}
-          onPress={() => setSelectedPinKey(marker.key)}
-        >
-          <View
-            style={[
-              styles.marker,
-              { backgroundColor: confirmedPins[marker.key] ? CONFIRMED_PIN_COLOR : PIN_COLOR },
-            ]}
+      {markers.map((marker) => {
+        const confirmed = Boolean(confirmedPins[marker.key]);
+        const isSelected = marker.key === selectedPinKey;
+        const backgroundColor = isSelected
+          ? confirmed
+            ? SELECTED_CONFIRMED_PIN_COLOR
+            : SELECTED_PIN_COLOR
+          : confirmed
+          ? CONFIRMED_PIN_COLOR
+          : PIN_COLOR;
+
+        return (
+          <Marker
+            key={marker.key}
+            coordinate={marker.coordinate}
+            tracksViewChanges
+            anchor={{ x: 0.5, y: 1 }}
+            calloutAnchor={{ x: 0.5, y: 0.5 }}
+            onPress={() => setSelectedPinKey(marker.key)}
           >
-            <Text style={styles.markerLabel}>{marker.label}</Text>
-          </View>
-        </Marker>
-      ))}
+            <View
+              style={[
+                styles.marker,
+                isSelected && styles.markerSelected,
+                { backgroundColor },
+              ]}
+            >
+              <Text style={styles.markerLabel}>{marker.label}</Text>
+            </View>
+          </Marker>
+        );
+      })}
     </MapView>
   );
+
+  const renderCallout = (marker: typeof selectedMarker, variant: 'primary' | 'modal') => {
+    if (!marker) {
+      return null;
+    }
+
+    const confirmed = Boolean(confirmedPins[marker.key]);
+    const containerStyle = variant === 'primary' ? styles.mapCallout : styles.fullScreenCallout;
+
+    return (
+      <View style={containerStyle} pointerEvents="box-none">
+        <View style={styles.calloutCard}>
+          <View style={styles.calloutText}>
+            <Text style={styles.calloutLabel}>{marker.label}</Text>
+            <Text style={styles.calloutTitle} numberOfLines={2}>
+              {marker.title}
+            </Text>
+            <Text style={styles.calloutStatus}>
+              {confirmed
+                ? 'Snow cleared. Tap undo to revert.'
+                : 'Tap "Snow cleared" once this stop is finished.'}
+            </Text>
+          </View>
+          <View style={styles.calloutActions}>
+            <Pressable
+              style={styles.calloutCloseButton}
+              accessibilityRole="button"
+              onPress={() => setSelectedPinKey(null)}
+            >
+              <Text style={styles.calloutCloseText}>Close</Text>
+            </Pressable>
+            {confirmed ? (
+              <Pressable
+                style={[styles.secondaryButton, styles.undoButton]}
+                accessibilityRole="button"
+                onPress={() => requestUndo(marker.key)}
+              >
+                <Text style={styles.secondaryButtonText}>Undo</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={styles.primaryButton}
+                accessibilityRole="button"
+                onPress={() => confirmPin(marker.key)}
+              >
+                <Text style={styles.primaryButtonText}>Snow cleared</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  };
 
   const renderOverlay = () => {
     if (loading && !requesting) {
@@ -303,76 +385,7 @@ export function MapScreen({ pins, loading }: MapScreenProps) {
         {renderMapView(styles.map, 'primary')}
         {renderOverlay()}
       </View>
-      {markers.length > 0 && (
-        <ScrollView
-          horizontal
-          style={styles.tagsScroll}
-          contentContainerStyle={styles.tagsScrollContent}
-          showsHorizontalScrollIndicator={false}
-        >
-          {markers.map((marker) => {
-            const isActive = marker.key === selectedPinKey;
-            const pinConfirmed = Boolean(confirmedPins[marker.key]);
-            return (
-              <Pressable
-                key={marker.key}
-                style={[
-                  styles.pinTag,
-                  isActive && styles.pinTagActive,
-                  pinConfirmed && styles.pinTagConfirmed,
-                ]}
-                accessibilityRole="button"
-                onPress={() => setSelectedPinKey(marker.key)}
-              >
-                <Text style={styles.pinTagLabel}>{marker.label}</Text>
-                <Text style={styles.pinTagAddress} numberOfLines={1}>
-                  {marker.title}
-                </Text>
-                {pinConfirmed && <Text style={styles.pinTagStatus}>Snow cleared</Text>}
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      )}
-      {selectedMarker && (
-        <View style={styles.tagCard}>
-          <View style={styles.tagText}>
-            <Text style={styles.tagTitle}>
-              {selectedMarker.label}. {selectedMarker.title}
-            </Text>
-            <Text style={styles.tagStatusText}>
-              {isSelectedConfirmed
-                ? undoAvailable
-                  ? `Snow cleared - Undo in ${undoCountdown}s`
-                  : 'Snow cleared'
-                : 'Tap "Snow cleared" once this stop is finished.'}
-            </Text>
-          </View>
-          {isSelectedConfirmed ? (
-            undoAvailable ? (
-              <Pressable
-                style={[styles.secondaryButton, styles.undoButton]}
-                accessibilityRole="button"
-                onPress={() => requestUndo(selectedMarker.key)}
-              >
-                <Text style={styles.secondaryButtonText}>Undo</Text>
-              </Pressable>
-            ) : (
-              <View style={[styles.secondaryButton, styles.disabledButton]}>
-                <Text style={styles.secondaryButtonText}>Confirmed</Text>
-              </View>
-            )
-          ) : (
-            <Pressable
-              style={styles.primaryButton}
-              accessibilityRole="button"
-              onPress={() => confirmPin(selectedMarker.key)}
-            >
-              <Text style={styles.primaryButtonText}>Snow cleared</Text>
-            </Pressable>
-          )}
-        </View>
-      )}
+      {renderCallout(selectedMarker, 'primary')}
 
       <Modal
         visible={isFullScreen}
@@ -393,6 +406,7 @@ export function MapScreen({ pins, loading }: MapScreenProps) {
           </View>
           <View style={styles.fullScreenMapWrapper}>
             {renderMapView(styles.fullScreenMap, 'modal')}
+            {renderCallout(selectedMarker, 'modal')}
             {renderOverlay()}
           </View>
         </View>
@@ -448,69 +462,65 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
   },
-  tagsScroll: {
-    marginTop: 16,
+  mapCallout: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 16,
+    alignItems: 'stretch',
+    justifyContent: 'flex-end',
   },
-  tagsScrollContent: {
-    paddingHorizontal: 4,
-    paddingVertical: 8,
-    gap: 12,
+  fullScreenCallout: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    bottom: 32,
+    alignItems: 'stretch',
+    justifyContent: 'flex-end',
   },
-  pinTag: {
-    minWidth: 160,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e4e4e7',
-    backgroundColor: '#fff',
-    gap: 6,
-  },
-  pinTagActive: {
-    borderColor: '#2563eb',
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  pinTagConfirmed: {
-    borderColor: '#16a34a',
-  },
-  pinTagLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#4b5563',
-  },
-  pinTagAddress: {
-    fontSize: 14,
-    color: '#111827',
-  },
-  pinTagStatus: {
-    fontSize: 12,
-    color: '#15803d',
-  },
-  tagCard: {
-    marginTop: 16,
+  calloutCard: {
     padding: 16,
     borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.96)',
     borderWidth: 1,
-    borderColor: '#e4e4e7',
-    backgroundColor: '#f8fafc',
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderColor: '#cbd5f5',
     gap: 12,
   },
-  tagText: {
-    flex: 1,
+  calloutText: {
     gap: 4,
   },
-  tagTitle: {
+  calloutLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2563eb',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  calloutTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#0f172a',
   },
-  tagStatusText: {
-    fontSize: 14,
+  calloutStatus: {
+    fontSize: 13,
     color: '#475569',
+  },
+  calloutActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  calloutCloseButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  calloutCloseText: {
+    color: '#475569',
+    fontWeight: '600',
   },
   primaryButton: {
     paddingHorizontal: 16,
@@ -536,17 +546,22 @@ const styles = StyleSheet.create({
   undoButton: {
     borderColor: '#dc2626',
   },
-  disabledButton: {
-    opacity: 0.6,
-  },
   marker: {
-    minWidth: 32,
+    minWidth: 40,
     height: 32,
-    borderRadius: 16,
+    paddingHorizontal: 12,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#fff',
+  },
+  markerSelected: {
+    transform: [{ scale: 1.12 }],
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 3,
   },
   markerLabel: {
     color: '#fff',
@@ -610,4 +625,3 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
-

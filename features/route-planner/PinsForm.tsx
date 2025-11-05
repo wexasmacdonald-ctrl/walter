@@ -1,8 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Button,
-  Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -13,6 +13,7 @@ import { API_BASE } from './api';
 import { Stop } from './types';
 
 type PinsFormProps = {
+  pins: Stop[];
   onPinsChange: (pins: Stop[]) => void;
   onLoadingChange?: (loading: boolean) => void;
 };
@@ -22,10 +23,182 @@ type FormState =
   | { type: 'error'; message: string }
   | { type: 'success'; count: number };
 
-export function PinsForm({ onPinsChange, onLoadingChange }: PinsFormProps) {
+function extractHouseNumber(address: string): string | null {
+  const match = address.trim().match(/^(\d+[A-Za-z0-9-]*)\b/);
+  return match ? match[1] : null;
+}
+
+export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [state, setState] = useState<FormState>({ type: 'idle' });
+
+  const [showInput, setShowInput] = useState(true);
+  const [showList, setShowList] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingValue, setEditingValue] = useState('');
+
+  useEffect(() => {
+    setSelected((prev) => {
+      const allowed = new Set(pins.map((pin) => pin.id));
+      const next: Record<string, boolean> = {};
+      let changed = false;
+      Object.entries(prev).forEach(([key, value]) => {
+        if (value && allowed.has(key)) {
+          next[key] = true;
+        } else if (value) {
+          changed = true;
+        }
+      });
+      if (!changed && Object.keys(next).length === Object.keys(prev).length) {
+        return prev;
+      }
+      return next;
+    });
+  }, [pins]);
+
+  useEffect(() => {
+    if (activeId && !pins.some((pin) => pin.id === activeId)) {
+      setActiveId(null);
+      setIsEditing(false);
+      setEditingValue('');
+    }
+  }, [activeId, pins]);
+
+  useEffect(() => {
+    if (pins.length === 0) {
+      setShowList(false);
+      setActiveId(null);
+      setIsEditing(false);
+      setEditingValue('');
+      setSelected({});
+      setShowInput(true);
+    }
+  }, [pins.length]);
+
+  const filteredPins = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      return pins;
+    }
+    return pins.filter((pin) => {
+      const address = pin.address?.toLowerCase() ?? '';
+      const label = pin.label?.toLowerCase() ?? '';
+      return address.includes(query) || label.includes(query);
+    });
+  }, [pins, searchQuery]);
+
+  const selectedIds = useMemo(() => {
+    const validIds = new Set(pins.map((pin) => pin.id));
+    return Object.entries(selected)
+      .filter(([id, value]) => value && validIds.has(id))
+      .map(([id]) => id);
+  }, [pins, selected]);
+
+  const hasSelection = selectedIds.length > 0;
+
+  const toggleSelection = (id: string) => {
+    setSelected((prev) => {
+      const next = { ...prev };
+      if (next[id]) {
+        delete next[id];
+      } else {
+        next[id] = true;
+      }
+      return next;
+    });
+  };
+
+  const handleRowPress = (id: string) => {
+    setActiveId((prev) => {
+      if (prev === id) {
+        setIsEditing(false);
+        setEditingValue('');
+        return null;
+      }
+      setIsEditing(false);
+      setEditingValue('');
+      return id;
+    });
+  };
+
+  const handleStartEditing = (id: string, address: string) => {
+    setActiveId(id);
+    setEditingValue(address);
+    setIsEditing(true);
+  };
+
+  const handleCancelEditing = () => {
+    setIsEditing(false);
+    setEditingValue('');
+  };
+
+  const handleSaveEditing = () => {
+    if (!activeId) {
+      return;
+    }
+    const trimmed = editingValue.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    const updated = pins.map((pin) => {
+      if (pin.id !== activeId) {
+        return pin;
+      }
+      const label = extractHouseNumber(trimmed) ?? pin.label;
+      return {
+        ...pin,
+        address: trimmed,
+        label: label ?? undefined,
+      };
+    });
+
+    onPinsChange(updated);
+    setIsEditing(false);
+    setEditingValue('');
+  };
+
+  const handleDeletePin = (id: string) => {
+    const nextPins = pins.filter((pin) => pin.id !== id);
+    onPinsChange(nextPins);
+    setSelected((prev) => {
+      if (!prev[id]) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    if (activeId === id) {
+      setActiveId(null);
+      setIsEditing(false);
+      setEditingValue('');
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    if (!hasSelection) {
+      return;
+    }
+    const selectedSet = new Set(selectedIds);
+    const nextPins = pins.filter((pin) => !selectedSet.has(pin.id));
+    onPinsChange(nextPins);
+    setSelected({});
+    if (activeId && selectedSet.has(activeId)) {
+      setActiveId(null);
+      setIsEditing(false);
+      setEditingValue('');
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelected({});
+  };
 
   const handleGeocode = useCallback(async () => {
     const addresses = input
@@ -43,11 +216,20 @@ export function PinsForm({ onPinsChange, onLoadingChange }: PinsFormProps) {
     onLoadingChange?.(true);
     setState({ type: 'idle' });
 
+    const normalized = addresses.map((address) => {
+      const match = address.trim().match(/^(\d+)[\-�?"](\d+)(.*)$/);
+      if (!match) {
+        return address;
+      }
+      const [, first, , rest = ''] = match;
+      return `${first}${rest}`;
+    });
+
     try {
       const response = await fetch(`${API_BASE}/geocode`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ addresses }),
+        body: JSON.stringify({ addresses: normalized }),
       });
 
       const text = await response.text();
@@ -65,44 +247,80 @@ export function PinsForm({ onPinsChange, onLoadingChange }: PinsFormProps) {
         throw new Error('Unexpected response from geocode endpoint.');
       }
 
-      const pins: Stop[] = payload.pins.map((pin: any, index: number) => ({
+      const houseNumbers = normalized.map((address) => extractHouseNumber(address));
+      const nextPins: Stop[] = payload.pins.map((pin: any, index: number) => ({
         id: String(pin?.id ?? index + 1),
         address: String(pin?.address ?? ''),
         lat: typeof pin?.lat === 'number' ? pin.lat : undefined,
         lng: typeof pin?.lng === 'number' ? pin.lng : undefined,
+        label:
+          typeof pin?.label === 'string' && pin.label.trim()
+            ? pin.label.trim()
+            : houseNumbers[index] ?? undefined,
       }));
 
-      setState({ type: 'success', count: pins.length });
-      onPinsChange(pins);
+      setState({ type: 'success', count: nextPins.length });
+      onPinsChange(nextPins);
+      setInput('');
+      setShowList(true);
+      setShowInput(false);
+      setSelected({});
+      setActiveId(null);
+      setIsEditing(false);
+      setEditingValue('');
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Failed to geocode addresses.';
       setState({ type: 'error', message });
       onPinsChange([]);
+      setShowList(false);
+      setShowInput(true);
+      setSelected({});
+      setActiveId(null);
+      setIsEditing(false);
+      setEditingValue('');
     } finally {
       setLoading(false);
       onLoadingChange?.(false);
     }
   }, [input, onPinsChange, onLoadingChange]);
 
+  const handleStartInput = useCallback(() => {
+    setShowInput(true);
+    setInput('');
+    setState({ type: 'idle' });
+  }, []);
+
   return (
     <View style={styles.container}>
       <Text style={styles.heading}>Geocode Addresses</Text>
-      <Text style={styles.instructions}>
-        Paste newline-delimited addresses. The worker returns coordinates for each and the app will
-        show them as pins.
-      </Text>
-      <TextInput
-        multiline
-        style={styles.input}
-        placeholder={'123 Main St, City, ST\n456 Pine Ave, Town, ST'}
-        value={input}
-        onChangeText={setInput}
-        editable={!loading}
-        autoCorrect={false}
-        autoCapitalize="none"
-      />
-      <Button title={loading ? 'Geocoding...' : 'Geocode'} disabled={loading} onPress={handleGeocode} />
+      {showInput ? (
+        <>
+          <Text style={styles.instructions}>
+            Paste newline-delimited addresses. The worker returns coordinates for each and the app will
+            show them as pins.
+          </Text>
+          <TextInput
+            multiline
+            style={styles.input}
+            placeholder={'123 Main St, City, ST\n456 Pine Ave, Town, ST'}
+            value={input}
+            onChangeText={setInput}
+            editable={!loading}
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+          <Button title={loading ? 'Geocoding...' : 'Geocode'} disabled={loading} onPress={handleGeocode} />
+        </>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          onPress={handleStartInput}
+          style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
+        >
+          <Text style={styles.addButtonText}>Add more addresses</Text>
+        </Pressable>
+      )}
       <View style={styles.resultContainer}>
         {loading && <ActivityIndicator />}
         {!loading && state.type === 'success' && (
@@ -112,6 +330,183 @@ export function PinsForm({ onPinsChange, onLoadingChange }: PinsFormProps) {
           <Text style={styles.errorText}>{state.message}</Text>
         )}
       </View>
+
+      {pins.length > 0 && (
+        <View style={styles.listContainer}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setShowList((prev) => !prev)}
+            style={({ pressed }) => [
+              styles.listToggle,
+              pressed && styles.listTogglePressed,
+            ]}
+          >
+            <Text style={styles.listToggleText}>
+              {showList
+                ? 'Hide geocoded addresses'
+                : `Show ${pins.length} geocoded address${pins.length === 1 ? '' : 'es'}`}
+            </Text>
+          </Pressable>
+
+          {showList && (
+            <View style={styles.listContent}>
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search addresses"
+                placeholderTextColor="#9ca3af"
+                style={styles.searchInput}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              <View style={styles.bulkActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={handleDeleteSelected}
+                  disabled={!hasSelection}
+                  style={({ pressed }) => [
+                    styles.bulkButton,
+                    styles.bulkButtonDanger,
+                    !hasSelection && styles.bulkButtonDisabled,
+                    pressed && hasSelection && styles.bulkButtonPressed,
+                  ]}
+                >
+                  <Text style={styles.bulkButtonDangerText}>Delete selected</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={handleClearSelection}
+                  disabled={!hasSelection}
+                  style={({ pressed }) => [
+                    styles.bulkButton,
+                    styles.bulkButtonSecondary,
+                    !hasSelection && styles.bulkButtonDisabled,
+                    pressed && hasSelection && styles.bulkButtonPressed,
+                  ]}
+                >
+                  <Text style={styles.bulkButtonSecondaryText}>Clear selection</Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.addressList}>
+                {filteredPins.length === 0 ? (
+                  <View style={styles.addressEmpty}>
+                    <Text style={styles.addressEmptyText}>No addresses match your search.</Text>
+                  </View>
+                ) : (
+                  filteredPins.map((pin) => {
+                    const isSelected = Boolean(selected[pin.id]);
+                    const isActive = activeId === pin.id;
+
+                    return (
+                      <View
+                        key={pin.id}
+                        style={[
+                          styles.addressRow,
+                          isSelected && styles.addressRowSelected,
+                          isActive && styles.addressRowActive,
+                        ]}
+                      >
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() => toggleSelection(pin.id)}
+                          style={({ pressed }) => [
+                            styles.addressSelect,
+                            isSelected && styles.addressSelectActive,
+                            pressed && styles.addressSelectPressed,
+                          ]}
+                        >
+                          <Text style={styles.addressSelectText}>{isSelected ? '✓' : ''}</Text>
+                        </Pressable>
+
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() => handleRowPress(pin.id)}
+                          style={styles.addressBody}
+                        >
+                          <Text style={styles.addressLine}>{pin.address || 'Address unavailable'}</Text>
+                          <Text style={styles.addressStatus}>
+                            {typeof pin.lat === 'number' && typeof pin.lng === 'number'
+                              ? 'Geocoded'
+                              : 'Missing coordinates'}
+                          </Text>
+                        </Pressable>
+
+                        {isActive && !isEditing && (
+                          <View style={styles.inlineActions}>
+                            <Pressable
+                              accessibilityRole="button"
+                              onPress={() => handleStartEditing(pin.id, pin.address)}
+                              style={({ pressed }) => [
+                                styles.addressActionButton,
+                                styles.addressActionSecondary,
+                                pressed && styles.addressActionPressed,
+                              ]}
+                            >
+                              <Text style={styles.addressActionSecondaryText}>Edit</Text>
+                            </Pressable>
+                            <Pressable
+                              accessibilityRole="button"
+                              onPress={() => handleDeletePin(pin.id)}
+                              style={({ pressed }) => [
+                                styles.addressActionButton,
+                                styles.addressActionDanger,
+                                pressed && styles.addressActionPressed,
+                              ]}
+                            >
+                              <Text style={styles.addressActionDangerText}>Delete</Text>
+                            </Pressable>
+                          </View>
+                        )}
+
+                        {isActive && isEditing && (
+                          <View style={styles.editBlock}>
+                            <TextInput
+                              value={editingValue}
+                              onChangeText={setEditingValue}
+                              placeholder="Edit address"
+                              style={styles.addressEditInput}
+                              autoFocus
+                            />
+                            <View style={styles.inlineActions}>
+                              <Pressable
+                                accessibilityRole="button"
+                                onPress={handleSaveEditing}
+                                disabled={editingValue.trim().length === 0}
+                                style={({ pressed }) => [
+                                  styles.addressActionButton,
+                                  styles.addressActionPrimary,
+                                  editingValue.trim().length === 0 && styles.addressActionDisabled,
+                                  pressed &&
+                                    editingValue.trim().length > 0 &&
+                                    styles.addressActionPressed,
+                                ]}
+                              >
+                                <Text style={styles.addressActionPrimaryText}>Save</Text>
+                              </Pressable>
+                              <Pressable
+                                accessibilityRole="button"
+                                onPress={handleCancelEditing}
+                                style={({ pressed }) => [
+                                  styles.addressActionButton,
+                                  styles.addressActionSecondary,
+                                  pressed && styles.addressActionPressed,
+                                ]}
+                              >
+                                <Text style={styles.addressActionSecondaryText}>Cancel</Text>
+                              </Pressable>
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })
+                )}
+              </View>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -129,6 +524,24 @@ const styles = StyleSheet.create({
     color: '#4b5563',
     marginBottom: 12,
   },
+  addButton: {
+    marginBottom: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#cbd5f5',
+    backgroundColor: '#e0e7ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addButtonPressed: {
+    opacity: 0.85,
+  },
+  addButtonText: {
+    color: '#1e293b',
+    fontWeight: '600',
+  },
   input: {
     minHeight: 160,
     borderWidth: 1,
@@ -136,11 +549,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
-    fontFamily: Platform.select({
-      ios: 'Menlo',
-      android: 'monospace',
-      default: 'monospace',
-    }),
     backgroundColor: '#f9fafb',
     marginBottom: 16,
   },
@@ -154,10 +562,192 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#b91c1c',
-    fontFamily: Platform.select({
-      ios: 'Menlo',
-      android: 'monospace',
-      default: 'monospace',
-    }),
+    fontWeight: '600',
+  },
+  listContainer: {
+    marginTop: 24,
+    gap: 16,
+  },
+  listToggle: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#2563eb',
+  },
+  listTogglePressed: {
+    opacity: 0.85,
+  },
+  listToggleText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  listContent: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    padding: 16,
+    backgroundColor: '#f8fafc',
+    gap: 16,
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    backgroundColor: '#fff',
+  },
+  bulkActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  bulkButton: {
+    flex: 1,
+    borderRadius: 999,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bulkButtonPressed: {
+    opacity: 0.85,
+  },
+  bulkButtonDisabled: {
+    opacity: 0.5,
+  },
+  bulkButtonDanger: {
+    backgroundColor: '#fee2e2',
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+  },
+  bulkButtonDangerText: {
+    color: '#b91c1c',
+    fontWeight: '600',
+  },
+  bulkButtonSecondary: {
+    backgroundColor: '#e0f2fe',
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+  },
+  bulkButtonSecondaryText: {
+    color: '#0369a1',
+    fontWeight: '600',
+  },
+  addressList: {
+    gap: 12,
+  },
+  addressEmpty: {
+    paddingVertical: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addressEmptyText: {
+    color: '#64748b',
+    textAlign: 'center',
+  },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
+  },
+  addressRowSelected: {
+    borderColor: '#2563eb',
+  },
+  addressRowActive: {
+    borderColor: '#34d399',
+  },
+  addressSelect: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f1f5f9',
+  },
+  addressSelectActive: {
+    backgroundColor: '#dbeafe',
+    borderColor: '#2563eb',
+  },
+  addressSelectPressed: {
+    opacity: 0.85,
+  },
+  addressSelectText: {
+    color: '#1f2937',
+    fontWeight: '700',
+  },
+  addressBody: {
+    flex: 1,
+    gap: 4,
+  },
+  addressLine: {
+    color: '#0f172a',
+    fontWeight: '600',
+  },
+  addressStatus: {
+    color: '#4b5563',
+    fontSize: 12,
+  },
+  inlineActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  editBlock: {
+    flex: 1,
+    gap: 12,
+  },
+  addressActionButton: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#cbd5f5',
+    backgroundColor: '#e0e7ff',
+  },
+  addressActionPrimary: {
+    backgroundColor: '#2563eb',
+    borderColor: '#1d4ed8',
+  },
+  addressActionPrimaryText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  addressActionSecondary: {
+    backgroundColor: '#f1f5f9',
+    borderColor: '#e2e8f0',
+  },
+  addressActionSecondaryText: {
+    color: '#1e293b',
+    fontWeight: '600',
+  },
+  addressActionDanger: {
+    backgroundColor: '#fee2e2',
+    borderColor: '#fecaca',
+  },
+  addressActionDangerText: {
+    color: '#b91c1c',
+    fontWeight: '600',
+  },
+  addressActionDisabled: {
+    opacity: 0.5,
+  },
+  addressActionPressed: {
+    opacity: 0.85,
+  },
+  addressEditInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    backgroundColor: '#fff',
   },
 });

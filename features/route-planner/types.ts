@@ -3,4 +3,5 @@ export type Stop = {
   address: string;
   lat?: number;
   lng?: number;
+  label?: string;
 };
