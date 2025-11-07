@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 
+import { useAuth } from '@/features/auth/auth-context';
 import { API_BASE } from './api';
 import { Stop } from './types';
 
@@ -29,6 +30,7 @@ function extractHouseNumber(address: string): string | null {
 }
 
 export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps) {
+  const { token, signOut } = useAuth();
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [state, setState] = useState<FormState>({ type: 'idle' });
@@ -201,6 +203,15 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
   };
 
   const handleGeocode = useCallback(async () => {
+    if (!token) {
+      setState({
+        type: 'error',
+        message: 'Session expired. Please sign in again.',
+      });
+      onPinsChange([]);
+      return;
+    }
+
     const addresses = input
       .split('\n')
       .map((line) => line.trim())
@@ -228,7 +239,10 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
     try {
       const response = await fetch(`${API_BASE}/geocode`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ addresses: normalized }),
       });
 
@@ -236,6 +250,12 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
       const payload = text ? JSON.parse(text) : null;
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          setTimeout(() => {
+            void signOut();
+          }, 0);
+          throw new Error('Session expired. Please sign in again.');
+        }
         throw new Error(
           typeof payload?.error === 'string'
             ? `${payload.error}: ${payload.message ?? 'Request failed.'}`
@@ -257,12 +277,13 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
           typeof pin?.label === 'string' && pin.label.trim()
             ? pin.label.trim()
             : houseNumbers[index] ?? undefined,
+        status: 'pending',
       }));
 
       setState({ type: 'success', count: nextPins.length });
       onPinsChange(nextPins);
       setInput('');
-      setShowList(true);
+      setShowList(false);
       setShowInput(false);
       setSelected({});
       setActiveId(null);
@@ -283,7 +304,7 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
       setLoading(false);
       onLoadingChange?.(false);
     }
-  }, [input, onPinsChange, onLoadingChange]);
+  }, [input, onPinsChange, onLoadingChange, token, signOut]);
 
   const handleStartInput = useCallback(() => {
     setShowInput(true);

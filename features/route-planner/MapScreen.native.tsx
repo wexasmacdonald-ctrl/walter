@@ -12,11 +12,13 @@ import MapView, { PROVIDER_GOOGLE, type LatLng } from 'react-native-maps';
 import * as Location from 'expo-location';
 
 import { MarkerBadge } from '@/components/MarkerBadge';
-import { Stop } from './types';
+import type { Stop } from './types';
 
 export type MapScreenProps = {
   pins: Stop[];
   loading?: boolean;
+  onCompleteStop?: (stopId: string) => Promise<void> | void;
+  onUndoStop?: (stopId: string) => Promise<void> | void;
 };
 
 type UserLocation = {
@@ -29,13 +31,20 @@ const SELECTED_PIN_COLOR = '#60a5fa';
 const CONFIRMED_PIN_COLOR = '#22c55e';
 const SELECTED_CONFIRMED_PIN_COLOR = '#86efac';
 
-export function MapScreen({ pins, loading = false }: MapScreenProps) {
+export function MapScreen({
+  pins,
+  loading = false,
+  onCompleteStop,
+  onUndoStop,
+}: MapScreenProps) {
   const [location, setLocation] = useState<UserLocation | null>(null);
   const [requestingLocation, setRequestingLocation] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<Record<string, number>>({});
+  const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
+  const [actioningId, setActioningId] = useState<string | null>(null);
 
   const mapRef = useRef<MapView | null>(null);
   const modalMapRef = useRef<MapView | null>(null);
@@ -97,6 +106,7 @@ export function MapScreen({ pins, loading = false }: MapScreenProps) {
           coordinate: { latitude: pin.lat, longitude: pin.lng } as LatLng,
           address: pin.address,
           label,
+          status: pin.status === 'complete' ? 'complete' : 'pending',
         };
       });
   }, [pins]);
@@ -116,6 +126,24 @@ export function MapScreen({ pins, loading = false }: MapScreenProps) {
     }
   }, [selectedId, markers]);
 
+  useEffect(() => {
+    setConfirmed((prev) => {
+      const next = pins.reduce<Record<string, number>>((acc, stop) => {
+        if (stop.id && stop.status === 'complete') {
+          acc[stop.id] = prev[stop.id] ?? Date.now();
+        }
+        return acc;
+      }, {});
+
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      if (prevKeys.length === nextKeys.length && nextKeys.every((key) => prev[key])) {
+        return prev;
+      }
+      return next;
+    });
+  }, [pins]);
+
   const selectedMarker = useMemo(
     () => markers.find((marker) => marker.id === selectedId) ?? null,
     [markers, selectedId]
@@ -125,32 +153,61 @@ export function MapScreen({ pins, loading = false }: MapScreenProps) {
     setSelectedId((prev) => (prev === id ? null : id));
   };
 
-  const handleConfirm = (id: string) => {
+  const handleConfirm = async (id: string) => {
+    if (actioningId) {
+      return;
+    }
+    setActioningId(id);
     setConfirmed((prev) => ({ ...prev, [id]: Date.now() }));
+    try {
+      await onCompleteStop?.(id);
+    } catch (error) {
+      console.warn('Failed to mark stop complete', error);
+      setConfirmed((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    } finally {
+      setActioningId(null);
+    }
     setSelectedId(null);
   };
 
   const handleUndo = (id: string) => {
+    if (actioningId) {
+      return;
+    }
     Alert.alert('Undo confirmation', 'Are you sure you want to undo this confirmation?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Undo',
         style: 'destructive',
-        onPress: () =>
+        onPress: async () => {
+          setActioningId(id);
           setConfirmed((prev) => {
             const next = { ...prev };
             delete next[id];
             return next;
-          }),
+          });
+          try {
+            await onUndoStop?.(id);
+          } catch (error) {
+            console.warn('Failed to undo stop completion', error);
+            setConfirmed((prev) => ({ ...prev, [id]: Date.now() }));
+          } finally {
+            setActioningId(null);
+          }
+          setSelectedId(null);
+        },
       },
     ]);
-    setSelectedId(null);
   };
 
   const renderMarkers = () =>
     markers.map((marker) => {
       const isSelected = marker.id === selectedId;
-      const isConfirmed = Boolean(confirmed[marker.id]);
+      const isConfirmed = marker.status === 'complete' || Boolean(confirmed[marker.id]);
       const backgroundColor = isSelected
         ? isConfirmed
           ? SELECTED_CONFIRMED_PIN_COLOR
@@ -201,15 +258,21 @@ export function MapScreen({ pins, loading = false }: MapScreenProps) {
                 <Pressable
                   style={[styles.toastButton, styles.toastButtonDanger]}
                   onPress={() => handleUndo(selectedMarker.id)}
+                  disabled={actioningId === selectedMarker.id}
                 >
-                  <Text style={styles.toastButtonDangerText}>Undo</Text>
+                  <Text style={styles.toastButtonDangerText}>
+                    {actioningId === selectedMarker.id ? 'Updating…' : 'Undo'}
+                  </Text>
                 </Pressable>
               ) : (
                 <Pressable
                   style={[styles.toastButton, styles.toastButtonPrimary]}
                   onPress={() => handleConfirm(selectedMarker.id)}
+                  disabled={actioningId === selectedMarker.id}
                 >
-                  <Text style={styles.toastButtonPrimaryText}>Snow cleared</Text>
+                  <Text style={styles.toastButtonPrimaryText}>
+                    {actioningId === selectedMarker.id ? 'Updating…' : 'Snow cleared'}
+                  </Text>
                 </Pressable>
               )}
             </View>
@@ -257,13 +320,36 @@ export function MapScreen({ pins, loading = false }: MapScreenProps) {
     return null;
   };
 
+  const renderMapTypeToggle = () => (
+    <View style={styles.mapTypeToggle}>
+      <Pressable
+        style={[styles.mapTypeOption, mapType === 'standard' && styles.mapTypeOptionActive]}
+        onPress={() => setMapType('standard')}
+      >
+        <Text style={[styles.mapTypeOptionText, mapType === 'standard' && styles.mapTypeOptionTextActive]}>
+          Map
+        </Text>
+      </Pressable>
+      <Pressable
+        style={[styles.mapTypeOption, mapType === 'satellite' && styles.mapTypeOptionActive]}
+        onPress={() => setMapType('satellite')}
+      >
+        <Text style={[styles.mapTypeOptionText, mapType === 'satellite' && styles.mapTypeOptionTextActive]}>
+          Satellite
+        </Text>
+      </Pressable>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.heading}>Map Preview</Text>
-        <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
-          <Text style={styles.fullScreenButtonText}>Full Screen</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          {renderMapTypeToggle()}
+          <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
+            <Text style={styles.fullScreenButtonText}>Full Screen</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.mapWrapper}>
@@ -271,6 +357,7 @@ export function MapScreen({ pins, loading = false }: MapScreenProps) {
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
           style={styles.map}
+          mapType={mapType}
           showsUserLocation
           showsCompass
           showsMyLocationButton
@@ -289,16 +376,19 @@ export function MapScreen({ pins, loading = false }: MapScreenProps) {
       <Modal visible={isFullScreen} animationType="slide" onRequestClose={() => setIsFullScreen(false)}>
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Map Preview</Text>
-            <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(false)}>
-              <Text style={styles.fullScreenButtonText}>Close</Text>
-            </Pressable>
+            <View style={styles.modalHeaderActions}>
+              {renderMapTypeToggle()}
+              <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(false)}>
+                <Text style={styles.fullScreenButtonText}>Close</Text>
+              </Pressable>
+            </View>
           </View>
           <View style={styles.modalMapWrapper}>
             <MapView
               ref={modalMapRef}
               provider={PROVIDER_GOOGLE}
               style={styles.map}
+              mapType={mapType}
               showsUserLocation
               showsCompass
               showsMyLocationButton
@@ -345,14 +435,14 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     marginBottom: 12,
     gap: 16,
   },
-  heading: {
-    fontSize: 20,
-    fontWeight: '600',
-    flex: 1,
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   fullScreenButton: {
     paddingHorizontal: 14,
@@ -489,13 +579,13 @@ const styles = StyleSheet.create({
     borderColor: '#e5e7eb',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     gap: 16,
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    flex: 1,
+  modalHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   modalMapWrapper: {
     flex: 1,
@@ -506,5 +596,30 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
+  mapTypeToggle: {
+    flexDirection: 'row',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#d4d4d8',
+    overflow: 'hidden',
+    width: 160,
+  },
+  mapTypeOption: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#f4f4f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapTypeOptionActive: {
+    backgroundColor: '#2563eb',
+  },
+  mapTypeOptionText: {
+    fontWeight: '600',
+    color: '#4b5563',
+  },
+  mapTypeOptionTextActive: {
+    color: '#ffffff',
+  },
 });
-
