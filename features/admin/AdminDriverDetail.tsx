@@ -1104,10 +1104,12 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     collapseSection: {
       gap: 12,
+      alignItems: isWeb ? 'flex-start' : 'stretch',
     },
     collapseToggle: {
-      alignSelf: Platform.OS === 'web' ? 'flex-start' : 'stretch',
-      minWidth: Platform.OS === 'web' ? 240 : undefined,
+      alignSelf: isWeb ? 'flex-start' : 'stretch',
+      minWidth: isWeb ? 240 : undefined,
+      maxWidth: isWeb ? 360 : undefined,
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.border,
@@ -1121,7 +1123,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     collapseToggleLabel: {
       fontWeight: '600',
       color: colors.text,
-      textAlign: Platform.OS === 'web' ? 'left' : 'center',
+      textAlign: isWeb ? 'left' : 'center',
       width: '100%',
     },
     accountSection: {
@@ -1262,7 +1264,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       alignItems: 'stretch',
       gap: 12,
       alignSelf: isWeb ? 'flex-start' : 'stretch',
-      width: '100%',
+      width: isWeb ? undefined : '100%',
       maxWidth: isWeb ? 520 : undefined,
     },
     searchInput: {
@@ -1287,6 +1289,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       alignItems: 'center',
       alignSelf: isWeb ? 'flex-start' : 'flex-end',
       minWidth: isWeb ? 160 : undefined,
+      maxWidth: isWeb ? 240 : undefined,
     },
     displayButtonPressed: {
       opacity: 0.9,

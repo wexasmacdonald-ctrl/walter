@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -561,6 +562,8 @@ export function SettingsMenu({
 }
 
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
+  const isWeb = Platform.OS === 'web';
+  const constrainedWidth = isWeb ? 420 : undefined;
   return StyleSheet.create({
     menuTrigger: {
       padding: 8,
@@ -618,6 +621,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       padding: 24,
       gap: 24,
       backgroundColor: colors.background,
+      alignItems: isWeb ? 'flex-start' : 'stretch',
     },
     confirmOverlay: {
       ...StyleSheet.absoluteFillObject,
@@ -707,6 +711,8 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       backgroundColor: colors.surface,
       padding: 20,
       gap: 6,
+      alignSelf: isWeb ? 'flex-start' : 'stretch',
+      width: isWeb ? constrainedWidth : '100%',
     },
     profileName: {
       fontSize: 22,
@@ -720,6 +726,8 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     section: {
       gap: 12,
+      alignSelf: isWeb ? 'flex-start' : 'stretch',
+      width: isWeb ? constrainedWidth : '100%',
     },
     sectionTitle: {
       fontSize: 14,
@@ -736,6 +744,8 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderWidth: 1,
       borderColor: colors.border,
       gap: 4,
+      alignSelf: isWeb ? 'flex-start' : 'stretch',
+      width: isWeb ? constrainedWidth : '100%',
     },
     menuItemPressed: {
       opacity: 0.85,
@@ -764,6 +774,8 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderWidth: 1,
       borderColor: colors.danger,
       gap: 6,
+      alignSelf: isWeb ? 'flex-start' : 'stretch',
+      width: isWeb ? constrainedWidth : '100%',
     },
     destructiveItemPressed: {
       opacity: 0.9,
@@ -784,6 +796,8 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     legalFooter: {
       gap: 4,
       paddingTop: 8,
+      alignSelf: isWeb ? 'flex-start' : 'stretch',
+      width: isWeb ? constrainedWidth : '100%',
     },
     legalFooterText: {
       color: colors.mutedText,
@@ -800,6 +814,8 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     sheetGroup: {
       gap: 16,
+      alignSelf: isWeb ? 'flex-start' : 'stretch',
+      width: isWeb ? constrainedWidth : '100%',
     },
     sheetTitle: {
       fontSize: 20,
