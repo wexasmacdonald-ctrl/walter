@@ -26,6 +26,7 @@ import { SettingsMenu } from '@/components/SettingsMenu';
 import { useTheme } from '@/features/theme/theme-context';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const IS_WEB = Platform.OS === 'web';
 const REFRESH_COLORS = ['#1d4ed8', '#3b82f6'];
 const REFRESH_OFFSET = Platform.select({ ios: 64, android: 0 }) ?? 0;
 
@@ -172,72 +173,92 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
       ) : (
         <ScrollView
           style={[styles.screen, { backgroundColor: colors.background }]}
-          contentContainerStyle={[styles.container, { backgroundColor: colors.background }]}
+          contentContainerStyle={[
+            styles.container,
+            IS_WEB && styles.containerDesktop,
+            { backgroundColor: colors.background },
+          ]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           contentInsetAdjustmentBehavior="automatic"
           automaticallyAdjustKeyboardInsets
           refreshControl={createRefreshControl(refreshing, onRefresh)}
         >
-          <View style={styles.header}>
-            <SettingsMenu
-              userName={user?.fullName}
-              userRole={user?.role ?? 'admin'}
-              onDeleteAccount={deleteAccount}
-              onSignOut={signOut}
-              onChangePassword={changePassword}
-              onGetProfile={getProfile}
-              onUpdateProfile={updateProfile}
-              onVerifyPassword={verifyPassword}
-            />
-            <View style={styles.headerInfo}>
-              <Text style={[styles.headerGreeting, { color: colors.text }]}>
-                {user?.fullName ? `Welcome, ${user.fullName}` : 'Welcome back'}
-              </Text>
-              <Text style={[styles.headerRole, { color: colors.mutedText }]}>
-                Signed in as{' '}
-                <Text style={[styles.headerRoleHighlight, { color: colors.primary }]}>
-                  {user.role}
+          <View style={styles.block}>
+            <View style={styles.header}>
+              <SettingsMenu
+                userName={user?.fullName}
+                userRole={user?.role ?? 'admin'}
+                onDeleteAccount={deleteAccount}
+                onSignOut={signOut}
+                onChangePassword={changePassword}
+                onGetProfile={getProfile}
+                onUpdateProfile={updateProfile}
+                onVerifyPassword={verifyPassword}
+              />
+              <View style={styles.headerInfo}>
+                <Text style={[styles.headerGreeting, { color: colors.text }]}>
+                  {user?.fullName ? `Welcome, ${user.fullName}` : 'Welcome back'}
                 </Text>
+                <Text style={[styles.headerRole, { color: colors.mutedText }]}>
+                  Signed in as{' '}
+                  <Text style={[styles.headerRoleHighlight, { color: colors.primary }]}>
+                    {user.role}
+                  </Text>
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.block}>
+            <AdminCreateUserCard />
+          </View>
+
+          <View style={styles.block}>
+            <AdminDriverManager
+              onSelectDriver={setActiveDriverId}
+              refreshSignal={refreshSignal}
+            />
+          </View>
+
+          <View style={styles.block}>
+            <View
+              style={[
+                styles.instructions,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.instructionsTitle, { color: colors.text }]}>
+                Drop pins from addresses
+              </Text>
+              <Text style={[styles.instructionsBody, { color: colors.mutedText }]}>
+                Paste newline-delimited addresses, hit geocode, and share the map with your drivers.
+                Geocoding is now locked behind login so only your team can access it.
               </Text>
             </View>
           </View>
 
-          <AdminCreateUserCard />
-          <AdminDriverManager
-            onSelectDriver={setActiveDriverId}
-            refreshSignal={refreshSignal}
-          />
-
-          <View
-            style={[
-              styles.instructions,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ]}
-          >
-            <Text style={[styles.instructionsTitle, { color: colors.text }]}>
-              Drop pins from addresses
-            </Text>
-            <Text style={[styles.instructionsBody, { color: colors.mutedText }]}>
-              Paste newline-delimited addresses, hit geocode, and share the map with your drivers.
-              Geocoding is now locked behind login so only your team can access it.
-            </Text>
+          <View style={styles.block}>
+            <PinsForm pins={pins} onPinsChange={setPins} onLoadingChange={setLoadingPins} />
           </View>
 
-          <PinsForm pins={pins} onPinsChange={setPins} onLoadingChange={setLoadingPins} />
-          <MapScreen pins={pins} loading={loadingPins} />
+          <View style={styles.block}>
+            <MapScreen pins={pins} loading={loadingPins} />
+          </View>
 
-          <View
-            style={[
-              styles.summary,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ]}
-          >
-            <Text style={[styles.summaryText, { color: colors.mutedText }]}>
-              {pins.length === 0
-                ? 'No pins yet. Paste a list of addresses to get started.'
-                : `Showing ${pins.length} pin${pins.length === 1 ? '' : 's'}.`}
-            </Text>
+          <View style={styles.block}>
+            <View
+              style={[
+                styles.summary,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.summaryText, { color: colors.mutedText }]}>
+                {pins.length === 0
+                  ? 'No pins yet. Paste a list of addresses to get started.'
+                  : `Showing ${pins.length} pin${pins.length === 1 ? '' : 's'}.`}
+              </Text>
+            </View>
           </View>
 
           <StatusBar style="auto" />
@@ -315,6 +336,15 @@ const styles = StyleSheet.create({
     paddingTop: 48,
     paddingBottom: 112,
     gap: 24,
+    alignItems: 'stretch',
+  },
+  containerDesktop: {
+    alignItems: 'flex-start',
+  },
+  block: {
+    width: '100%',
+    alignSelf: Platform.OS === 'web' ? 'flex-start' : 'stretch',
+    maxWidth: Platform.OS === 'web' ? 960 : undefined,
   },
   loadingContainer: {
     flex: 1,

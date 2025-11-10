@@ -581,32 +581,32 @@ export function AdminDriverDetail({
 
   return (
     <View style={styles.screen}>
-      <View style={styles.header}>
-        <SettingsMenu
-          userName={authUser?.fullName}
-          userRole={authUser?.role ?? 'admin'}
-          onDeleteAccount={deleteAccount}
-          onSignOut={signOut}
-          onChangePassword={changePassword}
-          onGetProfile={getProfile}
-          onUpdateProfile={updateProfile}
-          onVerifyPassword={verifyPassword}
-        />
-        <View style={styles.headerInfo}>
-          <Text style={styles.title}>Driver assignment</Text>
-          {driver ? (
-            <Text style={styles.subTitle} numberOfLines={1}>
-              {driver.fullName || driver.emailOrPhone}
-            </Text>
-          ) : null}
+        <View style={styles.header}>
+          <Pressable
+            style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
+            onPress={onClose}
+          >
+            <Text style={styles.backButtonText}>Back to drivers</Text>
+          </Pressable>
+          <View style={styles.headerInfo}>
+            <Text style={styles.title}>Driver assignment</Text>
+            {driver ? (
+              <Text style={styles.subTitle} numberOfLines={1}>
+                {driver.fullName || driver.emailOrPhone}
+              </Text>
+            ) : null}
+          </View>
+          <SettingsMenu
+            userName={authUser?.fullName}
+            userRole={authUser?.role ?? 'admin'}
+            onDeleteAccount={deleteAccount}
+            onSignOut={signOut}
+            onChangePassword={changePassword}
+            onGetProfile={getProfile}
+            onUpdateProfile={updateProfile}
+            onVerifyPassword={verifyPassword}
+          />
         </View>
-        <Pressable
-          style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
-          onPress={onClose}
-        >
-          <Text style={styles.closeButtonText}>Back</Text>
-        </Pressable>
-      </View>
 
       {loadingDriver ? (
         <View style={styles.loaderRow}>
@@ -1050,6 +1050,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
+      flexWrap: 'wrap',
       marginBottom: 24,
       gap: 16,
     },
@@ -1066,18 +1067,21 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       marginTop: 4,
       color: colors.mutedText,
     },
-    closeButton: {
-      paddingHorizontal: 18,
-      paddingVertical: 8,
-      borderRadius: 999,
+    backButton: {
+      borderRadius: 10,
       borderWidth: 1,
       borderColor: colors.primary,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
       backgroundColor: colors.primaryMuted,
+      minWidth: 150,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    closeButtonPressed: {
-      opacity: 0.85,
+    backButtonPressed: {
+      opacity: 0.9,
     },
-    closeButtonText: {
+    backButtonText: {
       color: colors.primary,
       fontWeight: '600',
     },
