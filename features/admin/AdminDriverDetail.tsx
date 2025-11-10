@@ -1258,9 +1258,12 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.success,
     },
     searchHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      flexDirection: isWeb ? 'row' : 'column',
+      alignItems: 'stretch',
       gap: 12,
+      alignSelf: isWeb ? 'flex-start' : 'stretch',
+      width: '100%',
+      maxWidth: isWeb ? 520 : undefined,
     },
     searchInput: {
       flex: 1,
@@ -1272,6 +1275,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       fontSize: 15,
       color: colors.text,
       backgroundColor: colors.background,
+      minWidth: isWeb ? 0 : undefined,
     },
     displayButton: {
       borderRadius: 10,
@@ -1281,6 +1285,8 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       paddingHorizontal: 18,
       backgroundColor: colors.primaryMuted,
       alignItems: 'center',
+      alignSelf: isWeb ? 'flex-start' : 'flex-end',
+      minWidth: isWeb ? 160 : undefined,
     },
     displayButtonPressed: {
       opacity: 0.9,
