@@ -151,6 +151,22 @@ export function SettingsMenu({
     }
   };
 
+  const handleOpenLegal = (openDoc: () => void) => {
+    if (processing) {
+      return;
+    }
+    if (confirmVisible) {
+      setConfirmVisible(false);
+    }
+    setVisible(false);
+    setTimeout(() => {
+      openDoc();
+    }, 250);
+  };
+
+  const handleOpenTerms = () => handleOpenLegal(openTermsOfUse);
+  const handleOpenPrivacy = () => handleOpenLegal(openPrivacyPolicy);
+
   const loadProfile = async () => {
     setProfileError(null);
     setProfileLoading(true);
@@ -316,11 +332,11 @@ export function SettingsMenu({
       <View style={styles.legalFooter}>
         <Text style={styles.legalFooterText}>
           Legal:{' '}
-          <Text style={styles.legalFooterLink} onPress={() => void openTermsOfUse()}>
+          <Text style={styles.legalFooterLink} onPress={handleOpenTerms}>
             Terms of Use
           </Text>{' '}
           |{' '}
-          <Text style={styles.legalFooterLink} onPress={() => void openPrivacyPolicy()}>
+          <Text style={styles.legalFooterLink} onPress={handleOpenPrivacy}>
             Privacy Policy
           </Text>
         </Text>
