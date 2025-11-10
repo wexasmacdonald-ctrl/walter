@@ -466,6 +466,17 @@ export function SettingsMenu({
     </View>
   );
 
+  const renderTriggerContent = (label: 'Open menu' | 'Close menu') => (
+    <View style={styles.triggerRow}>
+      <View style={styles.hamburger}>
+        <View style={styles.hamburgerLine} />
+        <View style={styles.hamburgerLine} />
+        <View style={styles.hamburgerLine} />
+      </View>
+      <Text style={styles.triggerLabel}>{label}</Text>
+    </View>
+  );
+
   return (
     <>
       <Pressable
@@ -474,11 +485,7 @@ export function SettingsMenu({
         onPress={handleOpenMenu}
         style={({ pressed }) => [styles.menuTrigger, pressed && styles.menuTriggerPressed]}
       >
-        <View style={styles.hamburger}>
-          <View style={styles.hamburgerLine} />
-          <View style={styles.hamburgerLine} />
-          <View style={styles.hamburgerLine} />
-        </View>
+        {renderTriggerContent('Open menu')}
       </Pressable>
       <Modal animationType="slide" transparent={false} visible={visible} onRequestClose={handleCloseMenu}>
         <SafeAreaView
@@ -493,11 +500,7 @@ export function SettingsMenu({
               style={({ pressed }) => [styles.menuTrigger, pressed && styles.menuTriggerPressed]}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <View style={styles.hamburger}>
-                <View style={styles.hamburgerLine} />
-                <View style={styles.hamburgerLine} />
-                <View style={styles.hamburgerLine} />
-              </View>
+              {renderTriggerContent(view === 'main' ? 'Close menu' : 'Back')}
             </Pressable>
             <Text style={styles.modalTitle}>
               {view === 'main' ? 'Menu' : view === 'profile' ? 'Account details' : 'Change password'}
@@ -570,16 +573,21 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
   const constrainedWidth = isWeb ? 420 : undefined;
   return StyleSheet.create({
     menuTrigger: {
-      padding: 4,
-      borderRadius: 4,
-      borderWidth: 0,
-      backgroundColor: 'transparent',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      padding: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
     },
     menuTriggerPressed: {
       opacity: 0.85,
     },
     hamburger: {
       gap: 4,
+      justifyContent: 'center',
     },
     hamburgerLine: {
       width: 22,
@@ -593,7 +601,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     modalHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 16,
+      justifyContent: 'space-between',
       paddingHorizontal: 24,
       paddingBottom: 16,
       borderBottomWidth: 1,
