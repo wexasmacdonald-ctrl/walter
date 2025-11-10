@@ -486,9 +486,6 @@ export function SettingsMenu({
           edges={['left', 'right', 'bottom']}
         >
           <View style={[styles.modalHeader, { paddingTop: insets.top + 12 }]}>
-            <Text style={styles.modalTitle}>
-              {view === 'main' ? 'Menu' : view === 'profile' ? 'Account details' : 'Change password'}
-            </Text>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={view === 'main' ? 'Close menu' : 'Back'}
@@ -502,6 +499,9 @@ export function SettingsMenu({
                 <View style={styles.hamburgerLine} />
               </View>
             </Pressable>
+            <Text style={styles.modalTitle}>
+              {view === 'main' ? 'Menu' : view === 'profile' ? 'Account details' : 'Change password'}
+            </Text>
           </View>
           <ScrollView contentContainerStyle={styles.modalContent}>
             {view === 'profile'
@@ -593,7 +593,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     modalHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
+      gap: 16,
       paddingHorizontal: 24,
       paddingBottom: 16,
       borderBottomWidth: 1,
