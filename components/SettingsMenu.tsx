@@ -493,10 +493,14 @@ export function SettingsMenu({
               accessibilityRole="button"
               accessibilityLabel={view === 'main' ? 'Close menu' : 'Back'}
               onPress={view === 'main' ? handleCloseMenu : () => setView('main')}
-              style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
+              style={({ pressed }) => [styles.menuTrigger, pressed && styles.menuTriggerPressed]}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Text style={styles.closeButtonText}>{view === 'main' ? 'Close' : 'Back'}</Text>
+              <View style={styles.hamburger}>
+                <View style={styles.hamburgerLine} />
+                <View style={styles.hamburgerLine} />
+                <View style={styles.hamburgerLine} />
+              </View>
             </Pressable>
           </View>
           <ScrollView contentContainerStyle={styles.modalContent}>
@@ -566,11 +570,10 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
   const constrainedWidth = isWeb ? 420 : undefined;
   return StyleSheet.create({
     menuTrigger: {
-      padding: 8,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
+      padding: 4,
+      borderRadius: 4,
+      borderWidth: 0,
+      backgroundColor: 'transparent',
     },
     menuTriggerPressed: {
       opacity: 0.85,
@@ -601,21 +604,6 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       fontSize: 20,
       fontWeight: '600',
       color: colors.text,
-    },
-    closeButton: {
-      borderRadius: 999,
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-    },
-    closeButtonPressed: {
-      opacity: 0.85,
-    },
-    closeButtonText: {
-      color: colors.primary,
-      fontWeight: '600',
     },
     modalContent: {
       padding: 24,
