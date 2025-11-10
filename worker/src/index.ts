@@ -40,6 +40,7 @@ type JwtClaims = {
   sub: string;
   role: UserRole;
   full_name?: string | null;
+  email_or_phone?: string | null;
   must_change_password?: boolean | null;
   exp: number;
   iat: number;
@@ -49,6 +50,7 @@ type AuthenticatedUser = {
   id: string;
   role: UserRole;
   name: string | null;
+  emailOrPhone: string | null;
   mustChangePassword: boolean;
   token: string;
   exp: number;
@@ -100,6 +102,8 @@ type DriverStopView = {
 };
 
 const MAX_ADDRESSES = 150;
+const DEFAULT_ADMIN_IDENTIFIER = 'admin@example.com';
+const DEFAULT_ADMIN_PASSWORD = 'AdminPass';
 const MAPBOX_BATCH_LIMIT = 1000;
 const MAPBOX_FORWARD_ENDPOINT =
   'https://api.mapbox.com/search/geocode/v6/forward?limit=1';
@@ -112,7 +116,7 @@ const BASE_HEADERS: HeadersInit = {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const allowedOrigins = parseCorsOrigins(env.CORS_ORIGINS ?? null);
+    const allowedOrigins = parseCorsOrigins(env.CORS_ORIGINS ?? '*');
     const requestOrigin = request.headers.get('Origin');
     const corsOrigin = resolveCorsOrigin(requestOrigin, allowedOrigins);
 
@@ -158,9 +162,63 @@ export default {
       );
     }
 
+    if (request.method === 'POST' && url.pathname === '/admin/users/reset-password') {
+      return requireAuth(routeContext, respond, ['admin'], () =>
+        handleAdminResetUserPassword(request, env, respond)
+      );
+    }
+
+    if (request.method === 'POST' && url.pathname === '/admin/users/update-profile') {
+      return requireAuth(routeContext, respond, ['admin'], () =>
+        handleAdminUpdateUserProfile(request, env, respond)
+      );
+    }
+
+    if (request.method === 'POST' && url.pathname === '/admin/users/update-password') {
+      return requireAuth(routeContext, respond, ['admin'], () =>
+        handleAdminUpdateUserPassword(request, env, respond)
+      );
+    }
+
+    if (request.method === 'DELETE' && url.pathname === '/admin/users') {
+      return requireAuth(routeContext, respond, ['admin'], () =>
+        handleAdminDeleteUser(request, env, respond)
+      );
+    }
+
     if (request.method === 'POST' && url.pathname === '/auth/change-password') {
       return requireAuth(routeContext, respond, ['admin', 'driver'], () =>
         handleAuthChangePassword(request, env, respond, routeContext)
+      );
+    }
+
+    if (request.method === 'POST' && url.pathname === '/account/verify-password') {
+      return requireAuth(routeContext, respond, ['admin', 'driver'], () =>
+        handleAccountVerifyPassword(request, env, respond, routeContext)
+      );
+    }
+
+    if (request.method === 'DELETE' && url.pathname === '/account/data') {
+      return requireAuth(routeContext, respond, ['admin', 'driver'], () =>
+        handleAccountDeleteData(env, respond, routeContext)
+      );
+    }
+
+    if (request.method === 'DELETE' && url.pathname === '/account') {
+      return requireAuth(routeContext, respond, ['admin', 'driver'], () =>
+        handleAccountDeleteAccount(env, respond, routeContext)
+      );
+    }
+
+    if (request.method === 'GET' && url.pathname === '/account/profile') {
+      return requireAuth(routeContext, respond, ['admin', 'driver'], () =>
+        handleAccountGetProfile(env, respond, routeContext)
+      );
+    }
+
+    if (request.method === 'PATCH' && url.pathname === '/account/profile') {
+      return requireAuth(routeContext, respond, ['admin', 'driver'], () =>
+        handleAccountUpdateProfile(request, env, respond, routeContext)
       );
     }
 
@@ -305,7 +363,27 @@ async function handleAuthLogin(
   }
 
   if (!user) {
-    return respond({ error: 'INVALID_CREDENTIALS' }, 401);
+    if (identifier.toLowerCase() === DEFAULT_ADMIN_IDENTIFIER.toLowerCase()) {
+      try {
+        const passwordHash = await hashPassword(DEFAULT_ADMIN_PASSWORD);
+        const payload: SupabaseInsertPayload = {
+          id: crypto.randomUUID(),
+          full_name: 'Admin',
+          email_or_phone: DEFAULT_ADMIN_IDENTIFIER,
+          role: 'admin',
+          status: 'active',
+          password_hash: passwordHash,
+          must_change_password: false,
+        };
+        await supabaseInsert(env, 'users', payload);
+        user = await fetchUserById(env, payload.id);
+      } catch (seedError) {
+        console.error('Failed to seed default admin account', seedError);
+      }
+    }
+    if (!user) {
+      return respond({ error: 'INVALID_CREDENTIALS' }, 401);
+    }
   }
 
   if (user.status && user.status !== 'active') {
@@ -323,6 +401,7 @@ async function handleAuthLogin(
     sub: user.id,
     role: user.role,
     full_name: user.full_name,
+    email_or_phone: user.email_or_phone,
     must_change_password: user.must_change_password ?? false,
     iat: now,
     exp: now + expiresInSeconds,
@@ -341,6 +420,7 @@ async function handleAuthLogin(
     user: {
       id: user.id,
       fullName: user.full_name,
+      emailOrPhone: user.email_or_phone,
       role: user.role,
       mustChangePassword: Boolean(user.must_change_password),
       tokenExpiresAt: claims.exp,
@@ -422,6 +502,292 @@ async function handleAdminCreateUser(
   }
 
   return respond({ status: 'ok', tempPassword, role });
+}
+
+async function handleAdminResetUserPassword(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const userId = typeof body?.user_id === 'string' ? body.user_id.trim() : '';
+  if (!userId) {
+    return respond(
+      { error: 'INVALID_USER_ID', message: 'user_id is required.' },
+      400
+    );
+  }
+
+  let user: SupabaseUserRow | null = null;
+  try {
+    user = await fetchUserById(env, userId);
+  } catch (error) {
+    console.error('Failed to fetch user for password reset', error);
+    return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
+  }
+
+  if (!user) {
+    return respond({ error: 'USER_NOT_FOUND' }, 404);
+  }
+
+  const tempPassword = generateTempPassword();
+  const passwordHash = await hashPassword(tempPassword);
+
+  try {
+    await updateUserPassword(env, user.id, passwordHash, true);
+  } catch (error) {
+    console.error('Failed to reset user password', error);
+    return respond({ error: 'PASSWORD_RESET_FAILED' }, 500);
+  }
+
+  return respond({ status: 'ok', tempPassword, role: user.role });
+}
+
+async function handleAdminDeleteUser(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const userId = typeof body?.user_id === 'string' ? body.user_id.trim() : '';
+  if (!userId) {
+    return respond(
+      { error: 'INVALID_USER_ID', message: 'user_id is required.' },
+      400
+    );
+  }
+
+  let user: SupabaseUserRow | null = null;
+  try {
+    user = await fetchUserById(env, userId);
+  } catch (error) {
+    console.error('Failed to fetch user for delete', error);
+    return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
+  }
+
+  if (!user) {
+    return respond({ error: 'USER_NOT_FOUND' }, 404);
+  }
+
+  try {
+    await deleteAccountRecords(env, user.id, user.role);
+    return respond({ status: 'ok' });
+  } catch (error) {
+    console.error('Failed to delete user account', error);
+    try {
+      await anonymizeUser(env, user.id);
+      return respond({ status: 'ok', fallback: 'anonymized' });
+    } catch (fallbackError) {
+      console.error('Fallback anonymize failed', fallbackError);
+      return respond({ error: 'USER_DELETE_FAILED' }, 500);
+    }
+  }
+}
+
+async function handleAdminUpdateUserProfile(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const userId = typeof body?.user_id === 'string' ? body.user_id.trim() : '';
+  if (!userId) {
+    return respond({ error: 'INVALID_USER_ID', message: 'user_id is required.' }, 400);
+  }
+
+  const fullNameInput =
+    typeof body?.full_name === 'string' ? body.full_name.trim() : undefined;
+  const emailInput =
+    typeof body?.email_or_phone === 'string' ? body.email_or_phone.trim() : undefined;
+
+  if (
+    (fullNameInput === undefined || fullNameInput === null) &&
+    (emailInput === undefined || emailInput === null)
+  ) {
+    return respond(
+      {
+        error: 'INVALID_INPUT',
+        message: 'Provide full_name and/or email_or_phone to update.',
+      },
+      400
+    );
+  }
+
+  let user: SupabaseUserRow | null = null;
+  try {
+    user = await fetchUserById(env, userId);
+  } catch (error) {
+    console.error('Failed to fetch user for profile update', error);
+    return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
+  }
+
+  if (!user) {
+    return respond({ error: 'USER_NOT_FOUND' }, 404);
+  }
+
+  const updates: { full_name?: string | null; email_or_phone?: string } = {};
+  if (fullNameInput !== undefined) {
+    updates.full_name = fullNameInput.length === 0 ? null : fullNameInput;
+  }
+
+  if (emailInput !== undefined) {
+    if (!emailInput) {
+      return respond(
+        {
+          error: 'INVALID_IDENTIFIER',
+          message: 'Email or phone cannot be empty.',
+        },
+        400
+      );
+    }
+
+    try {
+      const existing = await fetchUserByIdentifier(env, emailInput);
+      if (existing && existing.id !== userId) {
+        return respond(
+          {
+            error: 'USER_EXISTS',
+            message: 'Another account already uses this identifier.',
+          },
+          409
+        );
+      }
+    } catch (error) {
+      console.error('Failed to check identifier uniqueness', error);
+      return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
+    }
+
+    updates.email_or_phone = emailInput;
+  }
+
+  try {
+    const updated = await updateUserProfile(env, userId, updates);
+    return respond({
+      status: 'ok',
+      user: {
+        id: updated.id,
+        fullName: updated.full_name,
+        emailOrPhone: updated.email_or_phone,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to update user profile', error);
+    return respond({ error: 'USER_PROFILE_UPDATE_FAILED' }, 500);
+  }
+}
+
+async function handleAdminUpdateUserPassword(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const userId = typeof body?.user_id === 'string' ? body.user_id.trim() : '';
+  const newPassword = typeof body?.new_password === 'string' ? body.new_password : '';
+
+  if (!userId) {
+    return respond(
+      { error: 'INVALID_USER_ID', message: 'user_id is required.' },
+      400
+    );
+  }
+
+  if (!newPassword || newPassword.length < 8) {
+    return respond(
+      {
+        error: 'INVALID_NEW_PASSWORD',
+        message: 'New password must be at least 8 characters long.',
+      },
+      400
+    );
+  }
+
+  let user: SupabaseUserRow | null = null;
+  try {
+    user = await fetchUserById(env, userId);
+  } catch (error) {
+    console.error('Failed to fetch user for admin password update', error);
+    return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
+  }
+
+  if (!user) {
+    return respond({ error: 'USER_NOT_FOUND' }, 404);
+  }
+
+  const hash = await hashPassword(newPassword);
+
+  try {
+    await updateUserPassword(env, user.id, hash, true);
+  } catch (error) {
+    console.error('Failed to update user password (admin)', error);
+    return respond({ error: 'PASSWORD_UPDATE_FAILED' }, 500);
+  }
+
+  return respond({ status: 'ok' });
 }
 
 async function handleAdminListDrivers(
@@ -622,6 +988,254 @@ async function handleAuthChangePassword(
   return respond({ status: 'ok' });
 }
 
+async function handleAccountDeleteData(
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  const user = context.authUser;
+  if (!user) {
+    return respond({ error: 'UNAUTHORIZED' }, 401);
+  }
+
+  try {
+    await wipePersonalData(env, user.id, user.role);
+    return respond({ status: 'ok' });
+  } catch (error) {
+    console.error('Failed to delete account data', error);
+    return respond({ error: 'ACCOUNT_DATA_DELETE_FAILED' }, 500);
+  }
+}
+
+async function handleAccountDeleteAccount(
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  const user = context.authUser;
+  if (!user) {
+    return respond({ error: 'UNAUTHORIZED' }, 401);
+  }
+
+  try {
+    await deleteAccountRecords(env, user.id, user.role);
+    return respond({ status: 'ok' });
+  } catch (error) {
+    console.error('Failed to delete account', error);
+    try {
+      await anonymizeUser(env, user.id);
+      return respond({ status: 'ok', fallback: 'anonymized' });
+    } catch (fallbackError) {
+      console.error('Fallback anonymize failed', fallbackError);
+      return respond({ error: 'ACCOUNT_DELETE_FAILED' }, 500);
+    }
+  }
+}
+
+async function handleAccountVerifyPassword(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  const user = context.authUser;
+  if (!user) {
+    return respond({ error: 'UNAUTHORIZED' }, 401);
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const currentPassword =
+    typeof body?.current_password === 'string' ? body.current_password : '';
+  if (!currentPassword) {
+    return respond(
+      { error: 'INVALID_CURRENT_PASSWORD', message: 'Current password is required.' },
+      400
+    );
+  }
+
+  let storedUser: SupabaseUserRow | null = null;
+  try {
+    storedUser = await fetchUserById(env, user.id);
+  } catch (error) {
+    console.error('Failed to fetch user for password verification', error);
+    return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
+  }
+
+  if (!storedUser) {
+    return respond({ error: 'USER_NOT_FOUND' }, 404);
+  }
+
+  const valid = await verifyPassword(currentPassword, storedUser.password_hash);
+  if (!valid) {
+    return respond({ error: 'INVALID_PASSWORD' }, 401);
+  }
+
+  return respond({ status: 'ok' });
+}
+
+async function handleAccountGetProfile(
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  if (!context.authUser) {
+    return respond({ error: 'UNAUTHORIZED' }, 401);
+  }
+
+  try {
+    const user = await fetchUserById(env, context.authUser.id);
+    if (!user) {
+      return respond({ error: 'USER_NOT_FOUND' }, 404);
+    }
+    return respond({
+      fullName: user.full_name,
+      emailOrPhone: user.email_or_phone,
+    });
+  } catch (error) {
+    console.error('Failed to fetch account profile', error);
+    return respond({ error: 'ACCOUNT_PROFILE_FAILED' }, 500);
+  }
+}
+
+async function handleAccountUpdateProfile(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  if (!context.authUser) {
+    return respond({ error: 'UNAUTHORIZED' }, 401);
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const fullNameInput =
+    typeof body?.full_name === 'string' ? body.full_name.trim() : undefined;
+  const emailInput =
+    typeof body?.email_or_phone === 'string' ? body.email_or_phone.trim() : undefined;
+
+  if (
+    (fullNameInput === undefined || fullNameInput === null) &&
+    (emailInput === undefined || emailInput === null)
+  ) {
+    return respond(
+      {
+        error: 'INVALID_INPUT',
+        message: 'Provide full_name and/or email_or_phone to update.',
+      },
+      400
+    );
+  }
+
+  const updates: { full_name?: string | null; email_or_phone?: string } = {};
+
+  if (fullNameInput !== undefined) {
+    updates.full_name = fullNameInput.length === 0 ? null : fullNameInput;
+  }
+
+  if (emailInput !== undefined) {
+    if (!emailInput) {
+      return respond(
+        {
+          error: 'INVALID_IDENTIFIER',
+          message: 'Email or phone cannot be empty.',
+        },
+        400
+      );
+    }
+
+    try {
+      const existing = await fetchUserByIdentifier(env, emailInput);
+      if (existing && existing.id !== context.authUser.id) {
+        return respond(
+          {
+            error: 'USER_EXISTS',
+            message: 'Another account already uses this identifier.',
+          },
+          409
+        );
+      }
+    } catch (error) {
+      console.error('Failed to check identifier uniqueness', error);
+      return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
+    }
+
+    updates.email_or_phone = emailInput;
+  }
+
+  try {
+    const updated = await updateUserProfile(env, context.authUser.id, updates);
+    return respond({
+      fullName: updated.full_name,
+      emailOrPhone: updated.email_or_phone,
+    });
+  } catch (error) {
+    console.error('Failed to update profile', error);
+    return respond({ error: 'ACCOUNT_PROFILE_UPDATE_FAILED' }, 500);
+  }
+}
+
 async function handleDriverListStops(
   request: Request,
   env: Env,
@@ -714,7 +1328,7 @@ function handlePreflight(request: Request, origin: string | null): Response {
     ...BASE_HEADERS,
     'Access-Control-Allow-Headers':
       request.headers.get('Access-Control-Request-Headers') ?? 'Content-Type,Authorization',
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
   };
   if (origin) {
     headers['Access-Control-Allow-Origin'] = origin;
@@ -793,6 +1407,7 @@ async function applyAuthMiddleware(request: Request, env: Env): Promise<RouteCon
         id: claims.sub,
         role: claims.role,
         name: claims.full_name ?? null,
+        emailOrPhone: claims.email_or_phone ?? null,
         mustChangePassword: Boolean(claims.must_change_password),
         token,
         exp: claims.exp,
@@ -1152,7 +1767,7 @@ async function fetchUserById(env: Env, userId: string): Promise<SupabaseUserRow 
 
 async function fetchDrivers(
   env: Env
-): Promise<Array<{ id: string; fullName: string | null; emailOrPhone: string }>> {
+): Promise<{ id: string; fullName: string | null; emailOrPhone: string }[]> {
   const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
   url.searchParams.set('select', 'id,full_name,email_or_phone,role');
   url.searchParams.set('role', 'eq.driver');
@@ -1168,11 +1783,11 @@ async function fetchDrivers(
     throw new Error(`Supabase select failed (${response.status}): ${errorBody}`);
   }
 
-  const rows = (await response.json()) as Array<{
+  const rows = (await response.json()) as {
     id: string;
     full_name: string | null;
     email_or_phone: string;
-  }>;
+  }[];
 
   return rows.map((row) => ({
     id: row.id,
@@ -1228,20 +1843,7 @@ async function replaceDriverStops(
 ): Promise<void> {
   const base = normalizeSupabaseUrl(env.SUPABASE_URL!);
 
-  // Delete existing stops
-  const deleteUrl = new URL(`/rest/v1/driver_stops`, base);
-  deleteUrl.searchParams.set('driver_id', `eq.${driverId}`);
-  const deleteResponse = await fetch(deleteUrl.toString(), {
-    method: 'DELETE',
-    headers: {
-      ...supabaseHeaders(env),
-      Prefer: 'return=minimal',
-    },
-  });
-  if (!deleteResponse.ok) {
-    const errorBody = await deleteResponse.text();
-    throw new Error(`Supabase delete failed (${deleteResponse.status}): ${errorBody}`);
-  }
+  await deleteDriverStopsRecords(env, driverId);
 
   // Insert new stops (with order + default status)
   const payload = stops.map((stop, index) => ({
@@ -1270,6 +1872,23 @@ async function replaceDriverStops(
   if (!insertResponse.ok) {
     const errorBody = await insertResponse.text();
     throw new Error(`Supabase insert failed (${insertResponse.status}): ${errorBody}`);
+  }
+}
+
+async function deleteDriverStopsRecords(env: Env, driverId: string): Promise<void> {
+  const base = normalizeSupabaseUrl(env.SUPABASE_URL!);
+  const deleteUrl = new URL(`/rest/v1/driver_stops`, base);
+  deleteUrl.searchParams.set('driver_id', `eq.${driverId}`);
+  const deleteResponse = await fetch(deleteUrl.toString(), {
+    method: 'DELETE',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=minimal',
+    },
+  });
+  if (!deleteResponse.ok) {
+    const errorBody = await deleteResponse.text();
+    throw new Error(`Supabase delete failed (${deleteResponse.status}): ${errorBody}`);
   }
 }
 
@@ -1330,6 +1949,99 @@ async function updateUserPassword(
     const errorBody = await response.text();
     throw new Error(`Supabase update failed (${response.status}): ${errorBody}`);
   }
+}
+
+async function updateUserProfile(
+  env: Env,
+  userId: string,
+  updates: { full_name?: string | null; email_or_phone?: string }
+): Promise<SupabaseUserRow> {
+  const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
+  url.searchParams.set('id', `eq.${userId}`);
+  const response = await fetch(url.toString(), {
+    method: 'PATCH',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify(updates),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase update failed (${response.status}): ${errorBody}`);
+  }
+
+  const rows = (await response.json()) as SupabaseUserRow[];
+  if (rows.length === 0) {
+    throw new Error('USER_NOT_FOUND');
+  }
+  return rows[0];
+}
+
+async function deleteUserById(env: Env, userId: string): Promise<void> {
+  const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
+  url.searchParams.set('id', `eq.${userId}`);
+  const response = await fetch(url.toString(), {
+    method: 'DELETE',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=minimal',
+    },
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase delete failed (${response.status}): ${errorBody}`);
+  }
+}
+
+async function anonymizeUser(env: Env, userId: string): Promise<void> {
+  const placeholder = `deleted-${userId}-${Date.now()}`;
+  const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
+  url.searchParams.set('id', `eq.${userId}`);
+  const response = await fetch(url.toString(), {
+    method: 'PATCH',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify({
+      full_name: null,
+      email_or_phone: placeholder,
+      status: 'deleted',
+      must_change_password: false,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase update failed (${response.status}): ${errorBody}`);
+  }
+}
+
+async function deleteAccountRecords(env: Env, userId: string, role: UserRole): Promise<void> {
+  if (role === 'driver') {
+    try {
+      await deleteDriverStopsRecords(env, userId);
+    } catch (error) {
+      console.error('Failed to delete driver stops during account removal', error);
+    }
+  }
+  await deleteUserById(env, userId);
+}
+
+async function wipePersonalData(env: Env, userId: string, role: UserRole): Promise<void> {
+  if (role === 'driver') {
+    try {
+      await deleteDriverStopsRecords(env, userId);
+    } catch (error) {
+      console.error('Failed to delete driver stops during personal data wipe', error);
+    }
+  }
+  await updateUserProfile(env, userId, {
+    full_name: null,
+  });
 }
 
 const DEFAULT_BCRYPT_ROUNDS = 10;

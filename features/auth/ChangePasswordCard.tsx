@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 
 import { useAuth } from './auth-context';
+import { getFriendlyError } from '@/features/shared/get-friendly-error';
 
 export function ChangePasswordCard() {
   const { changePassword } = useAuth();
@@ -18,6 +19,9 @@ export function ChangePasswordCard() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const currentPasswordRef = useRef<TextInput | null>(null);
+  const newPasswordRef = useRef<TextInput | null>(null);
+  const confirmPasswordRef = useRef<TextInput | null>(null);
 
   const handleSubmit = async () => {
     if (loading) {
@@ -44,8 +48,11 @@ export function ChangePasswordCard() {
       setNewPassword('');
       setConfirmPassword('');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to change password.';
-      setError(message);
+      setError(
+        getFriendlyError(err, {
+          fallback: "We couldn't update your password. Try again.",
+        })
+      );
       setStatus('idle');
     } finally {
       setLoading(false);
@@ -59,35 +66,46 @@ export function ChangePasswordCard() {
       <View style={styles.fieldGroup}>
         <Text style={styles.label}>Current password</Text>
         <TextInput
+          ref={currentPasswordRef}
           value={currentPassword}
           onChangeText={setCurrentPassword}
           secureTextEntry
           style={styles.input}
           placeholder="Current password"
           editable={!loading}
+          returnKeyType="next"
+          onSubmitEditing={() => newPasswordRef.current?.focus()}
+          blurOnSubmit={false}
         />
       </View>
       <View style={styles.fieldRow}>
         <View style={styles.fieldColumn}>
           <Text style={styles.label}>New password</Text>
           <TextInput
+            ref={newPasswordRef}
             value={newPassword}
             onChangeText={setNewPassword}
             secureTextEntry
             style={styles.input}
             placeholder="New password"
             editable={!loading}
+            returnKeyType="next"
+            onSubmitEditing={() => confirmPasswordRef.current?.focus()}
+            blurOnSubmit={false}
           />
         </View>
         <View style={styles.fieldColumn}>
           <Text style={styles.label}>Confirm</Text>
           <TextInput
+            ref={confirmPasswordRef}
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             secureTextEntry
             style={styles.input}
             placeholder="Confirm"
             editable={!loading}
+            returnKeyType="done"
+            onSubmitEditing={handleSubmit}
           />
         </View>
       </View>

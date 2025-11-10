@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Button,
   Pressable,
   StyleSheet,
   Text,
@@ -10,8 +9,10 @@ import {
 } from 'react-native';
 
 import { useAuth } from '@/features/auth/auth-context';
+import { getFriendlyError } from '@/features/shared/get-friendly-error';
 import { API_BASE } from './api';
 import { Stop } from './types';
+import { useTheme } from '@/features/theme/theme-context';
 
 type PinsFormProps = {
   pins: Stop[];
@@ -31,6 +32,9 @@ function extractHouseNumber(address: string): string | null {
 
 export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps) {
   const { token, signOut } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const placeholderColor = colors.mutedText;
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [state, setState] = useState<FormState>({ type: 'idle' });
@@ -290,9 +294,12 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
       setIsEditing(false);
       setEditingValue('');
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Failed to geocode addresses.';
-      setState({ type: 'error', message });
+      setState({
+        type: 'error',
+        message: getFriendlyError(error, {
+          fallback: "We couldn't geocode those addresses. Try again.",
+        }),
+      });
       onPinsChange([]);
       setShowList(false);
       setShowInput(true);
@@ -318,20 +325,38 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
       {showInput ? (
         <>
           <Text style={styles.instructions}>
-            Paste newline-delimited addresses. The worker returns coordinates for each and the app will
-            show them as pins.
+            Paste each address on its own line and we&apos;ll drop a pin for every match.
           </Text>
           <TextInput
             multiline
             style={styles.input}
-            placeholder={'123 Main St, City, ST\n456 Pine Ave, Town, ST'}
+            placeholder="Paste addresses here"
             value={input}
             onChangeText={setInput}
             editable={!loading}
             autoCorrect={false}
             autoCapitalize="none"
+            placeholderTextColor={placeholderColor}
           />
-          <Button title={loading ? 'Geocoding...' : 'Geocode'} disabled={loading} onPress={handleGeocode} />
+          <Pressable
+            accessibilityRole="button"
+            onPress={handleGeocode}
+            disabled={loading}
+            style={({ pressed }) => [
+              styles.geocodeButton,
+              loading && styles.geocodeButtonDisabled,
+              pressed && !loading && styles.geocodeButtonPressed,
+            ]}
+          >
+            {loading ? (
+              <View style={styles.geocodeButtonContent}>
+                <ActivityIndicator color={colors.primary} size="small" />
+                <Text style={[styles.geocodeButtonText, styles.geocodeButtonTextDisabled]}>Geocoding...</Text>
+              </View>
+            ) : (
+              <Text style={styles.geocodeButtonText}>Geocode</Text>
+            )}
+          </Pressable>
         </>
       ) : (
         <Pressable
@@ -343,7 +368,7 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
         </Pressable>
       )}
       <View style={styles.resultContainer}>
-        {loading && <ActivityIndicator />}
+        {loading && <ActivityIndicator color={colors.primary} />}
         {!loading && state.type === 'success' && (
           <Text style={styles.successText}>Loaded {state.count} pins.</Text>
         )}
@@ -375,7 +400,7 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 placeholder="Search addresses"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={placeholderColor}
                 style={styles.searchInput}
                 autoCorrect={false}
                 autoCapitalize="none"
@@ -486,6 +511,7 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
                               value={editingValue}
                               onChangeText={setEditingValue}
                               placeholder="Edit address"
+                              placeholderTextColor={placeholderColor}
                               style={styles.addressEditInput}
                               autoFocus
                             />
@@ -532,243 +558,282 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    marginBottom: 48,
-  },
-  heading: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  instructions: {
-    color: '#4b5563',
-    marginBottom: 12,
-  },
-  addButton: {
-    marginBottom: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#cbd5f5',
-    backgroundColor: '#e0e7ff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addButtonPressed: {
-    opacity: 0.85,
-  },
-  addButtonText: {
-    color: '#1e293b',
-    fontWeight: '600',
-  },
-  input: {
-    minHeight: 160,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: '#f9fafb',
-    marginBottom: 16,
-  },
-  resultContainer: {
-    marginTop: 16,
-    minHeight: 24,
-  },
-  successText: {
-    color: '#15803d',
-    fontWeight: '600',
-  },
-  errorText: {
-    color: '#b91c1c',
-    fontWeight: '600',
-  },
-  listContainer: {
-    marginTop: 24,
-    gap: 16,
-  },
-  listToggle: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: '#2563eb',
-  },
-  listTogglePressed: {
-    opacity: 0.85,
-  },
-  listToggleText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  listContent: {
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    padding: 16,
-    backgroundColor: '#f8fafc',
-    gap: 16,
-  },
-  searchInput: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    backgroundColor: '#fff',
-  },
-  bulkActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  bulkButton: {
-    flex: 1,
-    borderRadius: 999,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bulkButtonPressed: {
-    opacity: 0.85,
-  },
-  bulkButtonDisabled: {
-    opacity: 0.5,
-  },
-  bulkButtonDanger: {
-    backgroundColor: '#fee2e2',
-    borderWidth: 1,
-    borderColor: '#fca5a5',
-  },
-  bulkButtonDangerText: {
-    color: '#b91c1c',
-    fontWeight: '600',
-  },
-  bulkButtonSecondary: {
-    backgroundColor: '#e0f2fe',
-    borderWidth: 1,
-    borderColor: '#bae6fd',
-  },
-  bulkButtonSecondaryText: {
-    color: '#0369a1',
-    fontWeight: '600',
-  },
-  addressList: {
-    gap: 12,
-  },
-  addressEmpty: {
-    paddingVertical: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addressEmptyText: {
-    color: '#64748b',
-    textAlign: 'center',
-  },
-  addressRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#fff',
-  },
-  addressRowSelected: {
-    borderColor: '#2563eb',
-  },
-  addressRowActive: {
-    borderColor: '#34d399',
-  },
-  addressSelect: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#cbd5f5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f1f5f9',
-  },
-  addressSelectActive: {
-    backgroundColor: '#dbeafe',
-    borderColor: '#2563eb',
-  },
-  addressSelectPressed: {
-    opacity: 0.85,
-  },
-  addressSelectText: {
-    color: '#1f2937',
-    fontWeight: '700',
-  },
-  addressBody: {
-    flex: 1,
-    gap: 4,
-  },
-  addressLine: {
-    color: '#0f172a',
-    fontWeight: '600',
-  },
-  addressStatus: {
-    color: '#4b5563',
-    fontSize: 12,
-  },
-  inlineActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  editBlock: {
-    flex: 1,
-    gap: 12,
-  },
-  addressActionButton: {
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: '#cbd5f5',
-    backgroundColor: '#e0e7ff',
-  },
-  addressActionPrimary: {
-    backgroundColor: '#2563eb',
-    borderColor: '#1d4ed8',
-  },
-  addressActionPrimaryText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  addressActionSecondary: {
-    backgroundColor: '#f1f5f9',
-    borderColor: '#e2e8f0',
-  },
-  addressActionSecondaryText: {
-    color: '#1e293b',
-    fontWeight: '600',
-  },
-  addressActionDanger: {
-    backgroundColor: '#fee2e2',
-    borderColor: '#fecaca',
-  },
-  addressActionDangerText: {
-    color: '#b91c1c',
-    fontWeight: '600',
-  },
-  addressActionDisabled: {
-    opacity: 0.5,
-  },
-  addressActionPressed: {
-    opacity: 0.85,
-  },
-  addressEditInput: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    backgroundColor: '#fff',
-  },
-});
+function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
+  const onPrimary = isDark ? colors.background : colors.surface;
+  return StyleSheet.create({
+    container: {
+      marginBottom: 48,
+    },
+    heading: {
+      fontSize: 20,
+      fontWeight: '600',
+      marginBottom: 12,
+      color: colors.text,
+    },
+    instructions: {
+      color: colors.mutedText,
+      marginBottom: 12,
+    },
+    geocodeButton: {
+      marginTop: 8,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    geocodeButtonPressed: {
+      opacity: 0.92,
+    },
+    geocodeButtonDisabled: {
+      backgroundColor: colors.primaryMuted,
+    },
+    geocodeButtonText: {
+      color: onPrimary,
+      fontWeight: '600',
+    },
+    geocodeButtonTextDisabled: {
+      color: colors.primary,
+    },
+    geocodeButtonContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    addButton: {
+      marginBottom: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryMuted,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    addButtonPressed: {
+      opacity: 0.9,
+    },
+    addButtonText: {
+      color: colors.primary,
+      fontWeight: '600',
+    },
+    input: {
+      minHeight: 160,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      padding: 12,
+      fontSize: 16,
+      backgroundColor: colors.surface,
+      color: colors.text,
+      marginBottom: 16,
+    },
+    resultContainer: {
+      marginTop: 16,
+      minHeight: 24,
+    },
+    successText: {
+      color: colors.success,
+      fontWeight: '600',
+    },
+    errorText: {
+      color: colors.danger,
+      fontWeight: '600',
+    },
+    listContainer: {
+      marginTop: 24,
+      gap: 16,
+    },
+    listToggle: {
+      alignSelf: 'flex-start',
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: colors.primary,
+    },
+    listTogglePressed: {
+      opacity: 0.9,
+    },
+    listToggleText: {
+      color: onPrimary,
+      fontWeight: '600',
+    },
+    listContent: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      padding: 16,
+      backgroundColor: colors.surface,
+      gap: 16,
+    },
+    searchInput: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 16,
+      backgroundColor: colors.surface,
+      color: colors.text,
+    },
+    bulkActions: {
+      flexDirection: 'row',
+      gap: 12,
+    },
+    bulkButton: {
+      flex: 1,
+      borderRadius: 999,
+      paddingVertical: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    bulkButtonPressed: {
+      opacity: 0.9,
+    },
+    bulkButtonDisabled: {
+      opacity: 0.6,
+    },
+    bulkButtonDanger: {
+      backgroundColor: colors.dangerMuted,
+      borderColor: colors.danger,
+    },
+    bulkButtonDangerText: {
+      color: colors.danger,
+      fontWeight: '600',
+    },
+    bulkButtonSecondary: {
+      backgroundColor: colors.primaryMuted,
+      borderColor: colors.primary,
+    },
+    bulkButtonSecondaryText: {
+      color: colors.primary,
+      fontWeight: '600',
+    },
+    addressList: {
+      gap: 12,
+    },
+    addressEmpty: {
+      paddingVertical: 24,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    addressEmptyText: {
+      color: colors.mutedText,
+      textAlign: 'center',
+    },
+    addressRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+      padding: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    addressRowSelected: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryMuted,
+    },
+    addressRowActive: {
+      borderColor: colors.success,
+      backgroundColor: colors.successMuted,
+    },
+    addressSelect: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+    },
+    addressSelectActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    addressSelectPressed: {
+      opacity: 0.9,
+    },
+    addressSelectText: {
+      color: onPrimary,
+      fontWeight: '700',
+    },
+    addressBody: {
+      flex: 1,
+      gap: 4,
+    },
+    addressLine: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    addressStatus: {
+      color: colors.mutedText,
+      fontSize: 12,
+    },
+    inlineActions: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    editBlock: {
+      flex: 1,
+      gap: 12,
+    },
+    addressActionButton: {
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    addressActionPrimary: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    addressActionPrimaryText: {
+      color: onPrimary,
+      fontWeight: '600',
+    },
+    addressActionSecondary: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+    },
+    addressActionSecondaryText: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    addressActionDanger: {
+      backgroundColor: colors.dangerMuted,
+      borderColor: colors.danger,
+    },
+    addressActionDangerText: {
+      color: colors.danger,
+      fontWeight: '600',
+    },
+    addressActionDisabled: {
+      opacity: 0.5,
+    },
+    addressActionPressed: {
+      opacity: 0.85,
+    },
+    addressEditInput: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 16,
+      backgroundColor: colors.surface,
+      color: colors.text,
+    },
+  });
+}

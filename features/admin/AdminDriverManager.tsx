@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -11,6 +11,8 @@ import {
 import { useAuth } from '@/features/auth/auth-context';
 import * as authApi from '@/features/auth/api';
 import type { DriverSummary } from '@/features/auth/types';
+import { useTheme } from '@/features/theme/theme-context';
+import { getFriendlyError } from '@/features/shared/get-friendly-error';
 
 type AdminDriverManagerProps = {
   onSelectDriver?: (driverId: string) => void;
@@ -22,6 +24,8 @@ export function AdminDriverManager({
   refreshSignal,
 }: AdminDriverManagerProps) {
   const { token } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [drivers, setDrivers] = useState<DriverSummary[]>([]);
   const [loadingDrivers, setLoadingDrivers] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +39,11 @@ export function AdminDriverManager({
         setLoadingDrivers(true);
         setDrivers(await authApi.fetchDrivers(token));
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load drivers.');
+        setError(
+          getFriendlyError(err, {
+            fallback: "We couldn't load drivers right now. Try again in a moment.",
+          })
+        );
       } finally {
         setLoadingDrivers(false);
       }
@@ -54,7 +62,7 @@ export function AdminDriverManager({
         <Text style={styles.columnHeading}>Drivers</Text>
         {loadingDrivers ? (
           <View style={styles.loaderRow}>
-            <ActivityIndicator />
+            <ActivityIndicator color={colors.primary} />
           </View>
         ) : drivers.length === 0 ? (
           <Text style={styles.emptyText}>No drivers yet. Create one above.</Text>
@@ -82,148 +90,141 @@ export function AdminDriverManager({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#cbd5f5',
-    backgroundColor: '#fff',
-    padding: 20,
-    gap: 16,
-  },
-  heading: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#0f172a',
-  },
-  description: {
-    color: '#475569',
-    lineHeight: 20,
-  },
-  content: {
-    flexDirection: 'row',
-    gap: 20,
-  },
-  driverColumn: {
-    width: 220,
-    gap: 12,
-  },
-  editorColumn: {
-    flex: 1,
-    gap: 12,
-  },
-  columnHeading: {
-    fontWeight: '600',
-    color: '#1e293b',
-  },
-  driverList: {
-    maxHeight: 280,
-  },
-  driverButton: {
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 8,
-    backgroundColor: '#f8fafc',
-  },
-  driverButtonSelected: {
-    borderColor: '#2563eb',
-    backgroundColor: '#dbeafe',
-  },
-  driverButtonPressed: {
-    opacity: 0.9,
-  },
-  driverName: {
-    fontWeight: '600',
-    color: '#0f172a',
-  },
-  driverNameSelected: {
-    color: '#1d4ed8',
-  },
-  driverSub: {
-    color: '#475569',
-    fontSize: 12,
-  },
-  driverSubSelected: {
-    color: '#1e3a8a',
-  },
-  editorCard: {
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
-    padding: 16,
-    gap: 12,
-    backgroundColor: '#f8fafc',
-  },
-  selectedName: {
-    fontWeight: '600',
-    color: '#1e293b',
-  },
-  editorHint: {
-    color: '#475569',
-    fontSize: 12,
-  },
-  textArea: {
-    minHeight: 160,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#cbd5f5',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: '#0f172a',
-    backgroundColor: '#fff',
-    textAlignVertical: 'top',
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 12,
-  },
-  secondaryButton: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#94a3b8',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  secondaryPressed: {
-    opacity: 0.85,
-  },
-  secondaryLabel: {
-    color: '#1e293b',
-    fontWeight: '600',
-  },
-  primaryButton: {
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    backgroundColor: '#2563eb',
-  },
-  primaryPressed: {
-    opacity: 0.9,
-  },
-  primaryLabel: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  loaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  loaderText: {
-    color: '#475569',
-  },
-  emptyText: {
-    color: '#64748b',
-    fontStyle: 'italic',
-  },
-  error: {
-    color: '#dc2626',
-  },
-  success: {
-    color: '#16a34a',
-  },
-});
+function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
+  return StyleSheet.create({
+    container: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      padding: 20,
+      gap: 16,
+    },
+    heading: {
+      fontSize: 20,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    description: {
+      color: colors.mutedText,
+      lineHeight: 20,
+    },
+    content: {
+      flexDirection: 'row',
+      gap: 20,
+    },
+    driverColumn: {
+      width: 220,
+      gap: 12,
+    },
+    editorColumn: {
+      flex: 1,
+      gap: 12,
+    },
+    columnHeading: {
+      fontWeight: '600',
+      color: colors.text,
+    },
+    driverList: {
+      maxHeight: 280,
+    },
+    driverButton: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      padding: 10,
+      marginBottom: 8,
+      backgroundColor: colors.surface,
+    },
+    driverButtonPressed: {
+      opacity: 0.85,
+    },
+    driverName: {
+      fontWeight: '600',
+      color: colors.text,
+    },
+    driverSub: {
+      color: colors.mutedText,
+      fontSize: 12,
+    },
+    editorCard: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      padding: 16,
+      gap: 12,
+      backgroundColor: colors.surface,
+    },
+    selectedName: {
+      fontWeight: '600',
+      color: colors.text,
+    },
+    editorHint: {
+      color: colors.mutedText,
+      fontSize: 12,
+    },
+    textArea: {
+      minHeight: 160,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 15,
+      color: colors.text,
+      backgroundColor: colors.surface,
+      textAlignVertical: 'top',
+    },
+    actions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 12,
+    },
+    secondaryButton: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      backgroundColor: colors.surface,
+    },
+    secondaryPressed: {
+      opacity: 0.85,
+    },
+    secondaryLabel: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    primaryButton: {
+      borderRadius: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 18,
+      backgroundColor: colors.primary,
+    },
+    primaryPressed: {
+      opacity: 0.9,
+    },
+    primaryLabel: {
+      color: isDark ? colors.background : colors.surface,
+      fontWeight: '600',
+    },
+    loaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    loaderText: {
+      color: colors.mutedText,
+    },
+    emptyText: {
+      color: colors.mutedText,
+      fontStyle: 'italic',
+    },
+    error: {
+      color: colors.danger,
+    },
+    success: {
+      color: colors.success,
+    },
+  });
+}

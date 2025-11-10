@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,6 +13,8 @@ import {
 
 import { ADMIN_LOGIN_HINT } from '@/constants/auth';
 import { useAuth } from './auth-context';
+import { getFriendlyError } from '@/features/shared/get-friendly-error';
+import { openPrivacyPolicy, openTermsOfUse } from '@/features/legal/legal-documents';
 
 export function LoginScreen() {
   const { signIn } = useAuth();
@@ -20,6 +22,8 @@ export function LoginScreen() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const identifierInputRef = useRef<TextInput | null>(null);
+  const passwordInputRef = useRef<TextInput | null>(null);
 
   const handleSubmit = async () => {
     if (submitting) {
@@ -31,9 +35,11 @@ export function LoginScreen() {
       await signIn(identifier.trim(), password);
       setPassword('');
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message.replace(/^HTTP_\d+:\s*/i, '') : 'Login failed.';
-      setError(message);
+      setError(
+        getFriendlyError(err, {
+          fallback: "We couldn't sign you in. Check your email or password and try again.",
+        })
+      );
     } finally {
       setSubmitting(false);
     }
@@ -57,6 +63,7 @@ export function LoginScreen() {
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Email or phone</Text>
           <TextInput
+            ref={identifierInputRef}
             value={identifier}
             onChangeText={setIdentifier}
             autoCapitalize="none"
@@ -66,11 +73,15 @@ export function LoginScreen() {
             placeholder="driver@example.com"
             style={styles.input}
             editable={!submitting}
+            returnKeyType="next"
+            onSubmitEditing={() => passwordInputRef.current?.focus()}
+            blurOnSubmit={false}
           />
         </View>
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Password</Text>
           <TextInput
+            ref={passwordInputRef}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -78,6 +89,8 @@ export function LoginScreen() {
             placeholder="••••••••"
             style={styles.input}
             editable={!submitting}
+            returnKeyType="done"
+            onSubmitEditing={handleSubmit}
           />
         </View>
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -92,6 +105,17 @@ export function LoginScreen() {
             <Text style={styles.buttonLabel}>Sign in</Text>
           )}
         </Pressable>
+        <Text style={styles.legalNotice}>
+          By signing in you agree to the{' '}
+          <Text style={styles.legalLink} onPress={() => void openTermsOfUse()}>
+            Terms of Use
+          </Text>{' '}
+          and{' '}
+          <Text style={styles.legalLink} onPress={() => void openPrivacyPolicy()}>
+            Privacy Policy
+          </Text>
+          .
+        </Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -162,6 +186,16 @@ const styles = StyleSheet.create({
   buttonLabel: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  legalNotice: {
+    color: '#94a3b8',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  legalLink: {
+    color: '#bfdbfe',
+    textDecorationLine: 'underline',
     fontWeight: '600',
   },
 });

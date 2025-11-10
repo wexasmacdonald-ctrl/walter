@@ -1,9 +1,10 @@
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -13,7 +14,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AdminCreateUserCard } from '@/features/auth/AdminCreateUserCard';
-import { ChangePasswordCard } from '@/features/auth/ChangePasswordCard';
 import { LoginScreen } from '@/features/auth/LoginScreen';
 import { useAuth } from '@/features/auth/auth-context';
 import { AdminDriverManager } from '@/features/admin/AdminDriverManager';
@@ -22,6 +22,8 @@ import { DriverStopsPanel } from '@/features/driver/DriverStopsPanel';
 import { MapScreen } from '@/features/route-planner/MapScreen';
 import { PinsForm } from '@/features/route-planner/PinsForm';
 import type { Stop } from '@/features/route-planner/types';
+import { SettingsMenu } from '@/components/SettingsMenu';
+import { useTheme } from '@/features/theme/theme-context';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const REFRESH_COLORS = ['#1d4ed8', '#3b82f6'];
@@ -44,7 +46,7 @@ if (!Text.defaultProps) {
 }
 Text.defaultProps.selectable = true;
 
-export default function PinPlannerRoot() {
+function PinPlannerApp() {
   const { status, user } = useAuth();
 
   if (status === 'loading') {
@@ -58,11 +60,16 @@ export default function PinPlannerRoot() {
   return <PlannerScreen />;
 }
 
+export default function PinPlannerRoot() {
+  return <PinPlannerApp />;
+}
+
 function LoadingScreen() {
+  const { colors } = useTheme();
   return (
-    <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color="#2563eb" />
-      <Text style={styles.loadingText}>Loading…</Text>
+    <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+      <ActivityIndicator size="large" color={colors.primary} />
+      <Text style={[styles.loadingText, { color: colors.text }]}>Loading…</Text>
     </View>
   );
 }
@@ -72,6 +79,29 @@ type PlannerProps = {
   onRefresh: () => void | Promise<void>;
   refreshSignal: number;
 };
+
+type PlannerContainerProps = {
+  children: ReactNode;
+};
+
+function PlannerContainer({ children }: PlannerContainerProps) {
+  const { colors, isDark } = useTheme();
+  return (
+    <KeyboardAvoidingView
+      style={[styles.keyboardAvoiding, { backgroundColor: colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+    >
+      <SafeAreaView
+        style={[styles.safeArea, { backgroundColor: colors.background }]}
+        edges={['top', 'left', 'right']}
+      >
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+        {children}
+      </SafeAreaView>
+    </KeyboardAvoidingView>
+  );
+}
 
 function PlannerScreen() {
   const { user } = useAuth();
@@ -113,7 +143,16 @@ function PlannerScreen() {
 }
 
 function AdminPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
-  const { user, signOut } = useAuth();
+  const {
+    user,
+    signOut,
+    deleteAccount,
+    changePassword,
+    getProfile,
+    updateProfile,
+    verifyPassword,
+  } = useAuth();
+  const { colors } = useTheme();
   const [pins, setPins] = useState<Stop[]>([]);
   const [loadingPins, setLoadingPins] = useState(false);
   const [activeDriverId, setActiveDriverId] = useState<string | null>(null);
@@ -121,124 +160,155 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
   const handleCloseDriverEditor = () => setActiveDriverId(null);
 
   return (
-    <>
+    <PlannerContainer>
       {activeDriverId ? (
-        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-          <AdminDriverDetail
-            driverId={activeDriverId}
-            onClose={handleCloseDriverEditor}
-            refreshSignal={refreshSignal}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-          />
-        </SafeAreaView>
+        <AdminDriverDetail
+          driverId={activeDriverId}
+          onClose={handleCloseDriverEditor}
+          refreshSignal={refreshSignal}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+        />
       ) : (
-        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-          <ScrollView
-            style={styles.screen}
-            contentContainerStyle={styles.container}
-            keyboardShouldPersistTaps="handled"
-            contentInsetAdjustmentBehavior="automatic"
-            refreshControl={createRefreshControl(refreshing, onRefresh)}
-          >
-            <View style={styles.header}>
-              <View style={styles.headerInfo}>
-                <Text style={styles.headerGreeting}>
-                  {user?.fullName ? `Welcome, ${user.fullName}` : 'Welcome back'}
-                </Text>
-                <Text style={styles.headerRole}>
-                  Signed in as <Text style={styles.headerRoleHighlight}>{user.role}</Text>
-                </Text>
-              </View>
-              <Pressable
-                style={({ pressed }) => [styles.signOutButton, pressed && styles.signOutButtonPressed]}
-                onPress={signOut}
-              >
-                <Text style={styles.signOutText}>Sign out</Text>
-              </Pressable>
-            </View>
-
-            <AdminCreateUserCard />
-            <AdminDriverManager
-              onSelectDriver={setActiveDriverId}
-              refreshSignal={refreshSignal}
+        <ScrollView
+          style={[styles.screen, { backgroundColor: colors.background }]}
+          contentContainerStyle={[styles.container, { backgroundColor: colors.background }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          contentInsetAdjustmentBehavior="automatic"
+          automaticallyAdjustKeyboardInsets
+          refreshControl={createRefreshControl(refreshing, onRefresh)}
+        >
+          <View style={styles.header}>
+            <SettingsMenu
+              userName={user?.fullName}
+              userRole={user?.role ?? 'admin'}
+              onDeleteAccount={deleteAccount}
+              onSignOut={signOut}
+              onChangePassword={changePassword}
+              onGetProfile={getProfile}
+              onUpdateProfile={updateProfile}
+              onVerifyPassword={verifyPassword}
             />
-
-            <View style={styles.instructions}>
-              <Text style={styles.instructionsTitle}>Drop pins from addresses</Text>
-              <Text style={styles.instructionsBody}>
-                Paste newline-delimited addresses, hit geocode, and share the map with your drivers.
-                Geocoding is now locked behind login so only your team can access it.
+            <View style={styles.headerInfo}>
+              <Text style={[styles.headerGreeting, { color: colors.text }]}>
+                {user?.fullName ? `Welcome, ${user.fullName}` : 'Welcome back'}
+              </Text>
+              <Text style={[styles.headerRole, { color: colors.mutedText }]}>
+                Signed in as{' '}
+                <Text style={[styles.headerRoleHighlight, { color: colors.primary }]}>
+                  {user.role}
+                </Text>
               </Text>
             </View>
+          </View>
 
-            <PinsForm pins={pins} onPinsChange={setPins} onLoadingChange={setLoadingPins} />
-            <MapScreen pins={pins} loading={loadingPins} />
+          <AdminCreateUserCard />
+          <AdminDriverManager
+            onSelectDriver={setActiveDriverId}
+            refreshSignal={refreshSignal}
+          />
 
-            <View style={styles.summary}>
-              <Text style={styles.summaryText}>
-                {pins.length === 0
-                  ? 'No pins yet. Paste a list of addresses to get started.'
-                  : `Showing ${pins.length} pin${pins.length === 1 ? '' : 's'}.`}
-              </Text>
-            </View>
+          <View
+            style={[
+              styles.instructions,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <Text style={[styles.instructionsTitle, { color: colors.text }]}>
+              Drop pins from addresses
+            </Text>
+            <Text style={[styles.instructionsBody, { color: colors.mutedText }]}>
+              Paste newline-delimited addresses, hit geocode, and share the map with your drivers.
+              Geocoding is now locked behind login so only your team can access it.
+            </Text>
+          </View>
 
-            <ChangePasswordCard />
+          <PinsForm pins={pins} onPinsChange={setPins} onLoadingChange={setLoadingPins} />
+          <MapScreen pins={pins} loading={loadingPins} />
 
-            <StatusBar style="auto" />
-          </ScrollView>
-        </SafeAreaView>
+          <View
+            style={[
+              styles.summary,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <Text style={[styles.summaryText, { color: colors.mutedText }]}>
+              {pins.length === 0
+                ? 'No pins yet. Paste a list of addresses to get started.'
+                : `Showing ${pins.length} pin${pins.length === 1 ? '' : 's'}.`}
+            </Text>
+          </View>
+
+          <StatusBar style="auto" />
+        </ScrollView>
       )}
-    </>
+    </PlannerContainer>
   );
 }
 
 function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
-  const { user, signOut } = useAuth();
+  const {
+    user,
+    signOut,
+    deleteAccount,
+    changePassword,
+    getProfile,
+    updateProfile,
+    verifyPassword,
+  } = useAuth();
+  const { colors } = useTheme();
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <PlannerContainer>
       <ScrollView
-        style={styles.screen}
-        contentContainerStyle={styles.container}
+        style={[styles.screen, { backgroundColor: colors.background }]}
+        contentContainerStyle={[styles.container, { backgroundColor: colors.background }]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         contentInsetAdjustmentBehavior="automatic"
+        automaticallyAdjustKeyboardInsets
         refreshControl={createRefreshControl(refreshing, onRefresh)}
       >
         <View style={styles.header}>
+          <SettingsMenu
+            userName={user?.fullName}
+            userRole={user?.role ?? 'driver'}
+            onDeleteAccount={deleteAccount}
+            onSignOut={signOut}
+            onChangePassword={changePassword}
+            onGetProfile={getProfile}
+            onUpdateProfile={updateProfile}
+            onVerifyPassword={verifyPassword}
+          />
           <View style={styles.headerInfo}>
-            <Text style={styles.headerGreeting}>
+            <Text style={[styles.headerGreeting, { color: colors.text }]}>
               {user?.fullName ? `Welcome, ${user.fullName}` : 'Welcome back'}
             </Text>
-            <Text style={styles.headerRole}>
-              Signed in as <Text style={styles.headerRoleHighlight}>{user?.role}</Text>
+            <Text style={[styles.headerRole, { color: colors.mutedText }]}>
+              Signed in as{' '}
+              <Text style={[styles.headerRoleHighlight, { color: colors.primary }]}>
+                {user?.role}
+              </Text>
             </Text>
           </View>
-          <Pressable
-            style={({ pressed }) => [styles.signOutButton, pressed && styles.signOutButtonPressed]}
-            onPress={signOut}
-          >
-            <Text style={styles.signOutText}>Sign out</Text>
-          </Pressable>
         </View>
 
         <DriverStopsPanel refreshSignal={refreshSignal} />
-
-        <ChangePasswordCard />
-        <StatusBar style="auto" />
       </ScrollView>
-    </SafeAreaView>
+    </PlannerContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoiding: {
+    flex: 1,
+  },
   safeArea: {
     flex: 1,
-    backgroundColor: '#f8fafc',
   },
   screen: {
     flex: 1,
-    backgroundColor: '#f8fafc',
   },
   container: {
     paddingHorizontal: 24,
@@ -250,11 +320,9 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#0f172a',
     gap: 16,
   },
   loadingText: {
-    color: '#e2e8f0',
     fontSize: 16,
   },
   header: {
@@ -270,55 +338,30 @@ const styles = StyleSheet.create({
   headerGreeting: {
     fontSize: 22,
     fontWeight: '600',
-    color: '#0f172a',
   },
   headerRole: {
-    color: '#475569',
   },
   headerRoleHighlight: {
-    color: '#2563eb',
-    fontWeight: '600',
-  },
-  signOutButton: {
-    borderRadius: 9999,
-    borderWidth: 1,
-    borderColor: '#1e40af',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: '#1d4ed8',
-  },
-  signOutButtonPressed: {
-    opacity: 0.9,
-  },
-  signOutText: {
-    color: '#fff',
     fontWeight: '600',
   },
   instructions: {
-    backgroundColor: '#eef2ff',
     borderRadius: 12,
     padding: 16,
     gap: 8,
     borderWidth: 1,
-    borderColor: '#c7d2fe',
   },
   instructionsTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1e40af',
   },
   instructionsBody: {
-    color: '#3730a3',
     lineHeight: 20,
   },
   summary: {
     padding: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#cbd5f5',
-    backgroundColor: '#eef2ff',
   },
   summaryText: {
-    color: '#312e81',
   },
 });

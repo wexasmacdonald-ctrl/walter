@@ -3,6 +3,7 @@ export type UserRole = 'admin' | 'driver';
 export type AuthUser = {
   id: string;
   fullName: string | null;
+  emailOrPhone: string | null;
   role: UserRole;
   mustChangePassword: boolean;
   tokenExpiresAt?: number;
@@ -11,6 +12,11 @@ export type AuthUser = {
 export type LoginResponse = {
   token: string;
   user: AuthUser;
+};
+
+export type AccountProfile = {
+  fullName: string | null;
+  emailOrPhone: string | null;
 };
 
 export type CreateUserInput = {
@@ -23,6 +29,21 @@ export type CreateUserResponse = {
   status: 'ok';
   tempPassword: string;
   role: UserRole;
+};
+
+export type ResetUserPasswordResponse = {
+  status: 'ok';
+  tempPassword: string;
+  role: UserRole;
+};
+
+export type AdminUserProfileUpdateResponse = {
+  status: 'ok';
+  user: {
+    id: string;
+    fullName: string | null;
+    emailOrPhone: string | null;
+  };
 };
 
 export type DriverSummary = {

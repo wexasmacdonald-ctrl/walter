@@ -2,7 +2,14 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import * as authApi from './api';
-import type { AuthUser, CreateUserInput, CreateUserResponse } from './types';
+import type {
+  AccountProfile,
+  AdminUserProfileUpdateResponse,
+  AuthUser,
+  CreateUserInput,
+  CreateUserResponse,
+  ResetUserPasswordResponse,
+} from './types';
 
 const AUTH_STORAGE_KEY = 'auth/session';
 
@@ -16,6 +23,18 @@ type AuthContextValue = {
   signOut: () => Promise<void>;
   createUser: (input: CreateUserInput) => Promise<CreateUserResponse>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  deleteMyData: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
+  getProfile: () => Promise<AccountProfile>;
+  updateProfile: (profile: { fullName?: string | null; emailOrPhone?: string }) => Promise<AccountProfile>;
+  resetUserPassword: (userId: string) => Promise<ResetUserPasswordResponse>;
+  deleteUserAccount: (userId: string) => Promise<void>;
+  adminUpdateUserProfile: (
+    userId: string,
+    updates: { fullName?: string | null; emailOrPhone?: string }
+  ) => Promise<AdminUserProfileUpdateResponse>;
+  adminUpdateUserPassword: (userId: string, newPassword: string) => Promise<void>;
+  verifyPassword: (password: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -106,9 +125,147 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [token]
   );
 
+  const deleteMyData = useCallback(async () => {
+    if (!token) {
+      throw new Error('UNAUTHORIZED: Missing token');
+    }
+    await authApi.deleteMyData(token);
+    const updatedUser = user
+      ? {
+          ...user,
+          fullName: null,
+        }
+      : null;
+    setUser(updatedUser);
+    if (updatedUser) {
+      await persistSession({ token, user: updatedUser });
+    }
+  }, [token, user, persistSession]);
+
+  const deleteAccount = useCallback(async () => {
+    if (!token) {
+      throw new Error('UNAUTHORIZED: Missing token');
+    }
+    await authApi.deleteAccount(token);
+    await signOut();
+  }, [token, signOut]);
+
+  const getProfile = useCallback(async () => {
+    if (!token) {
+      throw new Error('UNAUTHORIZED: Missing token');
+    }
+    return authApi.getMyProfile(token);
+  }, [token]);
+
+  const updateProfile = useCallback(
+    async (profile: { fullName?: string | null; emailOrPhone?: string }) => {
+      if (!token) {
+        throw new Error('UNAUTHORIZED: Missing token');
+      }
+      const updated = await authApi.updateMyProfile(token, profile);
+      const nextUser = user
+        ? {
+            ...user,
+            fullName: updated.fullName,
+            emailOrPhone: updated.emailOrPhone,
+          }
+        : null;
+      setUser(nextUser);
+      if (nextUser) {
+        await persistSession({ token, user: nextUser });
+      }
+      return updated;
+    },
+    [token, user, persistSession]
+  );
+
+  const resetUserPassword = useCallback(
+    async (userId: string) => {
+      if (!token) {
+        throw new Error('UNAUTHORIZED: Missing token');
+      }
+      return authApi.resetUserPassword(token, userId);
+    },
+    [token]
+  );
+
+  const deleteUserAccount = useCallback(
+    async (userId: string) => {
+      if (!token) {
+        throw new Error('UNAUTHORIZED: Missing token');
+      }
+      await authApi.deleteUserAccount(token, userId);
+    },
+    [token]
+  );
+
+  const adminUpdateUserProfile = useCallback(
+    async (userId: string, updates: { fullName?: string | null; emailOrPhone?: string }) => {
+      if (!token) {
+        throw new Error('UNAUTHORIZED: Missing token');
+      }
+      return authApi.adminUpdateUserProfile(token, userId, updates);
+    },
+    [token]
+  );
+
+  const adminUpdateUserPassword = useCallback(
+    async (userId: string, newPassword: string) => {
+      if (!token) {
+        throw new Error('UNAUTHORIZED: Missing token');
+      }
+      await authApi.adminUpdateUserPassword(token, userId, newPassword);
+    },
+    [token]
+  );
+
+  const verifyPassword = useCallback(
+    async (password: string) => {
+      if (!token) {
+        throw new Error('UNAUTHORIZED: Missing token');
+      }
+      await authApi.verifyPassword(token, password);
+    },
+    [token]
+  );
+
   const value = useMemo<AuthContextValue>(
-    () => ({ user, token, status, signIn, signOut, createUser, changePassword }),
-    [user, token, status, signIn, signOut, createUser, changePassword]
+    () => ({
+      user,
+      token,
+      status,
+      signIn,
+      signOut,
+      createUser,
+      changePassword,
+      deleteMyData,
+      deleteAccount,
+      getProfile,
+      updateProfile,
+      resetUserPassword,
+      deleteUserAccount,
+      adminUpdateUserProfile,
+      adminUpdateUserPassword,
+      verifyPassword,
+    }),
+    [
+      user,
+      token,
+      status,
+      signIn,
+      signOut,
+      createUser,
+      changePassword,
+      deleteMyData,
+      deleteAccount,
+      getProfile,
+      updateProfile,
+      resetUserPassword,
+      deleteUserAccount,
+      adminUpdateUserProfile,
+      adminUpdateUserPassword,
+      verifyPassword,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

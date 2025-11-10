@@ -1,11 +1,14 @@
 import { API_BASE } from '@/features/route-planner/api';
 import type {
+  AccountProfile,
+  AdminUserProfileUpdateResponse,
   AuthUser,
   CreateUserInput,
   CreateUserResponse,
   DriverStop,
   DriverSummary,
   LoginResponse,
+  ResetUserPasswordResponse,
   UserRole,
 } from './types';
 
@@ -14,7 +17,7 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
 type RequestOptions = {
   token?: string;
   body?: unknown;
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
 };
 
 type JsonError = {
@@ -32,7 +35,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
-    body: method === 'POST' && options.body ? JSON.stringify(options.body) : undefined,
+    body: method !== 'GET' && options.body ? JSON.stringify(options.body) : undefined,
   });
 
   const text = await response.text();
@@ -86,6 +89,45 @@ export async function changePassword(
       current_password: currentPassword,
       new_password: newPassword,
     },
+  });
+}
+
+export async function deleteMyData(token: string): Promise<void> {
+  await request('/account/data', {
+    token,
+    method: 'DELETE',
+  });
+}
+
+export async function deleteAccount(token: string): Promise<void> {
+  await request('/account', {
+    token,
+    method: 'DELETE',
+  });
+}
+
+export async function getMyProfile(token: string): Promise<AccountProfile> {
+  return request<AccountProfile>('/account/profile', {
+    token,
+    method: 'GET',
+  });
+}
+
+export async function updateMyProfile(
+  token: string,
+  profile: { fullName?: string | null; emailOrPhone?: string }
+): Promise<AccountProfile> {
+  const payload: Record<string, string | null | undefined> = {};
+  if (profile.fullName !== undefined) {
+    payload.full_name = profile.fullName ?? null;
+  }
+  if (profile.emailOrPhone !== undefined) {
+    payload.email_or_phone = profile.emailOrPhone;
+  }
+  return request<AccountProfile>('/account/profile', {
+    token,
+    method: 'PATCH',
+    body: payload,
   });
 }
 
@@ -155,6 +197,65 @@ export async function updateDriverStopStatus(
     }
   );
   return normalizeStop(response.stop);
+}
+
+export async function resetUserPassword(
+  token: string,
+  userId: string
+): Promise<ResetUserPasswordResponse> {
+  return request<ResetUserPasswordResponse>('/admin/users/reset-password', {
+    token,
+    body: { user_id: userId },
+  });
+}
+
+export async function deleteUserAccount(token: string, userId: string): Promise<void> {
+  await request('/admin/users', {
+    token,
+    method: 'DELETE',
+    body: { user_id: userId },
+  });
+}
+
+export async function adminUpdateUserProfile(
+  token: string,
+  userId: string,
+  updates: { fullName?: string | null; emailOrPhone?: string }
+): Promise<AdminUserProfileUpdateResponse> {
+  const payload: Record<string, string | null | undefined> = {
+    user_id: userId,
+  };
+  if (updates.fullName !== undefined) {
+    payload.full_name = updates.fullName ?? null;
+  }
+  if (updates.emailOrPhone !== undefined) {
+    payload.email_or_phone = updates.emailOrPhone;
+  }
+  return request<AdminUserProfileUpdateResponse>('/admin/users/update-profile', {
+    token,
+    body: payload,
+  });
+}
+
+export async function adminUpdateUserPassword(
+  token: string,
+  userId: string,
+  newPassword: string
+): Promise<void> {
+  await request('/admin/users/update-password', {
+    token,
+    body: {
+      user_id: userId,
+      new_password: newPassword,
+    },
+  });
+}
+
+export async function verifyPassword(token: string, password: string): Promise<void> {
+  await request('/account/verify-password', {
+    token,
+    body: { current_password: password },
+  });
 }
 
 function normalizeUser(user: AuthUser): AuthUser {
