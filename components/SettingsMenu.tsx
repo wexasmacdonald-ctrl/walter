@@ -466,17 +466,6 @@ export function SettingsMenu({
     </View>
   );
 
-  const renderTriggerContent = (label: 'Open menu' | 'Close menu') => (
-    <View style={styles.triggerRow}>
-      <View style={styles.hamburger}>
-        <View style={styles.hamburgerLine} />
-        <View style={styles.hamburgerLine} />
-        <View style={styles.hamburgerLine} />
-      </View>
-      <Text style={styles.triggerLabel}>{label}</Text>
-    </View>
-  );
-
   return (
     <>
       <Pressable
@@ -485,7 +474,11 @@ export function SettingsMenu({
         onPress={handleOpenMenu}
         style={({ pressed }) => [styles.menuTrigger, pressed && styles.menuTriggerPressed]}
       >
-        {renderTriggerContent('Open menu')}
+        <View style={styles.hamburger}>
+          <View style={styles.hamburgerLine} />
+          <View style={styles.hamburgerLine} />
+          <View style={styles.hamburgerLine} />
+        </View>
       </Pressable>
       <Modal animationType="slide" transparent={false} visible={visible} onRequestClose={handleCloseMenu}>
         <SafeAreaView
@@ -497,10 +490,17 @@ export function SettingsMenu({
               accessibilityRole="button"
               accessibilityLabel={view === 'main' ? 'Close menu' : 'Back'}
               onPress={view === 'main' ? handleCloseMenu : () => setView('main')}
-              style={({ pressed }) => [styles.menuTrigger, pressed && styles.menuTriggerPressed]}
+              style={({ pressed }) => [styles.closeTrigger, pressed && styles.closeTriggerPressed]}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              {renderTriggerContent(view === 'main' ? 'Close menu' : 'Back')}
+              <View style={styles.hamburger}>
+                <View style={styles.hamburgerLine} />
+                <View style={styles.hamburgerLine} />
+                <View style={styles.hamburgerLine} />
+              </View>
+              <Text style={styles.closeTriggerLabel}>
+                {view === 'main' ? 'Close' : 'Back'}
+              </Text>
             </Pressable>
             <Text style={styles.modalTitle}>
               {view === 'main' ? 'Menu' : view === 'profile' ? 'Account details' : 'Change password'}
@@ -573,14 +573,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
   const constrainedWidth = isWeb ? 420 : undefined;
   return StyleSheet.create({
     menuTrigger: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      padding: 8,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
+      padding: 4,
+      borderRadius: 4,
+      backgroundColor: 'transparent',
     },
     menuTriggerPressed: {
       opacity: 0.85,
@@ -881,6 +876,24 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     errorText: {
       color: colors.danger,
+    },
+    closeTrigger: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    closeTriggerPressed: {
+      opacity: 0.85,
+    },
+    closeTriggerLabel: {
+      color: colors.text,
+      fontWeight: '600',
     },
   });
 }
