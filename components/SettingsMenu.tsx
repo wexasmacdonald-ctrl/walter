@@ -581,12 +581,13 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       opacity: 0.85,
     },
     hamburger: {
-      gap: 4,
+      gap: 5,
       justifyContent: 'center',
+      alignItems: 'center',
     },
     hamburgerLine: {
-      width: 22,
-      height: 2,
+      width: 20,
+      height: 3,
       borderRadius: 999,
       backgroundColor: colors.text,
     },
