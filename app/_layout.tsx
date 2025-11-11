@@ -20,7 +20,7 @@ export default function RootLayout() {
         <NavigationThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <GlobalScreenWrapper>
             <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="index" options={{ animation: 'slide_from_top' }} />
+              <Stack.Screen name="index" options={{ animation: 'slide_from_bottom' }} />
               <Stack.Screen name="legal/[doc]" />
             </Stack>
           </GlobalScreenWrapper>
