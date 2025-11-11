@@ -243,9 +243,11 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
               <AdminCreateUserCard onUserCreated={handleUserCreated} />
             </View>
 
-            <View style={styles.block}>
-              <AdminTeamList refreshSignal={refreshSignal} />
-            </View>
+            {user?.role === 'dev' ? (
+              <View style={styles.block}>
+                <AdminTeamList refreshSignal={refreshSignal} />
+              </View>
+            ) : null}
 
             <View style={styles.block}>
               <AdminDriverManager
