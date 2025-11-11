@@ -2,12 +2,14 @@ import { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 
 import { useAuth } from './auth-context';
 import type { UserRole } from './types';
@@ -28,9 +30,11 @@ export function AdminCreateUserCard() {
   const [error, setError] = useState<string | null>(null);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [copying, setCopying] = useState(false);
   const [lastCredentials, setLastCredentials] = useState<CredentialSharePayload | null>(null);
   const nameInputRef = useRef<TextInput | null>(null);
   const contactInputRef = useRef<TextInput | null>(null);
+  const supportsShare = Platform.OS !== 'web';
 
   const RoleButton = ({ label, selected, onPress }: RoleButtonProps) => (
     <Pressable
@@ -52,6 +56,9 @@ export function AdminCreateUserCard() {
   };
 
   const shareMessage = async (payload?: CredentialSharePayload) => {
+    if (!supportsShare) {
+      return;
+    }
     const details = payload ?? lastCredentials;
     if (!details || sharing) {
       return;
@@ -70,6 +77,23 @@ export function AdminCreateUserCard() {
     }
   };
 
+  const copyPassword = async (value?: string | null) => {
+    const passwordToCopy = value ?? tempPassword;
+    if (!passwordToCopy || copying) {
+      return;
+    }
+    setCopying(true);
+    try {
+      await Clipboard.setStringAsync(passwordToCopy);
+      Alert.alert('Copied', 'Temporary password copied to your clipboard.');
+    } catch (copyError) {
+      console.warn('Failed to copy credentials', copyError);
+      Alert.alert('Copy failed', 'Copy manually from the password field.');
+    } finally {
+      setCopying(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (loading) {
       return;
@@ -85,14 +109,19 @@ export function AdminCreateUserCard() {
         tempPassword: '',
       };
       const result = await createUser({
-        fullName: prepared.fullName ?? '',
+        fullName: prepared.fullName ?? undefined,
         emailOrPhone: prepared.emailOrPhone,
         role: prepared.role,
       });
       prepared.tempPassword = result.tempPassword;
       setTempPassword(result.tempPassword);
       setLastCredentials(prepared);
-      await shareMessage(prepared);
+      if (supportsShare) {
+        await shareMessage(prepared);
+      }
+      if (!supportsShare) {
+        await copyPassword(result.tempPassword);
+      }
       resetForm();
     } catch (err) {
       setError(
@@ -170,21 +199,40 @@ export function AdminCreateUserCard() {
           <Text style={styles.resultHint}>
             Share this message or copy the password below so they can sign in and change it later.
           </Text>
-          <Pressable
-            style={({ pressed }) => [
-              styles.shareButton,
-              pressed && styles.shareButtonPressed,
-              sharing && styles.shareButtonDisabled,
-            ]}
-            disabled={sharing}
-            onPress={() => void shareMessage()}
-          >
-            {sharing ? (
-              <ActivityIndicator color={colors.primary} />
-            ) : (
-              <Text style={styles.shareButtonLabel}>Share message again</Text>
-            )}
-          </Pressable>
+          <View style={styles.resultActions}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.copyButton,
+                pressed && styles.copyButtonPressed,
+                copying && styles.copyButtonDisabled,
+              ]}
+              disabled={copying}
+              onPress={() => void copyPassword()}
+            >
+              {copying ? (
+                <ActivityIndicator color={onPrimary} />
+              ) : (
+                <Text style={styles.copyButtonLabel}>Copy password</Text>
+              )}
+            </Pressable>
+            {supportsShare ? (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.shareButton,
+                  pressed && styles.shareButtonPressed,
+                  sharing && styles.shareButtonDisabled,
+                ]}
+                disabled={sharing}
+                onPress={() => void shareMessage()}
+              >
+                {sharing ? (
+                  <ActivityIndicator color={colors.primary} />
+                ) : (
+                  <Text style={styles.shareButtonLabel}>Share message</Text>
+                )}
+              </Pressable>
+            ) : null}
+          </View>
         </View>
       ) : null}
     </View>
@@ -302,6 +350,31 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.mutedText,
       fontSize: 12,
     },
+    resultActions: {
+      flexDirection: Platform.OS === 'web' ? 'row' : 'column',
+      gap: 12,
+      marginTop: 12,
+    },
+    copyButton: {
+      borderRadius: 9999,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      paddingVertical: 10,
+      paddingHorizontal: 20,
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      flex: Platform.OS === 'web' ? 1 : undefined,
+    },
+    copyButtonPressed: {
+      opacity: 0.85,
+    },
+    copyButtonDisabled: {
+      opacity: 0.6,
+    },
+    copyButtonLabel: {
+      color: onPrimary,
+      fontWeight: '600',
+    },
     shareButton: {
       borderRadius: 9999,
       borderWidth: 1,
@@ -309,6 +382,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       paddingVertical: 8,
       alignItems: 'center',
       backgroundColor: colors.surface,
+      flex: Platform.OS === 'web' ? 1 : undefined,
     },
     shareButtonPressed: {
       opacity: 0.85,

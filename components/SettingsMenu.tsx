@@ -466,8 +466,12 @@ export function SettingsMenu({
     </View>
   );
 
-  return (
-    <>
+  const renderTrigger = () => {
+    if (visible) {
+      return null;
+    }
+
+    return (
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Open menu"
@@ -480,31 +484,47 @@ export function SettingsMenu({
           <View style={styles.hamburgerLine} />
         </View>
       </Pressable>
+    );
+  };
+
+  return (
+    <>
+      {renderTrigger()}
       <Modal animationType="slide" transparent={false} visible={visible} onRequestClose={handleCloseMenu}>
         <SafeAreaView
           style={[styles.modalSafeArea, { backgroundColor: colors.background }]}
           edges={['left', 'right', 'bottom']}
         >
           <View style={[styles.modalHeader, { paddingTop: insets.top + 12 }]}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={view === 'main' ? 'Close menu' : 'Back'}
-              onPress={view === 'main' ? handleCloseMenu : () => setView('main')}
-              style={({ pressed }) => [styles.closeTrigger, pressed && styles.closeTriggerPressed]}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <View style={styles.hamburger}>
-                <View style={styles.hamburgerLine} />
-                <View style={styles.hamburgerLine} />
-                <View style={styles.hamburgerLine} />
-              </View>
-              <Text style={styles.closeTriggerLabel}>
-                {view === 'main' ? 'Close' : 'Back'}
-              </Text>
-            </Pressable>
+            {view !== 'main' ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Back to main menu"
+                onPress={() => setView('main')}
+                style={({ pressed }) => [styles.backTrigger, pressed && styles.backTriggerPressed]}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Text style={styles.backTriggerLabel}>Back</Text>
+              </Pressable>
+            ) : (
+              <View style={styles.modalHeaderSpacer} />
+            )}
             <Text style={styles.modalTitle}>
               {view === 'main' ? 'Menu' : view === 'profile' ? 'Account details' : 'Change password'}
             </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close menu"
+              onPress={handleCloseMenu}
+              disabled={Boolean(processing)}
+              style={({ pressed }) => [
+                styles.closeTrigger,
+                pressed && styles.closeTriggerPressed,
+              ]}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={styles.closeTriggerLabel}>Close</Text>
+            </Pressable>
           </View>
           <ScrollView contentContainerStyle={styles.modalContent}>
             {view === 'profile'
@@ -573,8 +593,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
   const constrainedWidth = isWeb ? 420 : undefined;
   return StyleSheet.create({
     menuTrigger: {
-      padding: 4,
-      borderRadius: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
       backgroundColor: 'transparent',
     },
     menuTriggerPressed: {
@@ -604,10 +625,46 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderBottomColor: colors.border,
       backgroundColor: colors.surface,
     },
+    modalHeaderSpacer: {
+      width: 80,
+      height: 32,
+    },
+    backTrigger: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    backTriggerPressed: {
+      opacity: 0.85,
+    },
+    backTriggerLabel: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    closeTrigger: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    closeTriggerPressed: {
+      opacity: 0.85,
+    },
+    closeTriggerLabel: {
+      color: colors.text,
+      fontWeight: '600',
+    },
     modalTitle: {
       fontSize: 20,
       fontWeight: '600',
       color: colors.text,
+      textAlign: 'center',
+      flex: 1,
     },
     modalContent: {
       padding: 24,
@@ -877,24 +934,6 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     errorText: {
       color: colors.danger,
-    },
-    closeTrigger: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-    },
-    closeTriggerPressed: {
-      opacity: 0.85,
-    },
-    closeTriggerLabel: {
-      color: colors.text,
-      fontWeight: '600',
     },
   });
 }

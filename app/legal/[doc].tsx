@@ -74,7 +74,7 @@ export default function LegalDocumentScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ headerShown: true, title: documentConfig?.title ?? 'Legal' }} />
+      <Stack.Screen options={{ headerShown: false }} />
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
         <View style={styles.container}>
           {loading ? (

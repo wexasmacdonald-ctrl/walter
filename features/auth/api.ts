@@ -67,13 +67,20 @@ export async function createUser(
   token: string,
   input: CreateUserInput
 ): Promise<CreateUserResponse> {
+  const body: Record<string, string | undefined> = {
+    email_or_phone: input.emailOrPhone,
+    role: input.role ?? 'driver',
+  };
+  if (typeof input.fullName === 'string') {
+    const trimmed = input.fullName.trim();
+    if (trimmed.length > 0) {
+      body.full_name = trimmed;
+    }
+  }
+
   const payload = await request<CreateUserResponse>('/admin/create-user', {
     token,
-    body: {
-      full_name: input.fullName,
-      email_or_phone: input.emailOrPhone,
-      role: input.role ?? 'driver',
-    },
+    body,
   });
   return payload;
 }

@@ -83,6 +83,7 @@ export function AdminDriverDetail({
   const [confirmPasswordValue, setConfirmPasswordValue] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const accountNameInputRef = useRef<TextInput | null>(null);
   const accountContactInputRef = useRef<TextInput | null>(null);
   const driverPasswordInputRef = useRef<TextInput | null>(null);
@@ -489,6 +490,10 @@ export function AdminDriverDetail({
     if (!driver || deletingAccount) {
       return;
     }
+    if (Platform.OS === 'web') {
+      setDeleteConfirmVisible(true);
+      return;
+    }
     Alert.alert(
       'Delete account?',
       'This removes the account and anonymizes any remaining data. This action cannot be undone.',
@@ -503,6 +508,15 @@ export function AdminDriverDetail({
         },
       ]
       );
+  };
+
+  const handleCancelDeleteDialog = () => {
+    setDeleteConfirmVisible(false);
+  };
+
+  const handleConfirmDeleteDialog = () => {
+    setDeleteConfirmVisible(false);
+    void performDeleteDriverAccount();
   };
 
   const handleSaveAccountDetails = async () => {
@@ -1029,6 +1043,48 @@ export function AdminDriverDetail({
           <Text style={styles.listFabText}>Hide addresses</Text>
         </Pressable>
       ) : null}
+
+      {Platform.OS === 'web' ? (
+        <Modal
+          transparent
+          animationType="fade"
+          visible={deleteConfirmVisible}
+          onRequestClose={handleCancelDeleteDialog}
+        >
+          <View style={styles.deleteModalOverlay}>
+            <View style={styles.deleteModalCard}>
+              <Text style={styles.deleteModalTitle}>Delete account?</Text>
+              <Text style={styles.deleteModalBody}>
+                This removes the account and anonymizes any remaining data. This action cannot be undone.
+              </Text>
+              <View style={styles.deleteModalActions}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.deleteModalButton,
+                    pressed && styles.deleteModalButtonPressed,
+                  ]}
+                  onPress={handleCancelDeleteDialog}
+                  disabled={deletingAccount}
+                >
+                  <Text style={styles.deleteModalButtonText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.deleteModalDangerButton,
+                    pressed && styles.deleteModalDangerButtonPressed,
+                  ]}
+                  onPress={handleConfirmDeleteDialog}
+                  disabled={deletingAccount}
+                >
+                  <Text style={styles.deleteModalDangerButtonText}>
+                    {deletingAccount ? 'Deleting…' : 'Delete'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
     </View>
   );
 }
@@ -1456,6 +1512,71 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     emptyText: {
       color: colors.mutedText,
+    },
+    deleteModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(15, 23, 42, 0.6)',
+      padding: 24,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    deleteModalCard: {
+      width: '100%',
+      maxWidth: 420,
+      borderRadius: 16,
+      padding: 24,
+      backgroundColor: colors.surface,
+      gap: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      shadowColor: colors.text,
+      shadowOpacity: 0.15,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 10 },
+    },
+    deleteModalTitle: {
+      fontSize: 20,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    deleteModalBody: {
+      color: colors.mutedText,
+      lineHeight: 20,
+    },
+    deleteModalActions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 12,
+    },
+    deleteModalButton: {
+      borderRadius: 999,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    deleteModalButtonPressed: {
+      opacity: 0.85,
+    },
+    deleteModalButtonText: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    deleteModalDangerButton: {
+      borderRadius: 999,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: colors.danger,
+      backgroundColor: colors.dangerMuted,
+    },
+    deleteModalDangerButtonPressed: {
+      opacity: 0.9,
+    },
+    deleteModalDangerButtonText: {
+      color: colors.danger,
+      fontWeight: '600',
     },
   });
 }

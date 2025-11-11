@@ -10,11 +10,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ADMIN_LOGIN_HINT } from '@/constants/auth';
 import { useAuth } from './auth-context';
 import { getFriendlyError } from '@/features/shared/get-friendly-error';
 import { openPrivacyPolicy, openTermsOfUse } from '@/features/legal/legal-documents';
+import { AppHeader } from '@/components/AppHeader';
 
 export function LoginScreen() {
   const { signIn } = useAuth();
@@ -50,11 +52,13 @@ export function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={styles.screen}
     >
-      <ScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets
-      >
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <AppHeader />
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
+        >
         <Text style={styles.title}>Sign in to continue</Text>
         <View style={styles.notice}>
           <Text style={styles.noticeTitle}>Admin access</Text>
@@ -116,13 +120,18 @@ export function LoginScreen() {
           </Text>
           .
         </Text>
-      </ScrollView>
+        </ScrollView>
+      </SafeAreaView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+  },
+  safeArea: {
     flex: 1,
     backgroundColor: '#0f172a',
   },

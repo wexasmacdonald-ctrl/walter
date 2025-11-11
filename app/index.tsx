@@ -24,6 +24,7 @@ import { PinsForm } from '@/features/route-planner/PinsForm';
 import type { Stop } from '@/features/route-planner/types';
 import { SettingsMenu } from '@/components/SettingsMenu';
 import { useTheme } from '@/features/theme/theme-context';
+import { AppHeader } from '@/components/AppHeader';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const IS_WEB = Platform.OS === 'web';
@@ -66,12 +67,19 @@ export default function PinPlannerRoot() {
 }
 
 function LoadingScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   return (
-    <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
-      <ActivityIndicator size="large" color={colors.primary} />
-      <Text style={[styles.loadingText, { color: colors.text }]}>Loading…</Text>
-    </View>
+    <SafeAreaView
+      style={[styles.safeArea, styles.loadingScreen, { backgroundColor: colors.background }]}
+      edges={['top', 'left', 'right']}
+    >
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <AppHeader />
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.loadingText, { color: colors.text }]}>Loading…</Text>
+      </View>
+    </SafeAreaView>
   );
 }
 
@@ -83,9 +91,10 @@ type PlannerProps = {
 
 type PlannerContainerProps = {
   children: ReactNode;
+  headerRight?: ReactNode;
 };
 
-function PlannerContainer({ children }: PlannerContainerProps) {
+function PlannerContainer({ children, headerRight }: PlannerContainerProps) {
   const { colors, isDark } = useTheme();
   return (
     <KeyboardAvoidingView
@@ -98,6 +107,7 @@ function PlannerContainer({ children }: PlannerContainerProps) {
         edges={['top', 'left', 'right']}
       >
         <StatusBar style={isDark ? 'light' : 'dark'} />
+        <AppHeader rightSlot={headerRight} />
         {children}
       </SafeAreaView>
     </KeyboardAvoidingView>
@@ -160,8 +170,21 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
 
   const handleCloseDriverEditor = () => setActiveDriverId(null);
 
+  const menuTrigger = (
+    <SettingsMenu
+      userName={user?.fullName}
+      userRole={user?.role ?? 'admin'}
+      onDeleteAccount={deleteAccount}
+      onSignOut={signOut}
+      onChangePassword={changePassword}
+      onGetProfile={getProfile}
+      onUpdateProfile={updateProfile}
+      onVerifyPassword={verifyPassword}
+    />
+  );
+
   return (
-    <PlannerContainer>
+    <PlannerContainer headerRight={menuTrigger}>
       {activeDriverId ? (
         <AdminDriverDetail
           driverId={activeDriverId}
@@ -185,28 +208,16 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
           refreshControl={createRefreshControl(refreshing, onRefresh)}
         >
           <View style={styles.block}>
-            <View style={styles.header}>
-              <SettingsMenu
-                userName={user?.fullName}
-                userRole={user?.role ?? 'admin'}
-                onDeleteAccount={deleteAccount}
-                onSignOut={signOut}
-                onChangePassword={changePassword}
-                onGetProfile={getProfile}
-                onUpdateProfile={updateProfile}
-                onVerifyPassword={verifyPassword}
-              />
-              <View style={styles.headerInfo}>
-                <Text style={[styles.headerGreeting, { color: colors.text }]}>
-                  {user?.fullName ? `Welcome, ${user.fullName}` : 'Welcome back'}
+            <View style={styles.headerInfo}>
+              <Text style={[styles.headerGreeting, { color: colors.text }]}>
+                {user?.fullName ? `Welcome, ${user.fullName}` : 'Welcome back'}
+              </Text>
+              <Text style={[styles.headerRole, { color: colors.mutedText }]}>
+                Signed in as{' '}
+                <Text style={[styles.headerRoleHighlight, { color: colors.primary }]}>
+                  {user.role}
                 </Text>
-                <Text style={[styles.headerRole, { color: colors.mutedText }]}>
-                  Signed in as{' '}
-                  <Text style={[styles.headerRoleHighlight, { color: colors.primary }]}>
-                    {user.role}
-                  </Text>
-                </Text>
-              </View>
+              </Text>
             </View>
           </View>
 
@@ -280,8 +291,21 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
   } = useAuth();
   const { colors } = useTheme();
 
+  const menuTrigger = (
+    <SettingsMenu
+      userName={user?.fullName}
+      userRole={user?.role ?? 'driver'}
+      onDeleteAccount={deleteAccount}
+      onSignOut={signOut}
+      onChangePassword={changePassword}
+      onGetProfile={getProfile}
+      onUpdateProfile={updateProfile}
+      onVerifyPassword={verifyPassword}
+    />
+  );
+
   return (
-    <PlannerContainer>
+    <PlannerContainer headerRight={menuTrigger}>
       <ScrollView
         style={[styles.screen, { backgroundColor: colors.background }]}
         contentContainerStyle={[styles.container, { backgroundColor: colors.background }]}
@@ -291,28 +315,16 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
         automaticallyAdjustKeyboardInsets
         refreshControl={createRefreshControl(refreshing, onRefresh)}
       >
-        <View style={styles.header}>
-          <SettingsMenu
-            userName={user?.fullName}
-            userRole={user?.role ?? 'driver'}
-            onDeleteAccount={deleteAccount}
-            onSignOut={signOut}
-            onChangePassword={changePassword}
-            onGetProfile={getProfile}
-            onUpdateProfile={updateProfile}
-            onVerifyPassword={verifyPassword}
-          />
-          <View style={styles.headerInfo}>
-            <Text style={[styles.headerGreeting, { color: colors.text }]}>
-              {user?.fullName ? `Welcome, ${user.fullName}` : 'Welcome back'}
+        <View style={styles.headerInfo}>
+          <Text style={[styles.headerGreeting, { color: colors.text }]}>
+            {user?.fullName ? `Welcome, ${user.fullName}` : 'Welcome back'}
+          </Text>
+          <Text style={[styles.headerRole, { color: colors.mutedText }]}>
+            Signed in as{' '}
+            <Text style={[styles.headerRoleHighlight, { color: colors.primary }]}>
+              {user?.role}
             </Text>
-            <Text style={[styles.headerRole, { color: colors.mutedText }]}>
-              Signed in as{' '}
-              <Text style={[styles.headerRoleHighlight, { color: colors.primary }]}>
-                {user?.role}
-              </Text>
-            </Text>
-          </View>
+          </Text>
         </View>
 
         <DriverStopsPanel refreshSignal={refreshSignal} />
@@ -322,6 +334,9 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
 }
 
 const styles = StyleSheet.create({
+  loadingScreen: {
+    flex: 1,
+  },
   keyboardAvoiding: {
     flex: 1,
   },
@@ -354,12 +369,6 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
   },
   headerInfo: {
     flex: 1,

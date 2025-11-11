@@ -20,7 +20,7 @@ export type AccountProfile = {
 };
 
 export type CreateUserInput = {
-  fullName: string;
+  fullName?: string | null;
   emailOrPhone: string;
   role?: UserRole;
 };
