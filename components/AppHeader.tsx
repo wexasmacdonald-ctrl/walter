@@ -34,18 +34,7 @@ export function AppHeader({ rightSlot, showDivider = true }: AppHeaderProps) {
         style={({ pressed }) => [styles.logoButton, pressed && styles.logoButtonPressed]}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <View
-          style={[
-            styles.logoGlow,
-            {
-              shadowColor: 'rgba(255, 255, 255, 0.85)',
-              backgroundColor: colors.surface,
-            },
-          ]}
-        >
-          <View pointerEvents="none" style={styles.logoHalo} />
-          <Image source={require('@/assets/images/icon.png')} style={styles.logo} />
-        </View>
+        <Image source={require('@/assets/images/icon.png')} style={styles.logo} />
       </Pressable>
       <View style={styles.spacer} />
       {rightSlot ? <View style={styles.rightSlot}>{rightSlot}</View> : null}
@@ -61,11 +50,12 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
     minHeight: 46,
-    overflow: 'hidden',
   },
   logoButton: {
-    padding: 4,
-    borderRadius: 40,
+    width: 64,
+    height: 64,
+    padding: 0,
+    borderRadius: 32,
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,
@@ -73,27 +63,9 @@ const styles = StyleSheet.create({
   logoButtonPressed: {
     opacity: 0.8,
   },
-  logoGlow: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowOpacity: 0.55,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 18,
-    overflow: 'hidden',
-  },
-  logoHalo: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.4)',
-    opacity: 0.9,
-  },
   logo: {
-    width: 58,
-    height: 58,
+    width: 96,
+    height: 96,
     resizeMode: 'contain',
   },
   spacer: {
