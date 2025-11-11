@@ -288,7 +288,14 @@ function normalizeUser(user: AuthUser): AuthUser {
 }
 
 function normalizeRole(role: string): UserRole {
-  return role === 'admin' ? 'admin' : 'driver';
+  const normalized = role?.toLowerCase?.() ?? '';
+  if (normalized === 'admin') {
+    return 'admin';
+  }
+  if (normalized === 'dev') {
+    return 'dev';
+  }
+  return 'driver';
 }
 
 function normalizeStops(stops: DriverStop[]): DriverStop[] {

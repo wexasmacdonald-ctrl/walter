@@ -44,6 +44,8 @@ const createRefreshControl = (refreshing: boolean, onRefresh: () => void | Promi
   />
 );
 
+const isAdminRole = (role?: UserRole | null) => role === 'admin' || role === 'dev';
+
 // Make all text selectable so users can copy content anywhere in the app.
 if (!Text.defaultProps) {
   Text.defaultProps = {};
@@ -141,7 +143,7 @@ function PlannerScreen() {
   if (!user) {
     return null;
   }
-  if (user.role === 'admin') {
+  if (isAdminRole(user.role)) {
     return (
       <AdminPlanner
         refreshing={refreshing}

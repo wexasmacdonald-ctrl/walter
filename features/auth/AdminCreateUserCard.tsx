@@ -21,6 +21,12 @@ type AdminCreateUserCardProps = {
   onUserCreated?: (role: UserRole) => void;
 };
 
+const ROLE_OPTIONS: Array<{ label: string; value: UserRole }> = [
+  { label: 'Driver', value: 'driver' },
+  { label: 'Admin', value: 'admin' },
+  { label: 'Developer', value: 'dev' },
+];
+
 export function AdminCreateUserCard({ onUserCreated }: AdminCreateUserCardProps) {
   const { createUser } = useAuth();
   const { colors, isDark } = useTheme();
@@ -183,9 +189,22 @@ export function AdminCreateUserCard({ onUserCreated }: AdminCreateUserCardProps)
       <View style={styles.roleGroup}>
         <Text style={styles.label}>Role</Text>
         <View style={styles.roleButtons}>
-          <RoleButton label="Driver" selected={role === 'driver'} onPress={() => setRole('driver')} />
-          <RoleButton label="Admin" selected={role === 'admin'} onPress={() => setRole('admin')} />
+          {ROLE_OPTIONS.map((option) => (
+            <RoleButton
+              key={option.value}
+              label={option.label}
+              selected={role === option.value}
+              onPress={() => setRole(option.value)}
+            />
+          ))}
         </View>
+        <Text style={styles.roleHint}>
+          {role === 'driver'
+            ? 'Drivers can only see their assigned stops.'
+            : role === 'admin'
+              ? 'Admins can manage drivers, addresses, and credentials.'
+              : 'Developers get admin powers but stay hidden from the admin roster.'}
+        </Text>
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Pressable
@@ -295,6 +314,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     roleButtons: {
       flexDirection: 'row',
       gap: 12,
+      flexWrap: 'wrap',
     },
     roleButton: {
       flex: 1,
@@ -403,3 +423,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
   });
 }
+    roleHint: {
+      color: colors.mutedText,
+      fontSize: 12,
+    },

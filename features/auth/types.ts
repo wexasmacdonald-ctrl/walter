@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'driver';
+export type UserRole = 'admin' | 'driver' | 'dev';
 
 export type AuthUser = {
   id: string;

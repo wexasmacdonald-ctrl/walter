@@ -1,6 +1,6 @@
 import * as bcrypt from 'bcryptjs';
 
-type UserRole = 'admin' | 'driver';
+type UserRole = 'admin' | 'driver' | 'dev';
 
 type Env = {
   MAPBOX_ACCESS_TOKEN?: string;
@@ -113,6 +113,18 @@ const MAPBOX_BATCH_ENDPOINT =
 const BASE_HEADERS: HeadersInit = {
   'Content-Type': 'application/json',
 };
+
+const ADMIN_EQUIVALENT_ROLES: UserRole[] = ['admin', 'dev'];
+
+function isRoleAllowed(role: UserRole, allowedRoles: UserRole[]): boolean {
+  if (allowedRoles.includes(role)) {
+    return true;
+  }
+  if (role === 'dev' && allowedRoles.includes('admin')) {
+    return true;
+  }
+  return false;
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -459,7 +471,14 @@ async function handleAdminCreateUser(
   const fullName = typeof body?.full_name === 'string' ? body.full_name.trim() : '';
   const emailOrPhone = typeof body?.email_or_phone === 'string' ? body.email_or_phone.trim() : '';
   const roleInput = typeof body?.role === 'string' ? body.role.trim().toLowerCase() : 'driver';
-  const role: UserRole = roleInput === 'admin' ? 'admin' : 'driver';
+  let role: UserRole;
+  if (roleInput === 'admin') {
+    role = 'admin';
+  } else if (roleInput === 'dev') {
+    role = 'dev';
+  } else {
+    role = 'driver';
+  }
 
   if (!fullName) {
     return respond(
@@ -1399,7 +1418,7 @@ function requireAuth(
     return respond({ error: 'UNAUTHORIZED' }, 401);
   }
 
-  if (!allowedRoles.includes(context.authUser.role)) {
+  if (!isRoleAllowed(context.authUser.role, allowedRoles)) {
     return respond({ error: 'FORBIDDEN' }, 403);
   }
 
@@ -1800,6 +1819,7 @@ async function fetchUsersByRole(env: Env, role: UserRole): Promise<UserSummary[]
   const roleLower = role.toLowerCase();
   const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
   url.searchParams.set('select', 'id,full_name,email_or_phone,role');
+  url.searchParams.set('role', `ilike.${roleLower}`);
   url.searchParams.append('order', 'full_name.asc');
 
   const response = await fetch(url.toString(), {
@@ -1818,13 +1838,11 @@ async function fetchUsersByRole(env: Env, role: UserRole): Promise<UserSummary[]
     email_or_phone: string;
   }[];
 
-  return rows
-    .filter((row) => row.role?.toLowerCase() === roleLower)
-    .map((row) => ({
-      id: row.id,
-      fullName: row.full_name,
-      emailOrPhone: row.email_or_phone,
-    }));
+  return rows.map((row) => ({
+    id: row.id,
+    fullName: row.full_name,
+    emailOrPhone: row.email_or_phone,
+  }));
 }
 
 async function fetchDrivers(env: Env): Promise<UserSummary[]> {
