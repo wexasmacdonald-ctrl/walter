@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 
 import { useTheme } from '@/features/theme/theme-context';
 
@@ -11,9 +11,13 @@ type AppHeaderProps = {
 
 export function AppHeader({ rightSlot, showDivider = true }: AppHeaderProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const { colors } = useTheme();
 
   const handleLogoPress = () => {
+    if (!pathname || pathname === '/') {
+      return;
+    }
     router.push('/');
   };
 
