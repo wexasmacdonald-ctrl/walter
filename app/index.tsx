@@ -23,6 +23,7 @@ import { DriverStopsPanel } from '@/features/driver/DriverStopsPanel';
 import { MapScreen } from '@/features/route-planner/MapScreen';
 import { PinsForm } from '@/features/route-planner/PinsForm';
 import type { Stop } from '@/features/route-planner/types';
+import type { UserRole } from '@/features/auth/types';
 import { SettingsMenu } from '@/components/SettingsMenu';
 import { useTheme } from '@/features/theme/theme-context';
 import { AppHeader } from '@/components/AppHeader';
@@ -88,6 +89,7 @@ type PlannerProps = {
   refreshing: boolean;
   onRefresh: () => void | Promise<void>;
   refreshSignal: number;
+  onRefreshSignal?: () => void;
 };
 
 type PlannerContainerProps = {
@@ -119,19 +121,22 @@ function PlannerScreen() {
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
+  const bumpRefreshSignal = useCallback(() => {
+    setRefreshSignal((prev) => prev + 1);
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) {
       return;
     }
     setRefreshing(true);
-    setRefreshSignal((prev) => prev + 1);
+    bumpRefreshSignal();
     try {
       await delay(600);
     } finally {
       setRefreshing(false);
     }
-  }, [refreshing]);
+  }, [refreshing, bumpRefreshSignal]);
 
   if (!user) {
     return null;
@@ -142,6 +147,7 @@ function PlannerScreen() {
         refreshing={refreshing}
         onRefresh={handleRefresh}
         refreshSignal={refreshSignal}
+        onRefreshSignal={bumpRefreshSignal}
       />
     );
   }
@@ -150,11 +156,12 @@ function PlannerScreen() {
       refreshing={refreshing}
       onRefresh={handleRefresh}
       refreshSignal={refreshSignal}
+      onRefreshSignal={bumpRefreshSignal}
     />
   );
 }
 
-function AdminPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
+function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }: PlannerProps) {
   const {
     user,
     signOut,
@@ -170,6 +177,14 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
   const [activeDriverId, setActiveDriverId] = useState<string | null>(null);
 
   const handleCloseDriverEditor = () => setActiveDriverId(null);
+  const handleUserCreated = useCallback(
+    (role: UserRole) => {
+      if (role === 'admin') {
+        onRefreshSignal?.();
+      }
+    },
+    [onRefreshSignal]
+  );
 
   const menuTrigger = (
     <SettingsMenu
@@ -223,7 +238,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
           </View>
 
             <View style={styles.block}>
-              <AdminCreateUserCard />
+              <AdminCreateUserCard onUserCreated={handleUserCreated} />
             </View>
 
             <View style={styles.block}>

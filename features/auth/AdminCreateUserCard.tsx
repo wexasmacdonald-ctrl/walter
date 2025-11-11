@@ -17,7 +17,11 @@ import { useTheme } from '@/features/theme/theme-context';
 import { getFriendlyError } from '@/features/shared/get-friendly-error';
 import { type CredentialSharePayload, shareCredentials } from '@/features/shared/share-credentials';
 
-export function AdminCreateUserCard() {
+type AdminCreateUserCardProps = {
+  onUserCreated?: (role: UserRole) => void;
+};
+
+export function AdminCreateUserCard({ onUserCreated }: AdminCreateUserCardProps) {
   const { createUser } = useAuth();
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -121,6 +125,9 @@ export function AdminCreateUserCard() {
       }
       if (!supportsShare) {
         await copyPassword(result.tempPassword);
+      }
+      if (prepared.role === 'admin') {
+        onUserCreated?.(prepared.role);
       }
       resetForm();
     } catch (err) {
