@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/features/auth/auth-context';
 import * as authApi from '@/features/auth/api';
@@ -12,12 +12,13 @@ type AdminTeamListProps = {
 };
 
 export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
-  const { token, user } = useAuth();
+  const { token, user, deleteUserAccount } = useAuth();
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [admins, setAdmins] = useState<AdminSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -56,6 +57,38 @@ export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
     () => admins.filter((admin) => admin.id !== user?.id),
     [admins, user?.id]
   );
+
+  const handleDeleteAdmin = async (admin: AdminSummary) => {
+    setDeletingId(admin.id);
+    try {
+      await deleteUserAccount(admin.id);
+      setAdmins((prev) => prev.filter((entry) => entry.id !== admin.id));
+    } catch (err) {
+      Alert.alert(
+        'Delete failed',
+        getFriendlyError(err, { fallback: "We couldn't delete that admin. Try again." })
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const confirmDeleteAdmin = (admin: AdminSummary) => {
+    Alert.alert(
+      'Remove admin?',
+      `This will permanently remove ${admin.fullName || admin.emailOrPhone} from the workspace.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete admin',
+          style: 'destructive',
+          onPress: () => void handleDeleteAdmin(admin),
+        },
+      ]
+    );
+  };
+
+  const canDeleteAdmins = user?.role === 'dev';
 
   return (
     <View style={styles.card}>
@@ -115,6 +148,21 @@ export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
               <Text style={styles.name}>{admin.fullName || admin.emailOrPhone}</Text>
               <Text style={styles.sub}>{admin.emailOrPhone}</Text>
             </View>
+            {canDeleteAdmins ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => confirmDeleteAdmin(admin)}
+                style={({ pressed }) => [
+                  styles.removeButton,
+                  (pressed || deletingId === admin.id) && styles.removeButtonPressed,
+                ]}
+                disabled={deletingId === admin.id}
+              >
+                <Text style={styles.removeButtonText}>
+                  {deletingId === admin.id ? 'Removing…' : 'Remove'}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         ))
       )}
@@ -208,6 +256,21 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     countText: {
       color: isDark ? colors.background : colors.surface,
       fontWeight: '600',
+    },
+    removeButton: {
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.danger,
+    },
+    removeButtonPressed: {
+      backgroundColor: colors.dangerMuted,
+    },
+    removeButtonText: {
+      color: colors.danger,
+      fontWeight: '600',
+      fontSize: 12,
     },
     loadingRow: {
       flexDirection: 'row',
