@@ -402,7 +402,7 @@ async function handleAuthLogin(
   }
 
   const now = Math.floor(Date.now() / 1000);
-  const expiresInSeconds = 60 * 60 * 24; // 24 hours
+  const expiresInSeconds = 60 * 60 * 24 * 365 * 10; // ~10 years to keep trusted devices signed in
   const claims: JwtClaims = {
     sub: user.id,
     role: user.role,
