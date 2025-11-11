@@ -18,6 +18,7 @@ import { LoginScreen } from '@/features/auth/LoginScreen';
 import { useAuth } from '@/features/auth/auth-context';
 import { AdminDriverManager } from '@/features/admin/AdminDriverManager';
 import { AdminDriverDetail } from '@/features/admin/AdminDriverDetail';
+import { AdminTeamList } from '@/features/admin/AdminTeamList';
 import { DriverStopsPanel } from '@/features/driver/DriverStopsPanel';
 import { MapScreen } from '@/features/route-planner/MapScreen';
 import { PinsForm } from '@/features/route-planner/PinsForm';
@@ -221,15 +222,19 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
             </View>
           </View>
 
-          <View style={styles.block}>
-            <AdminCreateUserCard />
-          </View>
+            <View style={styles.block}>
+              <AdminCreateUserCard />
+            </View>
 
-          <View style={styles.block}>
-            <AdminDriverManager
-              onSelectDriver={setActiveDriverId}
-              refreshSignal={refreshSignal}
-            />
+            <View style={styles.block}>
+              <AdminTeamList refreshSignal={refreshSignal} />
+            </View>
+
+            <View style={styles.block}>
+              <AdminDriverManager
+                onSelectDriver={setActiveDriverId}
+                refreshSignal={refreshSignal}
+              />
           </View>
 
           <View style={styles.block}>

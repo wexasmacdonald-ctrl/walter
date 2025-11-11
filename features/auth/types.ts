@@ -52,6 +52,12 @@ export type DriverSummary = {
   emailOrPhone: string;
 };
 
+export type AdminSummary = {
+  id: string;
+  fullName: string | null;
+  emailOrPhone: string;
+};
+
 export type DriverStopStatus = 'pending' | 'complete';
 
 export type DriverStop = {

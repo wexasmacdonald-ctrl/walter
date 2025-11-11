@@ -1,6 +1,7 @@
 import { API_BASE } from '@/features/route-planner/api';
 import type {
   AccountProfile,
+  AdminSummary,
   AdminUserProfileUpdateResponse,
   AuthUser,
   CreateUserInput,
@@ -147,6 +148,17 @@ export async function fetchDrivers(token: string): Promise<DriverSummary[]> {
     method: 'GET',
   });
   return response.drivers ?? [];
+}
+
+export async function fetchAdmins(token: string): Promise<AdminSummary[]> {
+  if (!token) {
+    return [];
+  }
+  const response = await request<{ admins: AdminSummary[] }>('/admin/admins', {
+    token,
+    method: 'GET',
+  });
+  return response.admins ?? [];
 }
 
 export async function fetchDriverStops(

@@ -144,6 +144,12 @@ export default {
       );
     }
 
+    if (request.method === 'GET' && url.pathname === '/admin/admins') {
+      return requireAuth(routeContext, respond, ['admin'], () =>
+        handleAdminListAdmins(env, respond)
+      );
+    }
+
     if (request.method === 'GET' && url.pathname === '/admin/drivers') {
       return requireAuth(routeContext, respond, ['admin'], () =>
         handleAdminListDrivers(env, respond)
@@ -810,6 +816,29 @@ async function handleAdminListDrivers(
   } catch (error) {
     console.error('Failed to list drivers', error);
     return respond({ error: 'DRIVER_LIST_FAILED' }, 500);
+  }
+}
+
+async function handleAdminListAdmins(
+  env: Env,
+  respond: (data: unknown, status?: number) => Response
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  try {
+    const admins = await fetchAdmins(env);
+    return respond({ admins });
+  } catch (error) {
+    console.error('Failed to list admins', error);
+    return respond({ error: 'ADMIN_LIST_FAILED' }, 500);
   }
 }
 
@@ -1765,12 +1794,12 @@ async function fetchUserById(env: Env, userId: string): Promise<SupabaseUserRow 
   return rows.length > 0 ? rows[0] : null;
 }
 
-async function fetchDrivers(
-  env: Env
-): Promise<{ id: string; fullName: string | null; emailOrPhone: string }[]> {
+type UserSummary = { id: string; fullName: string | null; emailOrPhone: string };
+
+async function fetchUsersByRole(env: Env, role: UserRole): Promise<UserSummary[]> {
   const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
   url.searchParams.set('select', 'id,full_name,email_or_phone,role');
-  url.searchParams.set('role', 'eq.driver');
+  url.searchParams.set('role', `eq.${role}`);
   url.searchParams.append('order', 'full_name.asc');
 
   const response = await fetch(url.toString(), {
@@ -1794,6 +1823,14 @@ async function fetchDrivers(
     fullName: row.full_name,
     emailOrPhone: row.email_or_phone,
   }));
+}
+
+async function fetchDrivers(env: Env): Promise<UserSummary[]> {
+  return fetchUsersByRole(env, 'driver');
+}
+
+async function fetchAdmins(env: Env): Promise<UserSummary[]> {
+  return fetchUsersByRole(env, 'admin');
 }
 
 async function fetchDriverStops(env: Env, driverId: string): Promise<DriverStopView[]> {
