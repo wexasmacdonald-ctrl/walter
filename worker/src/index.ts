@@ -1797,9 +1797,9 @@ async function fetchUserById(env: Env, userId: string): Promise<SupabaseUserRow 
 type UserSummary = { id: string; fullName: string | null; emailOrPhone: string };
 
 async function fetchUsersByRole(env: Env, role: UserRole): Promise<UserSummary[]> {
+  const roleLower = role.toLowerCase();
   const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
   url.searchParams.set('select', 'id,full_name,email_or_phone,role');
-  url.searchParams.set('role', `eq.${role}`);
   url.searchParams.append('order', 'full_name.asc');
 
   const response = await fetch(url.toString(), {
@@ -1818,11 +1818,13 @@ async function fetchUsersByRole(env: Env, role: UserRole): Promise<UserSummary[]
     email_or_phone: string;
   }[];
 
-  return rows.map((row) => ({
-    id: row.id,
-    fullName: row.full_name,
-    emailOrPhone: row.email_or_phone,
-  }));
+  return rows
+    .filter((row) => row.role?.toLowerCase() === roleLower)
+    .map((row) => ({
+      id: row.id,
+      fullName: row.full_name,
+      emailOrPhone: row.email_or_phone,
+    }));
 }
 
 async function fetchDrivers(env: Env): Promise<UserSummary[]> {
