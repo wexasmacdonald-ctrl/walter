@@ -34,7 +34,16 @@ export function AppHeader({ rightSlot, showDivider = true }: AppHeaderProps) {
         style={({ pressed }) => [styles.logoButton, pressed && styles.logoButtonPressed]}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <Image source={require('@/assets/images/icon.png')} style={styles.logo} />
+        <View
+          style={[
+            styles.logoGlow,
+            {
+              shadowColor: colors.primary,
+            },
+          ]}
+        >
+          <Image source={require('@/assets/images/icon.png')} style={styles.logo} />
+        </View>
       </Pressable>
       <View style={styles.spacer} />
       {rightSlot ? <View style={styles.rightSlot}>{rightSlot}</View> : null}
@@ -62,6 +71,15 @@ const styles = StyleSheet.create({
   },
   logoButtonPressed: {
     opacity: 0.8,
+  },
+  logoGlow: {
+    padding: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    shadowOpacity: 0.4,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 12,
   },
   logo: {
     width: 96,
