@@ -1,5 +1,5 @@
-import { useRef, type ReactNode } from 'react';
-import { Animated, Easing, Image, Pressable, StyleSheet, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { useTheme } from '@/features/theme/theme-context';
@@ -12,54 +12,9 @@ type AppHeaderProps = {
 export function AppHeader({ rightSlot, showDivider = true }: AppHeaderProps) {
   const router = useRouter();
   const { colors } = useTheme();
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const spinAnim = useRef(new Animated.Value(0)).current;
-  const animatingRef = useRef(false);
 
   const handleLogoPress = () => {
-    if (animatingRef.current) {
-      return;
-    }
-    animatingRef.current = true;
-
-    scaleAnim.setValue(1);
-    spinAnim.setValue(0);
-
-    Animated.sequence([
-      Animated.parallel([
-        Animated.timing(scaleAnim, {
-          toValue: 1.12,
-          duration: 130,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(spinAnim, {
-          toValue: 1,
-          duration: 130,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.parallel([
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          mass: 0.6,
-          damping: 5,
-          stiffness: 140,
-          useNativeDriver: true,
-        }),
-        Animated.timing(spinAnim, {
-          toValue: 2,
-          duration: 180,
-          easing: Easing.out(Easing.circle),
-          useNativeDriver: true,
-        }),
-      ]),
-    ]).start(() => {
-      spinAnim.setValue(0);
-      animatingRef.current = false;
-      router.push('/');
-    });
+    router.push('/');
   };
 
   return (
@@ -79,24 +34,7 @@ export function AppHeader({ rightSlot, showDivider = true }: AppHeaderProps) {
         style={({ pressed }) => [styles.logoButton, pressed && styles.logoButtonPressed]}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <Animated.View
-          style={[
-            styles.logoAnimatedWrapper,
-            {
-              transform: [
-                { scale: scaleAnim },
-                {
-                  rotate: spinAnim.interpolate({
-                    inputRange: [0, 1, 2],
-                    outputRange: ['0deg', '10deg', '-6deg'],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <Image source={require('@/assets/images/icon.png')} style={styles.logo} />
-        </Animated.View>
+        <Image source={require('@/assets/images/icon.png')} style={styles.logo} />
       </Pressable>
       <View style={styles.spacer} />
       {rightSlot ? <View style={styles.rightSlot}>{rightSlot}</View> : null}
@@ -124,10 +62,6 @@ const styles = StyleSheet.create({
   },
   logoButtonPressed: {
     opacity: 0.8,
-  },
-  logoAnimatedWrapper: {
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   logo: {
     width: 96,
