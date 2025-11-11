@@ -38,10 +38,12 @@ export function AppHeader({ rightSlot, showDivider = true }: AppHeaderProps) {
           style={[
             styles.logoGlow,
             {
-              shadowColor: colors.primary,
+              shadowColor: 'rgba(255, 255, 255, 0.85)',
+              backgroundColor: colors.surface,
             },
           ]}
         >
+          <View pointerEvents="none" style={styles.logoHalo} />
           <Image source={require('@/assets/images/icon.png')} style={styles.logo} />
         </View>
       </Pressable>
@@ -59,12 +61,11 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
     minHeight: 46,
+    overflow: 'hidden',
   },
   logoButton: {
-    width: 64,
-    height: 64,
-    padding: 0,
-    borderRadius: 32,
+    padding: 4,
+    borderRadius: 40,
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,
@@ -73,17 +74,26 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   logoGlow: {
-    padding: 8,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowOpacity: 0.55,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 18,
+    overflow: 'hidden',
+  },
+  logoHalo: {
+    ...StyleSheet.absoluteFillObject,
     borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    shadowOpacity: 0.4,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    opacity: 0.9,
   },
   logo: {
-    width: 96,
-    height: 96,
+    width: 58,
+    height: 58,
     resizeMode: 'contain',
   },
   spacer: {
