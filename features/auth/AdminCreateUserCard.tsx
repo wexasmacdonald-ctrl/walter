@@ -423,7 +423,3 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
   });
 }
-    roleHint: {
-      color: colors.mutedText,
-      fontSize: 12,
-    },
