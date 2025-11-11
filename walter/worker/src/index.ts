@@ -114,7 +114,33 @@ const BASE_HEADERS: HeadersInit = {
   'Content-Type': 'application/json',
 };
 
+const STATUS_ACTIVE = 'active';
+const STATUS_DEV_ACTIVE = 'dev-active';
+
 const ADMIN_EQUIVALENT_ROLES: UserRole[] = ['admin', 'dev'];
+
+function normalizeStatus(status?: string | null): string {
+  return (status ?? STATUS_ACTIVE).toLowerCase();
+}
+
+function isDevStatus(status?: string | null): boolean {
+  return normalizeStatus(status) === STATUS_DEV_ACTIVE;
+}
+
+function isAllowedStatus(status?: string | null): boolean {
+  const normalized = normalizeStatus(status);
+  return normalized === STATUS_ACTIVE || normalized === STATUS_DEV_ACTIVE;
+}
+
+function deriveUserRole(user: SupabaseUserRow): UserRole {
+  if (isDevStatus(user.status)) {
+    return 'dev';
+  }
+  if (user.role === 'admin') {
+    return 'admin';
+  }
+  return 'driver';
+}
 
 function isRoleAllowed(role: UserRole, allowedRoles: UserRole[]): boolean {
   if (allowedRoles.includes(role)) {
@@ -404,7 +430,7 @@ async function handleAuthLogin(
     }
   }
 
-  if (user.status && user.status !== 'active') {
+  if (!isAllowedStatus(user.status)) {
     return respond({ error: 'USER_INACTIVE' }, 403);
   }
 
@@ -413,11 +439,12 @@ async function handleAuthLogin(
     return respond({ error: 'INVALID_CREDENTIALS' }, 401);
   }
 
+  const effectiveRole = deriveUserRole(user);
   const now = Math.floor(Date.now() / 1000);
   const expiresInSeconds = 60 * 60 * 24 * 365 * 10; // ~10 years to keep trusted devices signed in
   const claims: JwtClaims = {
     sub: user.id,
-    role: user.role,
+    role: effectiveRole,
     full_name: user.full_name,
     email_or_phone: user.email_or_phone,
     must_change_password: user.must_change_password ?? false,
@@ -439,7 +466,7 @@ async function handleAuthLogin(
       id: user.id,
       fullName: user.full_name,
       emailOrPhone: user.email_or_phone,
-      role: user.role,
+      role: effectiveRole,
       mustChangePassword: Boolean(user.must_change_password),
       tokenExpiresAt: claims.exp,
     },
@@ -479,6 +506,8 @@ async function handleAdminCreateUser(
   } else {
     role = 'driver';
   }
+  const savedRole: UserRole = role === 'dev' ? 'admin' : role;
+  const statusValue = role === 'dev' ? STATUS_DEV_ACTIVE : STATUS_ACTIVE;
 
   if (!fullName) {
     return respond(
@@ -513,8 +542,8 @@ async function handleAdminCreateUser(
     id: crypto.randomUUID(),
     full_name: fullName,
     email_or_phone: emailOrPhone,
-    role,
-    status: 'active',
+    role: savedRole,
+    status: statusValue,
     password_hash: passwordHash,
     must_change_password: false,
   };
@@ -581,7 +610,7 @@ async function handleAdminResetUserPassword(
     return respond({ error: 'PASSWORD_RESET_FAILED' }, 500);
   }
 
-  return respond({ status: 'ok', tempPassword, role: user.role });
+  return respond({ status: 'ok', tempPassword, role: deriveUserRole(user) });
 }
 
 async function handleAdminDeleteUser(
@@ -1816,10 +1845,13 @@ async function fetchUserById(env: Env, userId: string): Promise<SupabaseUserRow 
 type UserSummary = { id: string; fullName: string | null; emailOrPhone: string };
 
 async function fetchUsersByRole(env: Env, role: UserRole): Promise<UserSummary[]> {
-  const roleLower = role.toLowerCase();
   const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
-  url.searchParams.set('select', 'id,full_name,email_or_phone,role');
-  url.searchParams.set('role', `ilike.${roleLower}`);
+  url.searchParams.set('select', 'id,full_name,email_or_phone,role,status');
+  if (role === 'dev') {
+    url.searchParams.set('role', 'eq.admin');
+  } else {
+    url.searchParams.set('role', `eq.${role}`);
+  }
   url.searchParams.append('order', 'full_name.asc');
 
   const response = await fetch(url.toString(), {
@@ -1836,13 +1868,24 @@ async function fetchUsersByRole(env: Env, role: UserRole): Promise<UserSummary[]
     id: string;
     full_name: string | null;
     email_or_phone: string;
+    status?: string | null;
   }>;
 
-  return rows.map((row) => ({
-    id: row.id,
-    fullName: row.full_name,
-    emailOrPhone: row.email_or_phone,
-  }));
+  return rows
+    .filter((row) => {
+      if (role === 'admin') {
+        return !isDevStatus(row.status);
+      }
+      if (role === 'dev') {
+        return isDevStatus(row.status);
+      }
+      return true;
+    })
+    .map((row) => ({
+      id: row.id,
+      fullName: row.full_name,
+      emailOrPhone: row.email_or_phone,
+    }));
 }
 
 async function fetchDrivers(env: Env): Promise<UserSummary[]> {
