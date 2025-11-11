@@ -11,6 +11,7 @@ import {
   Text,
   TextInput,
   View,
+  Modal,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 
