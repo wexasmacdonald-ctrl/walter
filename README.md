@@ -21,6 +21,10 @@ What you get:
 - **Geocode form** - paste newline-delimited addresses, hit "Geocode", and the worker responds with pins.
 - **Map preview** - native builds render the pins with react-native-maps plus the device's GPS location; the web build shows guidance and counts.
 
+### Google Maps keys (native)
+
+If the iOS/Android map shows a beige screen, the native Google tiles are missing API keys. Follow `docs/maps-sdk-setup.md` to enable the Maps SDKs, create platform-specific keys, and load them via `GOOGLE_MAPS_IOS_KEY` / `GOOGLE_MAPS_ANDROID_KEY`.
+
 API_BASE lives in features/route-planner/api.ts and points at the Cloudflare worker (default: https://blow-api.wexasmacdonald.workers.dev).
 
 ---
