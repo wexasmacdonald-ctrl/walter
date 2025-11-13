@@ -3,9 +3,11 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
+  UIManager,
   View,
 } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type LatLng } from 'react-native-maps';
@@ -46,6 +48,7 @@ export function MapScreen({
 
   const mapRef = useRef<MapView | null>(null);
   const modalMapRef = useRef<MapView | null>(null);
+  const mapProvider = useMemo(() => (supportsGoogleMapsProvider() ? PROVIDER_GOOGLE : undefined), []);
 
   useEffect(() => {
     let mounted = true;
@@ -371,7 +374,7 @@ export function MapScreen({
       <View style={styles.mapWrapper}>
         <MapView
           ref={mapRef}
-          provider={PROVIDER_GOOGLE}
+          provider={mapProvider}
           style={styles.map}
           mapType={mapType}
           showsUserLocation
@@ -402,7 +405,7 @@ export function MapScreen({
           <View style={styles.modalMapWrapper}>
             <MapView
               ref={modalMapRef}
-              provider={PROVIDER_GOOGLE}
+              provider={mapProvider}
               style={styles.map}
               mapType={mapType}
               showsUserLocation
@@ -670,4 +673,26 @@ function parseHex(input: string): [number, number, number] {
   const g = Number.parseInt(value.slice(2, 4), 16);
   const b = Number.parseInt(value.slice(4, 6), 16);
   return [r, g, b];
+}
+
+function supportsGoogleMapsProvider(): boolean {
+  if (Platform.OS === 'android') {
+    return true;
+  }
+  if (Platform.OS !== 'ios') {
+    return false;
+  }
+
+  // AIRGoogleMap exists only when the Google Maps SDK is linked on iOS.
+  try {
+    if (typeof UIManager.getViewManagerConfig === 'function') {
+      return Boolean(UIManager.getViewManagerConfig('AIRGoogleMap'));
+    }
+    if (typeof UIManager.hasViewManagerConfig === 'function') {
+      return UIManager.hasViewManagerConfig('AIRGoogleMap');
+    }
+  } catch (error) {
+    console.warn('Unable to detect Google Maps provider; falling back to Apple Maps.', error);
+  }
+  return false;
 }

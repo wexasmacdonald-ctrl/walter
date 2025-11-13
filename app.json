@@ -85,7 +85,8 @@
           }
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "./plugins/with-react-native-maps"
     ],
     "experiments": {
       "typedRoutes": true,
