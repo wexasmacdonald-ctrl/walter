@@ -22,6 +22,7 @@ export type MapScreenProps = {
   loading?: boolean;
   onCompleteStop?: (stopId: string) => Promise<void> | void;
   onUndoStop?: (stopId: string) => Promise<void> | void;
+  onAdjustPin?: (stopId: string) => void;
 };
 
 type UserLocation = {
@@ -34,6 +35,7 @@ export function MapScreen({
   loading = false,
   onCompleteStop,
   onUndoStop,
+  onAdjustPin,
 }: MapScreenProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -248,6 +250,8 @@ export function MapScreen({
       );
     });
 
+  const canAdjustPin = typeof onAdjustPin === 'function';
+
   const renderToast = (variant: 'primary' | 'modal') => {
     if (!selectedMarker) {
       return null;
@@ -264,12 +268,18 @@ export function MapScreen({
             <Text style={styles.toastTitle} numberOfLines={2}>
               {selectedMarker.address || 'Address unavailable'}
             </Text>
-            <Text style={styles.toastStatus}>
-              {isConfirmed
-                ? 'Snow cleared. Tap undo to revert.'
-                : 'Tap “Snow cleared” once this stop is finished.'}
-            </Text>
+            {isConfirmed ? (
+              <Text style={styles.toastStatus}>Snow cleared. Tap undo to revert.</Text>
+            ) : null}
             <View style={styles.toastActions}>
+              {canAdjustPin ? (
+                <Pressable
+                  style={[styles.toastButton, styles.toastButtonSecondary]}
+                  onPress={() => onAdjustPin?.(selectedMarker.id)}
+                >
+                  <Text style={styles.toastButtonSecondaryText}>Adjust pin</Text>
+                </Pressable>
+              ) : null}
               <Pressable style={[styles.toastButton, styles.toastButtonGhost]} onPress={() => setSelectedId(null)}>
                 <Text style={styles.toastButtonGhostText}>Close</Text>
               </Pressable>
@@ -331,7 +341,7 @@ export function MapScreen({
     if (markers.length === 0) {
       return (
         <View style={styles.notice}>
-          <Text style={styles.noticeText}>Pins appear once addresses are geocoded.</Text>
+          <Text style={styles.noticeText}>Pins appear after the locations finish loading.</Text>
         </View>
       );
     }
@@ -523,13 +533,15 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       position: 'absolute',
       left: 16,
       right: 16,
-      bottom: 16,
+      top: 16,
+      alignItems: 'flex-end',
     },
     toastContainerFullScreen: {
       position: 'absolute',
       left: 24,
       right: 24,
-      bottom: 32,
+      top: 24,
+      alignItems: 'flex-end',
     },
     toastCard: {
       padding: 16,
@@ -538,6 +550,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderWidth: 1,
       borderColor: colors.border,
       gap: 12,
+      maxWidth: 360,
     },
     toastLabel: {
       fontSize: 12,
@@ -558,6 +571,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     toastActions: {
       flexDirection: 'row',
       justifyContent: 'flex-end',
+      flexWrap: 'wrap',
       gap: 12,
     },
     toastButton: {
@@ -580,6 +594,14 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     toastButtonPrimaryText: {
       color: onPrimary,
+      fontWeight: '600',
+    },
+    toastButtonSecondary: {
+      borderColor: colors.primary,
+      backgroundColor: colors.surface,
+    },
+    toastButtonSecondaryText: {
+      color: colors.primary,
       fontWeight: '600',
     },
     toastButtonDanger: {

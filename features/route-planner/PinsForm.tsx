@@ -297,7 +297,7 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
       setState({
         type: 'error',
         message: getFriendlyError(error, {
-          fallback: "We couldn't geocode those addresses. Try again.",
+          fallback: "We couldn't load those addresses. Try again.",
         }),
       });
       onPinsChange([]);
@@ -321,7 +321,7 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
 
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>Geocode Addresses</Text>
+      <Text style={styles.heading}>Load Addresses Onto The Map</Text>
       {showInput ? (
         <>
           <Text style={styles.instructions}>
@@ -351,10 +351,10 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
             {loading ? (
               <View style={styles.geocodeButtonContent}>
                 <ActivityIndicator color={colors.primary} size="small" />
-                <Text style={[styles.geocodeButtonText, styles.geocodeButtonTextDisabled]}>Geocoding...</Text>
+                <Text style={[styles.geocodeButtonText, styles.geocodeButtonTextDisabled]}>Loading pins...</Text>
               </View>
             ) : (
-              <Text style={styles.geocodeButtonText}>Geocode</Text>
+              <Text style={styles.geocodeButtonText}>Load Addresses</Text>
             )}
           </Pressable>
         </>
@@ -389,8 +389,8 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
           >
             <Text style={styles.listToggleText}>
               {showList
-                ? 'Hide geocoded addresses'
-                : `Show ${pins.length} geocoded address${pins.length === 1 ? '' : 'es'}`}
+                ? 'Hide loaded addresses'
+                : `Show ${pins.length} loaded address${pins.length === 1 ? '' : 'es'}`}
             </Text>
           </Pressable>
 
@@ -473,7 +473,7 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
                           <Text style={styles.addressLine}>{pin.address || 'Address unavailable'}</Text>
                           <Text style={styles.addressStatus}>
                             {typeof pin.lat === 'number' && typeof pin.lng === 'number'
-                              ? 'Geocoded'
+                              ? 'Location ready'
                               : 'Missing coordinates'}
                           </Text>
                         </Pressable>

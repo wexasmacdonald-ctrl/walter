@@ -20,11 +20,17 @@ import * as authApi from '@/features/auth/api';
 import type { DriverStop, DriverSummary } from '@/features/auth/types';
 import type { Stop } from '@/features/route-planner/types';
 import { MapScreen } from '@/features/route-planner/MapScreen';
-import { SettingsMenu } from '@/components/SettingsMenu';
+import { StopLocationEditor } from '@/features/admin/components/StopLocationEditor';
 import { useTheme } from '@/features/theme/theme-context';
 import { getFriendlyError } from '@/features/shared/get-friendly-error';
 
 const MAX_ADDRESSES = 150;
+const DEFAULT_COORDINATE = { latitude: 44.9778, longitude: -93.265 };
+
+type PinEditorState = {
+  stop: DriverStop;
+  coordinate: { latitude: number; longitude: number };
+};
 
 type AdminDriverDetailProps = {
   driverId: string;
@@ -41,20 +47,8 @@ export function AdminDriverDetail({
   refreshing = false,
   onRefresh,
 }: AdminDriverDetailProps) {
-  const {
-    token,
-    user: authUser,
-    deleteAccount,
-    signOut,
-    changePassword,
-    getProfile,
-    updateProfile,
-    resetUserPassword,
-    deleteUserAccount,
-    adminUpdateUserProfile,
-    adminUpdateUserPassword,
-    verifyPassword,
-  } = useAuth();
+  const { token, resetUserPassword, deleteUserAccount, adminUpdateUserProfile, adminUpdateUserPassword } =
+    useAuth();
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [driver, setDriver] = useState<DriverSummary | null>(null);
@@ -71,6 +65,9 @@ export function AdminDriverDetail({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState('');
   const [activeStopId, setActiveStopId] = useState<string | null>(null);
+  const [pinEditor, setPinEditor] = useState<PinEditorState | null>(null);
+  const [updatingLocation, setUpdatingLocation] = useState(false);
+  const [forgettingCache, setForgettingCache] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [accountName, setAccountName] = useState('');
@@ -232,7 +229,7 @@ export function AdminDriverDetail({
       .map((address) => (address ?? '').trim())
       .filter((address) => address.length > 0);
     if (sanitized.length > MAX_ADDRESSES) {
-      setError(`You can geocode up to ${MAX_ADDRESSES} addresses at once.`);
+      setError(`You can load up to ${MAX_ADDRESSES} addresses at once.`);
       setSuccess(null);
       return;
     }
@@ -276,7 +273,7 @@ export function AdminDriverDetail({
       return;
     }
     if (stops.length + trimmed.length > MAX_ADDRESSES) {
-      setError(`You can geocode up to ${MAX_ADDRESSES} addresses at once.`);
+      setError(`You can load up to ${MAX_ADDRESSES} addresses at once.`);
       setSuccess(null);
       return;
     }
@@ -402,6 +399,120 @@ export function AdminDriverDetail({
     );
     setEditingId(null);
     setEditingValue('');
+  };
+
+  const handleStartLocationEdit = (stop: DriverStop) => {
+    const latitude =
+      typeof stop.lat === 'number' ? stop.lat : DEFAULT_COORDINATE.latitude;
+    const longitude =
+      typeof stop.lng === 'number' ? stop.lng : DEFAULT_COORDINATE.longitude;
+    setActiveStopId(stop.id);
+    setPinEditor({
+      stop,
+      coordinate: { latitude, longitude },
+    });
+    setMapExpanded(true);
+  };
+
+  const handleRequestPinAdjust = (stopId: string) => {
+    const stop = stops.find((entry) => entry.id === stopId);
+    if (stop) {
+      handleStartLocationEdit(stop);
+    }
+  };
+
+  const handleUpdatePinCoordinate = (coordinate: {
+    latitude: number;
+    longitude: number;
+  }) => {
+    setPinEditor((prev) => (prev ? { ...prev, coordinate } : prev));
+  };
+
+  const handleSavePinLocation = async () => {
+    if (!pinEditor || !token) {
+      return;
+    }
+    try {
+      setUpdatingLocation(true);
+      const updated = await authApi.updateDriverStopLocation(token, pinEditor.stop.id, {
+        latitude: pinEditor.coordinate.latitude,
+        longitude: pinEditor.coordinate.longitude,
+      });
+      setStops((prev) => prev.map((stop) => (stop.id === updated.id ? updated : stop)));
+      setSuccess('Pin location updated.');
+      setError(null);
+      setPinEditor(null);
+      // Ensure the toast reflects the updated coordinates
+      setSelectedId(pinEditor.stop.id);
+    } catch (err) {
+      setError(
+        getFriendlyError(err, {
+          fallback: "We couldn't update that pin yet. Try again.",
+        })
+      );
+    } finally {
+      setUpdatingLocation(false);
+    }
+  };
+
+  const forgetAddresses = async (
+    addresses: string[],
+    successMessage: string,
+    options: { clearSelection?: boolean } = {}
+  ) => {
+    if (!token) {
+      return;
+    }
+    const unique = Array.from(
+      new Set(
+        addresses
+          .map((value) => (typeof value === 'string' ? value.trim() : ''))
+          .filter((value) => value.length > 0)
+      )
+    );
+    if (unique.length === 0) {
+      setError('Select at least one address to forget.');
+      setSuccess(null);
+      return;
+    }
+    try {
+      setForgettingCache(true);
+      await authApi.forgetCachedAddresses(token, unique);
+      setSuccess(successMessage);
+      setError(null);
+      if (options.clearSelection) {
+        setSelectedIds({});
+      }
+    } catch (err) {
+      setError(
+        getFriendlyError(err, {
+          fallback: "We couldn't clear those cached coordinates yet. Try again.",
+        })
+      );
+    } finally {
+      setForgettingCache(false);
+    }
+  };
+
+  const handleForgetCacheForStop = (stop: DriverStop) => {
+    void forgetAddresses(
+      [stop.address],
+      'Cached location removed for this stop.'
+    );
+  };
+
+  const handleForgetSelectedCache = () => {
+    if (forgettingCache) {
+      return;
+    }
+    const addresses = stops
+      .filter((stop) => selectedIds[stop.id])
+      .map((stop) => stop.address);
+    void forgetAddresses(
+      addresses,
+      `Removed ${addresses.length} cached location${addresses.length === 1 ? '' : 's'}.`,
+      { clearSelection: true }
+    );
   };
 
   const performResetDriverPassword = async () => {
@@ -611,16 +722,6 @@ export function AdminDriverDetail({
               </Text>
             ) : null}
           </View>
-          <SettingsMenu
-            userName={authUser?.fullName}
-            userRole={authUser?.role ?? 'admin'}
-            onDeleteAccount={deleteAccount}
-            onSignOut={signOut}
-            onChangePassword={changePassword}
-            onGetProfile={getProfile}
-            onUpdateProfile={updateProfile}
-            onVerifyPassword={verifyPassword}
-          />
         </View>
 
       {loadingDriver ? (
@@ -867,9 +968,12 @@ export function AdminDriverDetail({
                   ? `Showing ${mapPins.length} pinned stop${mapPins.length === 1 ? '' : 's'}.`
                   : 'Assign stops to see pins here.'}
               </Text>
-              <MapScreen pins={mapPins} loading={loadingStops} />
+              <MapScreen
+                pins={mapPins}
+                loading={loadingStops}
+                onAdjustPin={handleRequestPinAdjust}
+              />
               <Text style={styles.mapNote}>
-                This view matches what drivers see, including satellite and full-screen controls.
               </Text>
             </View>
           ) : null}
@@ -907,6 +1011,15 @@ export function AdminDriverDetail({
               <Text style={styles.selectionText}>
                 {selectionCount} selected
               </Text>
+              <Pressable
+                style={({ pressed }) => [styles.secondaryChip, pressed && styles.secondaryChipPressed]}
+                onPress={handleForgetSelectedCache}
+                disabled={forgettingCache}
+              >
+                <Text style={styles.secondaryChipText}>
+                  {forgettingCache ? 'Clearing…' : 'Forget cache'}
+                </Text>
+              </Pressable>
               <Pressable
                 style={({ pressed }) => [styles.dangerChip, pressed && styles.dangerChipPressed]}
                 onPress={handleDeleteSelected}
@@ -1003,11 +1116,27 @@ export function AdminDriverDetail({
                             <Text style={styles.primaryChipText}>Edit</Text>
                           </Pressable>
                           <Pressable
+                            style={({ pressed }) => [styles.primaryChip, pressed && styles.primaryChipPressed]}
+                            onPress={() => handleStartLocationEdit(stop)}
+                            disabled={saving || updatingLocation || forgettingCache}
+                          >
+                            <Text style={styles.primaryChipText}>Adjust pin</Text>
+                          </Pressable>
+                          <Pressable
                             style={({ pressed }) => [styles.dangerChip, pressed && styles.dangerChipPressed]}
                             onPress={() => handleDeleteStop(stop.id)}
                             disabled={saving}
                           >
                             <Text style={styles.dangerChipText}>Delete</Text>
+                          </Pressable>
+                          <Pressable
+                            style={({ pressed }) => [styles.secondaryChip, pressed && styles.secondaryChipPressed]}
+                            onPress={() => handleForgetCacheForStop(stop)}
+                            disabled={forgettingCache}
+                          >
+                            <Text style={styles.secondaryChipText}>
+                              {forgettingCache ? 'Clearing…' : 'Forget cache'}
+                            </Text>
                           </Pressable>
                           <Pressable
                             style={({ pressed }) => [styles.secondaryChip, pressed && styles.secondaryChipPressed]}
@@ -1042,8 +1171,109 @@ export function AdminDriverDetail({
           }}
         >
           <Text style={styles.listFabText}>Hide addresses</Text>
-        </Pressable>
+      </Pressable>
       ) : null}
+
+      {pinEditor
+        ? Platform.OS === 'web'
+          ? (
+            <View style={styles.pinModalWebWrapper}>
+              <View style={styles.pinModalOverlay}>
+                <View style={styles.pinModalCard}>
+                  <Text style={styles.pinModalTitle}>Adjust pin location</Text>
+                  <Text style={styles.pinModalBody}>
+                    Drag the marker or tap anywhere on the map. Saving updates the cached coordinates so
+                    future runs remember this exact spot.
+                  </Text>
+                  <View style={styles.pinMap}>
+                    <StopLocationEditor
+                      coordinate={pinEditor.coordinate}
+                      onChange={handleUpdatePinCoordinate}
+                    />
+                  </View>
+                  <View style={styles.pinModalActions}>
+                    <Pressable
+                      style={({ pressed }) => [styles.pinModalButton, pressed && styles.pinModalButtonPressed]}
+                      onPress={() => {
+                        if (!updatingLocation) {
+                          setPinEditor(null);
+                        }
+                      }}
+                      disabled={updatingLocation}
+                    >
+                      <Text style={styles.pinModalButtonText}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.pinModalPrimaryButton,
+                        pressed && styles.pinModalPrimaryPressed,
+                      ]}
+                      onPress={handleSavePinLocation}
+                      disabled={updatingLocation}
+                    >
+                      <Text style={styles.pinModalPrimaryText}>
+                        {updatingLocation ? 'Saving…' : 'Save pin'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )
+          : (
+            <Modal
+              transparent
+              animationType="fade"
+              visible
+              onRequestClose={() => {
+                if (!updatingLocation) {
+                  setPinEditor(null);
+                }
+              }}
+            >
+              <View style={styles.pinModalOverlay}>
+                <View style={styles.pinModalCard}>
+                  <Text style={styles.pinModalTitle}>Adjust pin location</Text>
+                  <Text style={styles.pinModalBody}>
+                    Drag the marker or tap anywhere on the map. Saving updates the cached coordinates so
+                    future runs remember this exact spot.
+                  </Text>
+                  <View style={styles.pinMap}>
+                    <StopLocationEditor
+                      coordinate={pinEditor.coordinate}
+                      onChange={handleUpdatePinCoordinate}
+                    />
+                  </View>
+                  <View style={styles.pinModalActions}>
+                    <Pressable
+                      style={({ pressed }) => [styles.pinModalButton, pressed && styles.pinModalButtonPressed]}
+                      onPress={() => {
+                        if (!updatingLocation) {
+                          setPinEditor(null);
+                        }
+                      }}
+                      disabled={updatingLocation}
+                    >
+                      <Text style={styles.pinModalButtonText}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.pinModalPrimaryButton,
+                        pressed && styles.pinModalPrimaryPressed,
+                      ]}
+                      onPress={handleSavePinLocation}
+                      disabled={updatingLocation}
+                    >
+                      <Text style={styles.pinModalPrimaryText}>
+                        {updatingLocation ? 'Saving…' : 'Save pin'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            </Modal>
+          )
+        : null}
 
       {Platform.OS === 'web' ? (
         <Modal
@@ -1095,6 +1325,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
   const isWeb = Platform.OS === 'web';
   const paddingTop = isWeb ? 32 : 24;
   const paddingBottom = isWeb ? 32 : 48;
+  const headerFlexDirection = isWeb ? 'row' : 'column';
+  const headerAlignItems = isWeb ? 'center' : 'flex-start';
+  const headerJustify = isWeb ? 'space-between' : 'flex-start';
   return StyleSheet.create({
     screen: {
       flex: 1,
@@ -1104,16 +1337,17 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       paddingBottom,
     },
     header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      flexWrap: 'wrap',
+      width: '100%',
+      flexDirection: headerFlexDirection,
+      justifyContent: headerJustify,
+      alignItems: headerAlignItems,
       marginBottom: 24,
-      gap: 16,
+      gap: isWeb ? 16 : 12,
     },
     headerInfo: {
-      flex: 1,
-      marginRight: 16,
+      flex: isWeb ? 1 : undefined,
+      width: '100%',
+      marginRight: isWeb ? 16 : 0,
     },
     title: {
       fontSize: 24,
@@ -1577,6 +1811,80 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     deleteModalDangerButtonText: {
       color: colors.danger,
+      fontWeight: '600',
+    },
+    pinModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(15, 23, 42, 0.6)',
+      padding: 24,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    pinModalWebWrapper: {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 999,
+    },
+    pinModalCard: {
+      width: '100%',
+      maxWidth: 720,
+      borderRadius: 20,
+      padding: 24,
+      backgroundColor: colors.surface,
+      gap: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    pinModalTitle: {
+      fontSize: 20,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    pinModalBody: {
+      color: colors.mutedText,
+      lineHeight: 20,
+    },
+    pinMap: {
+      height: 360,
+      borderRadius: 16,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    pinModalActions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 12,
+    },
+    pinModalButton: {
+      borderRadius: 999,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    pinModalButtonPressed: {
+      opacity: 0.85,
+    },
+    pinModalButtonText: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    pinModalPrimaryButton: {
+      borderRadius: 999,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      backgroundColor: colors.primary,
+    },
+    pinModalPrimaryPressed: {
+      opacity: 0.9,
+    },
+    pinModalPrimaryText: {
+      color: onPrimary,
       fontWeight: '600',
     },
   });

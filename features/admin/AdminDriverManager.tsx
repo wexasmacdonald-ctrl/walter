@@ -55,8 +55,7 @@ export function AdminDriverManager({
     <View style={styles.container}>
       <Text style={styles.heading}>Driver assignments</Text>
       <Text style={styles.description}>
-        Pick a driver to edit their address list. Saving replaces the driver’s list and geocodes every
-        line again so the map stays accurate.
+        Pick a driver to edit their address list. Saving refreshes every location so the map stays accurate.
       </Text>
       <View style={styles.driverColumn}>
         <Text style={styles.columnHeading}>Drivers</Text>

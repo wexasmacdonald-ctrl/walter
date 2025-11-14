@@ -10,6 +10,7 @@ import {
 import { APIProvider, Map, Marker, useMap } from '@vis.gl/react-google-maps';
 
 import { useTheme } from '@/features/theme/theme-context';
+import { getGoogleMapsApiKey } from '@/features/route-planner/getGoogleMapsApiKey';
 
 import type { Stop } from './types';
 
@@ -18,6 +19,7 @@ export type MapScreenProps = {
   loading?: boolean;
   onCompleteStop?: (stopId: string) => Promise<void> | void;
   onUndoStop?: (stopId: string) => Promise<void> | void;
+  onAdjustPin?: (stopId: string) => void;
 };
 
 type MapPin = {
@@ -30,14 +32,14 @@ type MapPin = {
 const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 };
 const DEFAULT_ZOOM = 12;
 
-const GOOGLE_MAPS_API_KEY =
-  process.env.EXPO_PUBLIC_GOOGLE_API_KEY ?? process.env.GOOGLE_API_KEY ?? '';
+const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
 
 export function MapScreen({
   pins,
   loading = false,
   onCompleteStop,
   onUndoStop,
+  onAdjustPin,
 }: MapScreenProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -185,6 +187,8 @@ export function MapScreen({
       );
     });
 
+  const canAdjustPin = typeof onAdjustPin === 'function';
+
   const renderToast = (variant: 'primary' | 'modal') => {
     if (!selectedMarker) {
       return null;
@@ -207,6 +211,14 @@ export function MapScreen({
                 : 'Tap “Snow cleared” once this stop is finished.'}
             </Text>
             <View style={styles.toastActions}>
+              {canAdjustPin ? (
+                <Pressable
+                  style={[styles.toastButton, styles.toastButtonSecondary]}
+                  onPress={() => onAdjustPin?.(selectedMarker.id)}
+                >
+                  <Text style={styles.toastButtonSecondaryText}>Adjust pin</Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 style={[styles.toastButton, styles.toastButtonGhost]}
                 onPress={() => setSelectedId(null)}
@@ -254,7 +266,7 @@ export function MapScreen({
     if (mapPins.length === 0) {
       return (
         <View style={styles.notice}>
-          <Text style={styles.noticeText}>Pins appear once addresses are geocoded.</Text>
+          <Text style={styles.noticeText}>Pins appear after the locations finish loading.</Text>
         </View>
       );
     }
@@ -313,7 +325,7 @@ export function MapScreen({
     return (
       <View style={styles.container}>
         <View style={styles.noticeStandalone}>
-          <Text style={styles.noticeText}>Pins appear once addresses are geocoded.</Text>
+          <Text style={styles.noticeText}>Pins appear after the locations finish loading.</Text>
         </View>
       </View>
     );
@@ -636,13 +648,15 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       position: 'absolute',
       left: 16,
       right: 16,
-      bottom: 16,
+      top: 16,
+      alignItems: 'flex-end',
     },
     toastContainerFullScreen: {
       position: 'absolute',
       left: 24,
       right: 24,
-      bottom: 32,
+      top: 24,
+      alignItems: 'flex-end',
     },
     toastCard: {
       padding: 16,
@@ -651,6 +665,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderWidth: 1,
       borderColor: colors.border,
       gap: 12,
+      maxWidth: 360,
     },
     toastLabel: {
       fontSize: 12,
@@ -671,6 +686,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     toastActions: {
       flexDirection: 'row',
       justifyContent: 'flex-end',
+      flexWrap: 'wrap',
       gap: 12,
     },
     toastButton: {
@@ -693,6 +709,14 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     toastButtonPrimaryText: {
       color: onPrimary,
+      fontWeight: '600',
+    },
+    toastButtonSecondary: {
+      borderColor: colors.primary,
+      backgroundColor: colors.surface,
+    },
+    toastButtonSecondaryText: {
+      color: colors.primary,
       fontWeight: '600',
     },
     toastButtonDanger: {

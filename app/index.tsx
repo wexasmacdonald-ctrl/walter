@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -20,9 +21,6 @@ import { AdminDriverManager } from '@/features/admin/AdminDriverManager';
 import { AdminDriverDetail } from '@/features/admin/AdminDriverDetail';
 import { AdminTeamList } from '@/features/admin/AdminTeamList';
 import { DriverStopsPanel } from '@/features/driver/DriverStopsPanel';
-import { MapScreen } from '@/features/route-planner/MapScreen';
-import { PinsForm } from '@/features/route-planner/PinsForm';
-import type { Stop } from '@/features/route-planner/types';
 import type { UserRole } from '@/features/auth/types';
 import { SettingsMenu } from '@/components/SettingsMenu';
 import { useTheme } from '@/features/theme/theme-context';
@@ -174,9 +172,8 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
     verifyPassword,
   } = useAuth();
   const { colors } = useTheme();
-  const [pins, setPins] = useState<Stop[]>([]);
-  const [loadingPins, setLoadingPins] = useState(false);
   const [activeDriverId, setActiveDriverId] = useState<string | null>(null);
+  const [showCreateUserCard, setShowCreateUserCard] = useState(false);
 
   const handleCloseDriverEditor = () => setActiveDriverId(null);
   const handleUserCreated = useCallback(
@@ -240,7 +237,34 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
           </View>
 
             <View style={styles.block}>
-              <AdminCreateUserCard onUserCreated={handleUserCreated} />
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setShowCreateUserCard((prev) => !prev)}
+                style={({ pressed }) => [
+                  styles.toggleButton,
+                  { borderColor: colors.border, backgroundColor: colors.surface },
+                  pressed && styles.toggleButtonPressed,
+                  showCreateUserCard && {
+                    backgroundColor: colors.primary,
+                    borderColor: colors.primary,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.toggleButtonText,
+                    { color: colors.text },
+                    showCreateUserCard && { color: colors.surface },
+                  ]}
+                >
+                  {showCreateUserCard ? 'Hide employee login form' : 'Create employee login'}
+                </Text>
+              </Pressable>
+              {showCreateUserCard ? (
+                <View style={styles.blockSpacing}>
+                  <AdminCreateUserCard onUserCreated={handleUserCreated} />
+                </View>
+              ) : null}
             </View>
 
             {user?.role === 'dev' ? (
@@ -254,46 +278,6 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
                 onSelectDriver={setActiveDriverId}
                 refreshSignal={refreshSignal}
               />
-          </View>
-
-          <View style={styles.block}>
-            <View
-              style={[
-                styles.instructions,
-                { backgroundColor: colors.surface, borderColor: colors.border },
-              ]}
-            >
-              <Text style={[styles.instructionsTitle, { color: colors.text }]}>
-                Drop pins from addresses
-              </Text>
-              <Text style={[styles.instructionsBody, { color: colors.mutedText }]}>
-                Paste newline-delimited addresses, hit geocode, and share the map with your drivers.
-                Geocoding is now locked behind login so only your team can access it.
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.block}>
-            <PinsForm pins={pins} onPinsChange={setPins} onLoadingChange={setLoadingPins} />
-          </View>
-
-          <View style={styles.block}>
-            <MapScreen pins={pins} loading={loadingPins} />
-          </View>
-
-          <View style={styles.block}>
-            <View
-              style={[
-                styles.summary,
-                { backgroundColor: colors.surface, borderColor: colors.border },
-              ]}
-            >
-              <Text style={[styles.summaryText, { color: colors.mutedText }]}>
-                {pins.length === 0
-                  ? 'No pins yet. Paste a list of addresses to get started.'
-                  : `Showing ${pins.length} pin${pins.length === 1 ? '' : 's'}.`}
-              </Text>
-            </View>
           </View>
 
           <StatusBar style="auto" />
@@ -384,6 +368,23 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: Platform.OS === 'web' ? 'flex-start' : 'stretch',
     maxWidth: Platform.OS === 'web' ? 960 : undefined,
+  },
+  blockSpacing: {
+    marginTop: 16,
+  },
+  toggleButton: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleButtonPressed: {
+    opacity: 0.9,
+  },
+  toggleButtonText: {
+    fontWeight: '600',
   },
   loadingContainer: {
     flex: 1,

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 
+import { useAuth } from '@/features/auth/auth-context';
 import { useTheme } from '@/features/theme/theme-context';
 
 type AppHeaderProps = {
@@ -13,12 +14,17 @@ export function AppHeader({ rightSlot, showDivider = true }: AppHeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { colors } = useTheme();
+  const { user } = useAuth();
 
   const handleLogoPress = () => {
+    if (!user) {
+      router.replace('/');
+      return;
+    }
     if (!pathname || pathname === '/') {
       return;
     }
-    router.push('/');
+    router.replace('/');
   };
 
   return (
