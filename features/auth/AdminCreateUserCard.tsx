@@ -316,6 +316,11 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       gap: 12,
       flexWrap: 'wrap',
     },
+    roleHint: {
+      color: colors.mutedText,
+      fontSize: 13,
+      lineHeight: 18,
+    },
     roleButton: {
       flex: 1,
       borderRadius: 9999,

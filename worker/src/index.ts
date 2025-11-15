@@ -27,6 +27,25 @@ type GeocodeSuccess = {
   lng: number;
 };
 
+type AddressCacheSource = 'mapbox' | 'manual';
+
+type AddressCacheRow = {
+  normalized_address: string;
+  address_text: string;
+  lat: number;
+  lng: number;
+  source: AddressCacheSource;
+  updated_at?: string;
+};
+
+type AddressCacheEntry = {
+  normalized_address: string;
+  address_text: string;
+  lat: number;
+  lng: number;
+  source: AddressCacheSource;
+};
+
 type GeocodeFailure = {
   address: string;
   message: string;
@@ -206,6 +225,18 @@ export default {
       );
     }
 
+    if (request.method === 'POST' && /^\/admin\/driver-stops\/[^/]+\/location$/.test(url.pathname)) {
+      return requireAuth(routeContext, respond, ['admin'], () =>
+        handleAdminUpdateDriverStopLocation(request, env, respond)
+      );
+    }
+
+    if (request.method === 'POST' && url.pathname === '/admin/address-cache/forget') {
+      return requireAuth(routeContext, respond, ['admin'], () =>
+        handleAdminForgetCachedAddresses(request, env, respond)
+      );
+    }
+
     if (request.method === 'POST' && url.pathname === '/admin/users/reset-password') {
       return requireAuth(routeContext, respond, ['admin'], () =>
         handleAdminResetUserPassword(request, env, respond)
@@ -340,18 +371,7 @@ async function handleGeocode(
     );
   }
 
-  if (addresses.length === 0) {
-    try {
-      await replaceDriverStops(env, driverId, []);
-      const stops = await fetchDriverStops(env, driverId);
-      return respond({ stops });
-    } catch (error) {
-      console.error('Failed to clear driver stops', error);
-      return respond({ error: 'DRIVER_STOPS_UPDATE_FAILED' }, 500);
-    }
-  }
-
-  const geocodeResult = await geocodeAddresses(addresses, env.MAPBOX_ACCESS_TOKEN);
+  const geocodeResult = await geocodeWithCache(env, addresses);
   if (geocodeResult.type === 'error') {
     return geocodeResult.response;
   }
@@ -979,7 +999,7 @@ async function handleAdminReplaceDriverStops(
     return respond({ error: 'DRIVER_NOT_FOUND' }, 404);
   }
 
-  const geocodeResult = await geocodeAddresses(addresses, env.MAPBOX_ACCESS_TOKEN);
+  const geocodeResult = await geocodeWithCache(env, addresses);
   if (geocodeResult.type === 'error') {
     return geocodeResult.response;
   }
@@ -991,6 +1011,133 @@ async function handleAdminReplaceDriverStops(
   } catch (error) {
     console.error('Failed to replace driver stops', error);
     return respond({ error: 'DRIVER_STOPS_UPDATE_FAILED' }, 500);
+  }
+}
+
+async function handleAdminUpdateDriverStopLocation(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  const match = new URL(request.url).pathname.match(
+    /^\/admin\/driver-stops\/([^/]+)\/location$/
+  );
+  const stopId = match?.[1] ? decodeURIComponent(match[1]) : '';
+  if (!stopId) {
+    return respond(
+      { error: 'INVALID_STOP_ID', message: 'stopId missing in path.' },
+      400
+    );
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const latitude =
+    typeof body?.lat === 'number'
+      ? body.lat
+      : typeof body?.lat === 'string'
+        ? Number(body.lat)
+        : NaN;
+  const longitude =
+    typeof body?.lng === 'number'
+      ? body.lng
+      : typeof body?.lng === 'string'
+        ? Number(body.lng)
+        : NaN;
+
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    return respond(
+      { error: 'INVALID_LATITUDE', message: 'Latitude must be between -90 and 90.' },
+      400
+    );
+  }
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return respond(
+      { error: 'INVALID_LONGITUDE', message: 'Longitude must be between -180 and 180.' },
+      400
+    );
+  }
+
+  try {
+    const row = await updateDriverStopLocation(env, stopId, latitude, longitude);
+    if (!row) {
+      return respond({ error: 'STOP_NOT_FOUND' }, 404);
+    }
+
+    if (row.address_text) {
+      await upsertAddressCacheEntries(env, [
+        {
+          normalized_address: normalizeAddressForCache(row.address_text),
+          address_text: row.address_text,
+          lat: latitude,
+          lng: longitude,
+          source: 'manual',
+        },
+      ]);
+    }
+
+    return respond({ stop: normalizeDriverStop(row) });
+  } catch (error) {
+    console.error('Failed to update stop location', error);
+    return respond({ error: 'STOP_LOCATION_UPDATE_FAILED' }, 500);
+  }
+}
+
+async function handleAdminForgetCachedAddresses(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const addresses = extractAddressesFromPayload(body);
+  if (!addresses || addresses.length === 0) {
+    return respond(
+      { error: 'INVALID_INPUT', message: 'Provide at least one address to forget.' },
+      400
+    );
+  }
+
+  const normalized = Array.from(
+    new Set(addresses.map((address) => normalizeAddressForCache(address)))
+  );
+
+  try {
+    await deleteAddressCacheEntries(env, normalized);
+    return respond({ status: 'ok', removed: normalized.length });
+  } catch (error) {
+    console.error('Failed to delete cached addresses', error);
+    return respond({ error: 'ADDRESS_CACHE_DELETE_FAILED' }, 500);
   }
 }
 
@@ -1564,6 +1711,77 @@ async function geocodeAddresses(
   return geocodeBatch(addresses, token);
 }
 
+async function geocodeWithCache(
+  env: Env,
+  addresses: string[]
+): Promise<GeocodeResult> {
+  if (addresses.length === 0) {
+    return { type: 'ok', stops: [] };
+  }
+
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return geocodeAddresses(addresses, env.MAPBOX_ACCESS_TOKEN!);
+  }
+
+  const requests = addresses.map((address) => ({
+    address,
+    normalized: normalizeAddressForCache(address),
+  }));
+
+  const cachedEntries = await fetchAddressCacheEntries(
+    env,
+    requests.map((request) => request.normalized)
+  );
+  const cacheMap = new Map(
+    cachedEntries.map((entry) => [entry.normalized_address, entry])
+  );
+
+  const missingRequests = requests.filter(
+    (request) => !cacheMap.has(request.normalized)
+  );
+
+  let mapboxStops: GeocodeSuccess[] = [];
+  if (missingRequests.length > 0) {
+    const mapboxResult = await geocodeAddresses(
+      missingRequests.map((request) => request.address),
+      env.MAPBOX_ACCESS_TOKEN!
+    );
+    if (mapboxResult.type === 'error') {
+      return mapboxResult;
+    }
+    mapboxStops = mapboxResult.stops;
+    const upserts: AddressCacheEntry[] = missingRequests.map(
+      (request, index) => ({
+        normalized_address: request.normalized,
+        address_text: request.address,
+        lat: mapboxStops[index].lat,
+        lng: mapboxStops[index].lng,
+        source: 'mapbox',
+      })
+    );
+    await upsertAddressCacheEntries(env, upserts);
+    upserts.forEach((entry) => {
+      cacheMap.set(entry.normalized_address, entry);
+    });
+  }
+
+  const resolvedStops: GeocodeSuccess[] = requests.map((request) => {
+    const cached = cacheMap.get(request.normalized);
+    if (!cached) {
+      throw new Error(
+        `Cache miss for ${request.address} after geocoding completed.`
+      );
+    }
+    return {
+      address: request.address,
+      lat: cached.lat,
+      lng: cached.lng,
+    };
+  });
+
+  return { type: 'ok', stops: resolvedStops };
+}
+
 async function geocodeSingle(
   address: string,
   token: string
@@ -1782,6 +2000,156 @@ function extractCoordinates(node: any): { lat: number; lng: number } | null {
   }
 
   return null;
+}
+
+function normalizeAddressForCache(address: string): string {
+  return address.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  if (size <= 0) {
+    return [items];
+  }
+  const buckets: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    buckets.push(items.slice(index, index + size));
+  }
+  return buckets;
+}
+
+function formatInFilter(values: string[]): string {
+  return `(${values
+    .map((value) => `"${value.replace(/"/g, '""')}"`)
+    .join(',')})`;
+}
+
+async function fetchAddressCacheEntries(
+  env: Env,
+  normalizedAddresses: string[]
+): Promise<AddressCacheEntry[]> {
+  if (
+    !env.SUPABASE_URL ||
+    !env.SUPABASE_SERVICE_KEY ||
+    normalizedAddresses.length === 0
+  ) {
+    return [];
+  }
+
+  const base = normalizeSupabaseUrl(env.SUPABASE_URL);
+  const headers = supabaseHeaders(env);
+  const entries: AddressCacheEntry[] = [];
+  for (const chunk of chunkArray(Array.from(new Set(normalizedAddresses)), 50)) {
+    if (chunk.length === 0) {
+      continue;
+    }
+    const url = new URL('/rest/v1/address_cache', base);
+    url.searchParams.set(
+      'select',
+      'normalized_address,address_text,lat,lng,source'
+    );
+    url.searchParams.set(
+      'or',
+      `(${chunk
+        .map((value) => `normalized_address.eq.${encodeURIComponent(value)}`)
+        .join(',')})`
+    );
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers,
+    });
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(
+        `Supabase cache fetch failed (${response.status}): ${errorBody}`
+      );
+    }
+    const rows = (await response.json()) as AddressCacheRow[];
+    rows.forEach((row) => {
+      entries.push({
+        normalized_address: row.normalized_address,
+        address_text: row.address_text,
+        lat: row.lat,
+        lng: row.lng,
+        source: (row.source as AddressCacheSource) ?? 'mapbox',
+      });
+    });
+  }
+  return entries;
+}
+
+async function upsertAddressCacheEntries(
+  env: Env,
+  entries: AddressCacheEntry[]
+): Promise<void> {
+  if (
+    !env.SUPABASE_URL ||
+    !env.SUPABASE_SERVICE_KEY ||
+    entries.length === 0
+  ) {
+    return;
+  }
+  const url = new URL(
+    '/rest/v1/address_cache',
+    normalizeSupabaseUrl(env.SUPABASE_URL)
+  );
+  const response = await fetch(url.toString(), {
+    method: 'POST',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'resolution=merge-duplicates',
+    },
+    body: JSON.stringify(
+      entries.map((entry) => ({
+        normalized_address: entry.normalized_address,
+        address_text: entry.address_text,
+        lat: entry.lat,
+        lng: entry.lng,
+        source: entry.source,
+      }))
+    ),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(
+      `Supabase cache upsert failed (${response.status}): ${errorBody}`
+    );
+  }
+}
+
+async function deleteAddressCacheEntries(
+  env: Env,
+  normalizedAddresses: string[]
+): Promise<void> {
+  if (
+    !env.SUPABASE_URL ||
+    !env.SUPABASE_SERVICE_KEY ||
+    normalizedAddresses.length === 0
+  ) {
+    return;
+  }
+
+  const base = normalizeSupabaseUrl(env.SUPABASE_URL);
+  const headers = supabaseHeaders(env);
+  for (const chunk of chunkArray(Array.from(new Set(normalizedAddresses)), 100)) {
+    if (chunk.length === 0) {
+      continue;
+    }
+    const url = new URL('/rest/v1/address_cache', base);
+    url.searchParams.set(
+      'normalized_address',
+      `in.${formatInFilter(chunk)}`
+    );
+    const response = await fetch(url.toString(), {
+      method: 'DELETE',
+      headers,
+    });
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(
+        `Supabase cache delete failed (${response.status}): ${errorBody}`
+      );
+    }
+  }
 }
 
 function supabaseHeaders(env: Env): HeadersInit {
@@ -2023,6 +2391,33 @@ async function updateDriverStopStatus(
   }
 
   return normalizeDriverStop(rows[0]);
+}
+
+async function updateDriverStopLocation(
+  env: Env,
+  stopId: string,
+  lat: number,
+  lng: number
+): Promise<DriverStopRow | null> {
+  const url = new URL('/rest/v1/driver_stops', normalizeSupabaseUrl(env.SUPABASE_URL!));
+  url.searchParams.set('id', `eq.${stopId}`);
+
+  const response = await fetch(url.toString(), {
+    method: 'PATCH',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify({ lat, lng }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase location update failed (${response.status}): ${errorBody}`);
+  }
+
+  const rows = (await response.json()) as DriverStopRow[];
+  return rows[0] ?? null;
 }
 
 async function updateUserPassword(

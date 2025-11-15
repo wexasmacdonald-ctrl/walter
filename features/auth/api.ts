@@ -277,6 +277,37 @@ export async function verifyPassword(token: string, password: string): Promise<v
   });
 }
 
+export async function updateDriverStopLocation(
+  token: string,
+  stopId: string,
+  coordinates: { latitude: number; longitude: number }
+): Promise<DriverStop> {
+  const response = await request<{ stop: DriverStop }>(
+    `/admin/driver-stops/${encodeURIComponent(stopId)}/location`,
+    {
+      token,
+      body: {
+        lat: coordinates.latitude,
+        lng: coordinates.longitude,
+      },
+    }
+  );
+  return normalizeStop(response.stop);
+}
+
+export async function forgetCachedAddresses(
+  token: string,
+  addresses: string[]
+): Promise<void> {
+  if (addresses.length === 0) {
+    return;
+  }
+  await request('/admin/address-cache/forget', {
+    token,
+    body: { addresses },
+  });
+}
+
 function normalizeUser(user: AuthUser): AuthUser {
   return {
     id: user.id,
