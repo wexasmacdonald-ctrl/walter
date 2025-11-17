@@ -15,7 +15,7 @@ export default ({ config }) => {
     newArchEnabled: true,
     ios: {
       bundleIdentifier: 'com.macdonaldautomation.blowpin',
-      supportsTablet: true,
+      supportsTablet: false,
       config: {
         googleMapsApiKey: iosGoogleMapsApiKey,
       },

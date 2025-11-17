@@ -149,7 +149,7 @@ export function AdminCreateUserCard({ onUserCreated }: AdminCreateUserCardProps)
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>Create employee login</Text>
+      <Text style={styles.title}>Create login</Text>
       <Text style={styles.subtitle}>
         Generate credentials for a driver or another admin. Share the temporary password right away—
         they can change it later.
@@ -160,7 +160,7 @@ export function AdminCreateUserCard({ onUserCreated }: AdminCreateUserCardProps)
           ref={nameInputRef}
           value={fullName}
           onChangeText={setFullName}
-          placeholder="Employee name"
+          placeholder="Name"
           style={styles.input}
           editable={!loading}
           placeholderTextColor={placeholderColor}
@@ -428,3 +428,4 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
   });
 }
+

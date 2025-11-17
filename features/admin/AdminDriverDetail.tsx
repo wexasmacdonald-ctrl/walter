@@ -715,7 +715,7 @@ export function AdminDriverDetail({
             <Text style={styles.backButtonText}>Back to drivers</Text>
           </Pressable>
           <View style={styles.headerInfo}>
-            <Text style={styles.title}>Driver assignment</Text>
+            <Text style={styles.title}>Stop list</Text>
             {driver ? (
               <Text style={styles.subTitle} numberOfLines={1}>
                 {driver.fullName || driver.emailOrPhone}

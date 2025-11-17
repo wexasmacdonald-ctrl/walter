@@ -176,10 +176,10 @@ curl -X POST https://blow-api.wexasmacdonald.workers.dev/admin/driver-stops \
 ## Files of Interest
 
 - app/index.tsx - Auth gate plus planner UI.
-- features/admin/AdminDriverManager.tsx - Admin view for assigning driver stops.
+- features/admin/AdminDriverManager.tsx - Admin view for managing stop lists.
 - features/driver/DriverStopsPanel.tsx - Driver view that syncs assigned stops.
 - features/auth/LoginScreen.tsx - Sign-in view shown before accessing the planner.
-- features/auth/AdminCreateUserCard.tsx - Admin-only employee creation flow.
+- features/auth/AdminCreateUserCard.tsx - Admin-only account creation flow.
 - features/auth/ChangePasswordCard.tsx - Self-service password update.
 - features/route-planner/PinsForm.tsx - Geocode form that calls the worker (admin only).
 - features/route-planner/MapScreen.* - Map preview components shared by admin/driver flows.

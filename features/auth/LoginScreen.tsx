@@ -60,6 +60,7 @@ export function LoginScreen() {
           automaticallyAdjustKeyboardInsets
         >
         <Text style={styles.title}>Sign in to continue</Text>
+        <Text style={styles.accessNote}>To use this app please message an admin at walterhagen@bell.net.</Text>
         <View style={styles.notice}>
           <Text style={styles.noticeTitle}>Admin access</Text>
           <Text style={styles.noticeBody}>{ADMIN_LOGIN_HINT}</Text>
@@ -147,6 +148,11 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  accessNote: {
+    color: '#cbd5f5',
+    textAlign: 'center',
+    lineHeight: 20,
   },
   notice: {
     backgroundColor: '#1e293b',

@@ -53,7 +53,7 @@ export function AdminDriverManager({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>Driver assignments</Text>
+      <Text style={styles.heading}>Stop lists</Text>
       <Text style={styles.description}>
         Pick a driver to edit their address list. Saving refreshes every location so the map stays accurate.
       </Text>

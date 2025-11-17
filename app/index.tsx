@@ -257,7 +257,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
                     showCreateUserCard && { color: colors.surface },
                   ]}
                 >
-                  {showCreateUserCard ? 'Hide employee login form' : 'Create employee login'}
+                  {showCreateUserCard ? 'Hide login form' : 'Create login'}
                 </Text>
               </Pressable>
               {showCreateUserCard ? (

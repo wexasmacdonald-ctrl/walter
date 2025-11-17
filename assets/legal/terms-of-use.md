@@ -3,19 +3,19 @@ Acceptance
 Installing, accessing, or using Blow-Pin (the “App”) means you agree to these Terms of Use. If you do not agree, do not use the App.
 
 Eligibility
-The App is designed for organizational use. You must be authorized by the employer or customer that issued your account, comply with these Terms, and follow applicable laws. The App is not directed to children under 13.
+The App may be used by individuals who receive an account invite. You must comply with these Terms and applicable laws. The App is not directed to children under 13.
 
 Accounts and Security
 You are responsible for safeguarding your credentials and for activity under your account. Provide accurate information and keep it up to date. We may suspend or terminate accounts that violate these Terms or threaten the App or its users.
 
 License
-We grant a limited, revocable, non-exclusive, non-transferable license to install and use the App solely for your organization’s internal business purposes. All other rights are reserved.
+We grant a limited, revocable, non-exclusive, non-transferable license to install and use the App for your personal use. All other rights are reserved.
 
 Acceptable Use
 You agree not to copy, modify, reverse engineer, or create derivative works of the App; bypass security or access controls; misuse maps or geocoding or send unlawful or harmful content; interfere with the App; or violate third-party terms that apply to services used within the App.
 
-Organizational Data
-Addresses, stops, and similar records are typically owned by the organization using the App. Removing an individual account does not automatically delete separate company records unless the organization instructs otherwise.
+Stored Data
+Addresses, stops, and similar records belong to the account holder or whoever supplied them. Removing an individual account does not automatically delete data that another user still needs, but you can request deletion through the in-app tools.
 
 Your Data and Privacy
 Our Privacy Policy explains what we collect and how it is used. It forms part of these Terms. You can review, correct, or delete your account and data inside the App (password confirmation is required). When deletion is confirmed, data leaves active systems immediately and is removed from backups on the next purge cycle. The App does not capture your precise GPS location and does not serve advertising.
@@ -27,10 +27,10 @@ Updates and Availability
 We may update the App automatically. Features can change or be discontinued. Service may be unavailable during maintenance, outages, or events beyond our control.
 
 Support
-Support is provided on a commercially reasonable basis with no guaranteed response or resolution times unless specified in a separate written agreement.
+Support is provided on a reasonable-efforts basis with no guaranteed response or resolution times.
 
 Fees
-If your organization has a commercial agreement with us, that agreement governs pricing and billing. Otherwise, the App is provided as-is at no charge to end users.
+The App is provided as-is at no charge to end users.
 
 Disclaimers
 To the maximum extent permitted by law, the App and related services are provided “as is” and “as available,” without warranties of any kind, whether express or implied, including merchantability, fitness for a particular purpose, non-infringement, accuracy, or availability.
