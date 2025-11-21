@@ -91,12 +91,6 @@ export function SettingsMenu({
   const [teamCodeError, setTeamCodeError] = useState<string | null>(null);
   const [teamCodeMessage, setTeamCodeMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!visible) {
-      resetState();
-    }
-  }, [visible, resetState]);
-
   const resetState = useCallback(() => {
     setView('main');
     setProcessing(null);
@@ -114,6 +108,12 @@ export function SettingsMenu({
     setTeamCodeStatus('idle');
     setTeamCodeMessage(null);
   }, [businessName]);
+
+  useEffect(() => {
+    if (!visible) {
+      resetState();
+    }
+  }, [visible, resetState]);
 
   const handleOpenMenu = () => {
     setVisible(true);
