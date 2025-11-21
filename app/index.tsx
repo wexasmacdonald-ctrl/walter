@@ -20,6 +20,7 @@ import { AdminDriverManager } from '@/features/admin/AdminDriverManager';
 import { AdminDriverDetail } from '@/features/admin/AdminDriverDetail';
 import { AdminTeamList } from '@/features/admin/AdminTeamList';
 import { DevWorkspaceDirectory } from '@/features/admin/DevWorkspaceDirectory';
+import { DevDriverAssignmentPanel } from '@/features/admin/DevDriverAssignmentPanel';
 import { WorkspaceInviteShareCard } from '@/features/admin/WorkspaceInviteShareCard';
 import { DriverStopsPanel } from '@/features/driver/DriverStopsPanel';
 import type { UserRole } from '@/features/auth/types';
@@ -314,6 +315,15 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
               </View>
             ) : (
               <>
+                {isDevUser ? (
+                  <View style={styles.block}>
+                    <DevDriverAssignmentPanel
+                      refreshSignal={refreshSignal}
+                      onAssigned={bumpRefreshSignal}
+                      onOpenWorkspaceDirectory={() => setDevView('workspaces')}
+                    />
+                  </View>
+                ) : null}
                 {!isDevUser ? (
                   <View style={styles.block}>
                     <WorkspaceInviteShareCard />
