@@ -304,7 +304,17 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
 
             {isDevUser ? (
               <>
-                {isDevUser && !hasWorkspaceContext ? (
+                <View style={styles.block}>
+                  <DevImpersonationPanel refreshSignal={refreshSignal} />
+                </View>
+                <View style={styles.block}>
+                  <DevDriverAssignmentPanel
+                    refreshSignal={refreshSignal}
+                    onAssigned={onRefreshSignal}
+                    onOpenWorkspaceDirectory={() => setDevView('workspaces')}
+                  />
+                </View>
+                {!hasWorkspaceContext ? (
                   <View style={styles.block}>
                     <View style={[styles.instructions, { borderColor: colors.border }]}>
                       <Text style={[styles.instructionsTitle, { color: colors.text }]}>
@@ -317,16 +327,6 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
                     </View>
                   </View>
                 ) : null}
-                <View style={styles.block}>
-                  <DevImpersonationPanel refreshSignal={refreshSignal} />
-                </View>
-                <View style={styles.block}>
-                  <DevDriverAssignmentPanel
-                    refreshSignal={refreshSignal}
-                    onAssigned={onRefreshSignal}
-                    onOpenWorkspaceDirectory={() => setDevView('workspaces')}
-                  />
-                </View>
               </>
             ) : (
               <View style={styles.block}>
