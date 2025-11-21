@@ -2474,7 +2474,7 @@ async function listAllUsers(env: Env): Promise<SupabaseUserRow[]> {
   const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
   url.searchParams.set(
     'select',
-    'id,full_name,email_or_phone,password_hash,role,status,must_change_password,workspace_id,business_tier,business_name'
+    'id,full_name,email_or_phone,password_hash,role,status,must_change_password,workspace_id'
   );
   const response = await fetch(url.toString(), {
     method: 'GET',
