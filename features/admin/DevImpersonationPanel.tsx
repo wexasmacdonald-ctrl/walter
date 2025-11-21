@@ -1,0 +1,324 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+
+import { useAuth } from '@/features/auth/auth-context';
+import * as authApi from '@/features/auth/api';
+import type { DevUserSummary } from '@/features/auth/types';
+import { useTheme } from '@/features/theme/theme-context';
+import { getFriendlyError } from '@/features/shared/get-friendly-error';
+
+type DevImpersonationPanelProps = {
+  refreshSignal?: number;
+};
+
+export function DevImpersonationPanel({ refreshSignal }: DevImpersonationPanelProps) {
+  const {
+    token,
+    user,
+    impersonatorSession,
+    isImpersonating,
+    impersonateUser,
+    endImpersonation,
+  } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
+  const [users, setUsers] = useState<DevUserSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const loadUsers = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await authApi.fetchDevUsers(token);
+      setUsers(list);
+    } catch (err) {
+      setError(
+        getFriendlyError(err, {
+          fallback: "We couldn't load accounts right now. Pull to refresh in a moment.",
+        })
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (expanded) {
+      void loadUsers();
+    }
+  }, [expanded, loadUsers, refreshSignal]);
+
+  const handleViewAs = async (targetId: string) => {
+    if (!targetId) {
+      return;
+    }
+    setBusyId(targetId);
+    setError(null);
+    setMessage(null);
+    try {
+      await impersonateUser(targetId);
+      setMessage('Now viewing the app exactly how they see it.');
+    } catch (err) {
+      setError(
+        getFriendlyError(err, {
+          fallback: 'We could not switch accounts. Return to dev mode and try again.',
+        })
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const viewingAsLabel = isImpersonating
+    ? user?.fullName || user?.emailOrPhone || 'Unknown user'
+    : null;
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.headerRow}>
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={styles.title}>View as user</Text>
+          <Text style={styles.subtitle}>
+            Open the list, select a person, and a new session loads instantly without sharing
+            passwords.
+          </Text>
+        </View>
+        <Pressable
+          style={({ pressed }) => [styles.toggleButton, pressed && styles.toggleButtonPressed]}
+          onPress={() => setExpanded((prev) => !prev)}
+        >
+          <Text style={styles.toggleButtonText}>{expanded ? 'Hide list' : 'Open list'}</Text>
+        </Pressable>
+      </View>
+
+      {viewingAsLabel ? (
+        <View style={styles.banner}>
+          <Text style={styles.bannerText}>Viewing as {viewingAsLabel}</Text>
+          <Pressable
+            style={({ pressed }) => [styles.returnButton, pressed && styles.returnButtonPressed]}
+            onPress={() => void endImpersonation()}
+          >
+            <Text style={styles.returnButtonText}>Return to dev</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {message ? <Text style={styles.success}>{message}</Text> : null}
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+
+      {expanded ? (
+        <View style={styles.listSection}>
+          {loading ? (
+            <View style={styles.loaderRow}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={styles.loaderText}>Loading accounts…</Text>
+            </View>
+          ) : users.length === 0 ? (
+            <Text style={styles.emptyText}>No accounts found.</Text>
+          ) : (
+            users.map((entry) => {
+              const isCurrentUser = entry.id === user?.id;
+              const disabled = busyId === entry.id || isCurrentUser;
+              return (
+                <View
+                  key={entry.id}
+                  style={[
+                    styles.userRow,
+                    isCurrentUser && styles.userRowActive,
+                    entry.role === 'dev' && styles.userRowDisabled,
+                  ]}
+                >
+                  <View style={styles.userInfo}>
+                    <Text style={styles.userName}>
+                      {entry.fullName || entry.emailOrPhone || 'Unnamed user'}
+                    </Text>
+                    <Text style={styles.userMeta}>{entry.emailOrPhone}</Text>
+                    <Text style={styles.userMeta}>
+                      {entry.role.toUpperCase()}
+                      {entry.workspaceId ? ` • ${entry.workspaceId}` : ' • Free tier'}
+                    </Text>
+                  </View>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.viewButton,
+                      pressed && styles.viewButtonPressed,
+                      (disabled || entry.role === 'dev') && styles.viewButtonDisabled,
+                    ]}
+                    disabled={disabled || entry.role === 'dev'}
+                    onPress={() => void handleViewAs(entry.id)}
+                  >
+                    {busyId === entry.id ? (
+                      <ActivityIndicator color={colors.surface} size="small" />
+                    ) : (
+                      <Text style={styles.viewButtonText}>
+                        {entry.role === 'dev' ? 'Dev account' : isCurrentUser ? 'Active' : 'View as'}
+                      </Text>
+                    )}
+                  </Pressable>
+                </View>
+              );
+            })
+          )}
+        </View>
+      ) : (
+        <Text style={styles.collapsedHint}>Tap "Open list" to pick someone to impersonate.</Text>
+      )}
+    </View>
+  );
+}
+
+function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
+  return StyleSheet.create({
+    card: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      padding: 20,
+      gap: 12,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      gap: 12,
+    },
+    title: {
+      fontSize: 20,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    subtitle: {
+      color: colors.mutedText,
+    },
+    toggleButton: {
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    toggleButtonPressed: {
+      opacity: 0.85,
+    },
+    toggleButtonText: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    listSection: {
+      gap: 10,
+    },
+    loaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    loaderText: {
+      color: colors.mutedText,
+    },
+    emptyText: {
+      color: colors.mutedText,
+      fontStyle: 'italic',
+    },
+    userRow: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    userRowActive: {
+      borderColor: colors.primary,
+      backgroundColor: isDark ? '#0f172a' : '#eef2ff',
+    },
+    userRowDisabled: {
+      opacity: 0.6,
+    },
+    userInfo: {
+      flex: 1,
+      gap: 2,
+    },
+    userName: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    userMeta: {
+      color: colors.mutedText,
+      fontSize: 12,
+    },
+    viewButton: {
+      borderRadius: 999,
+      paddingVertical: 6,
+      paddingHorizontal: 16,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    viewButtonPressed: {
+      opacity: 0.85,
+    },
+    viewButtonDisabled: {
+      backgroundColor: colors.border,
+    },
+    viewButtonText: {
+      color: colors.surface,
+      fontWeight: '600',
+    },
+    collapsedHint: {
+      color: colors.mutedText,
+      fontStyle: 'italic',
+    },
+    success: {
+      color: colors.success,
+      fontWeight: '600',
+    },
+    error: {
+      color: colors.danger,
+    },
+    banner: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 12,
+      gap: 8,
+      backgroundColor: isDark ? '#102840' : '#e0f2fe',
+    },
+    bannerText: {
+      color: isDark ? colors.surface : '#0f172a',
+      fontWeight: '600',
+    },
+    returnButton: {
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 6,
+      paddingHorizontal: 14,
+      alignSelf: 'flex-start',
+      backgroundColor: colors.surface,
+    },
+    returnButtonPressed: {
+      opacity: 0.85,
+    },
+    returnButtonText: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+  });
+}
+

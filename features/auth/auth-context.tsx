@@ -14,6 +14,7 @@ import type {
 
 const AUTH_STORAGE_KEY = 'auth/session';
 const DEV_WORKSPACE_KEY = 'auth/dev-workspace';
+const IMPERSONATOR_STORAGE_KEY = 'auth/impersonator';
 
 type AuthStatus = 'loading' | 'ready';
 
@@ -22,6 +23,8 @@ type AuthContextValue = {
   token: string | null;
   status: AuthStatus;
   workspaceId: string | null;
+  impersonatorSession: AuthSession | null;
+  isImpersonating: boolean;
   signIn: (identifier: string, password: string) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   signOut: () => Promise<void>;
@@ -45,6 +48,8 @@ type AuthContextValue = {
   verifyPassword: (password: string) => Promise<void>;
   applyTeamAccessCode: (code: string) => Promise<AuthUser>;
   selectWorkspace: (workspaceId: string | null) => Promise<void>;
+  impersonateUser: (userId: string) => Promise<void>;
+  endImpersonation: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -64,6 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [impersonatorSession, setImpersonatorSession] = useState<AuthSession | null>(null);
   const workspaceScope = useMemo(() => {
     if (!user) {
       return null;
@@ -93,11 +99,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     async function loadSession() {
       try {
-        const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
-        if (!stored) {
+        const [storedSession, storedImpersonator] = await Promise.all([
+          AsyncStorage.getItem(AUTH_STORAGE_KEY),
+          AsyncStorage.getItem(IMPERSONATOR_STORAGE_KEY),
+        ]);
+
+        if (!cancelled && storedImpersonator) {
+          try {
+            const parsedImpersonator = JSON.parse(storedImpersonator) as AuthSession;
+            if (parsedImpersonator?.token && parsedImpersonator?.user) {
+              setImpersonatorSession(parsedImpersonator);
+            }
+          } catch (error) {
+            console.warn('Failed to parse impersonator session', error);
+            await AsyncStorage.removeItem(IMPERSONATOR_STORAGE_KEY);
+          }
+        }
+
+        if (!storedSession) {
           return;
         }
-        const parsed = JSON.parse(stored) as AuthSession;
+        const parsed = JSON.parse(storedSession) as AuthSession;
         if (!cancelled && parsed?.token && parsed?.user) {
           const storedUser = parsed.user;
           const normalizedUser: AuthUser = {
@@ -139,9 +161,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
   }, []);
 
+  const clearImpersonation = useCallback(async () => {
+    setImpersonatorSession(null);
+    await AsyncStorage.removeItem(IMPERSONATOR_STORAGE_KEY);
+  }, []);
+
   const signIn = useCallback(
     async (identifier: string, password: string) => {
       const result = await authApi.login(identifier, password);
+      await clearImpersonation();
       const normalizedUser = ensureDevBusinessTier(result.user);
       const session: AuthSession = {
         token: result.token,
@@ -158,6 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = useCallback(
     async (input: RegisterInput) => {
       const result = await authApi.registerAccount(input);
+      await clearImpersonation();
       const normalizedUser = ensureDevBusinessTier(result.user);
       const session: AuthSession = {
         token: result.token,
@@ -175,8 +204,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setToken(null);
     void syncWorkspaceSelection(null);
+    await clearImpersonation();
     await persistSession(null);
-  }, [persistSession, syncWorkspaceSelection]);
+  }, [persistSession, syncWorkspaceSelection, clearImpersonation]);
 
   const createUser = useCallback(
     async (input: CreateUserInput) => {
@@ -332,6 +362,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [token, persistSession, syncWorkspaceSelection]
   );
 
+  const impersonateUserAccount = useCallback(
+    async (targetUserId: string) => {
+      if (!token || !user) {
+        throw new Error('UNAUTHORIZED: Missing token');
+      }
+      if (user.role !== 'dev') {
+        throw new Error('FORBIDDEN: Developer permissions required.');
+      }
+      if (impersonatorSession) {
+        throw new Error('Return to your developer session before impersonating another user.');
+      }
+      if (user.id === targetUserId) {
+        return;
+      }
+      const result = await authApi.impersonateUser(token, targetUserId);
+      const normalizedUser = ensureDevBusinessTier(result.user);
+      const nextSession: AuthSession = {
+        token: result.token,
+        user: normalizedUser,
+      };
+      const baseSession: AuthSession = {
+        token,
+        user,
+      };
+      setImpersonatorSession(baseSession);
+      await AsyncStorage.setItem(IMPERSONATOR_STORAGE_KEY, JSON.stringify(baseSession));
+      setToken(nextSession.token);
+      setUser(nextSession.user);
+      void syncWorkspaceSelection(nextSession.user);
+      await persistSession(nextSession);
+    },
+    [token, user, impersonatorSession, persistSession, syncWorkspaceSelection]
+  );
+
+  const endImpersonation = useCallback(async () => {
+    if (!impersonatorSession) {
+      return;
+    }
+    setToken(impersonatorSession.token);
+    setUser(impersonatorSession.user);
+    void syncWorkspaceSelection(impersonatorSession.user);
+    await persistSession(impersonatorSession);
+    setImpersonatorSession(null);
+    await AsyncStorage.removeItem(IMPERSONATOR_STORAGE_KEY);
+  }, [impersonatorSession, persistSession, syncWorkspaceSelection]);
+
   const selectWorkspace = useCallback(
     async (workspaceId: string | null) => {
       if (user?.role !== 'dev') {
@@ -353,6 +429,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       token,
       status,
       workspaceId: workspaceScope,
+      impersonatorSession,
+      isImpersonating: Boolean(impersonatorSession),
       signIn,
       register,
       signOut,
@@ -369,6 +447,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       verifyPassword,
       applyTeamAccessCode,
       selectWorkspace,
+      impersonateUser: impersonateUserAccount,
+      endImpersonation,
     }),
     [
       user,
@@ -391,6 +471,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       verifyPassword,
       applyTeamAccessCode,
       selectWorkspace,
+      impersonatorSession,
+      impersonateUserAccount,
+      endImpersonation,
     ]
   );
 

@@ -7,6 +7,7 @@ import type {
   BusinessTier,
   CreateUserInput,
   CreateUserResponse,
+  DevUserSummary,
   DriverStop,
   DriverSummary,
   LoginResponse,
@@ -204,6 +205,17 @@ export async function fetchDevFreeDrivers(token: string): Promise<DriverSummary[
     method: 'GET',
   });
   return response.drivers ?? [];
+}
+
+export async function fetchDevUsers(token: string): Promise<DevUserSummary[]> {
+  if (!token) {
+    return [];
+  }
+  const response = await request<{ users: DevUserSummary[] }>('/dev/users', {
+    token,
+    method: 'GET',
+  });
+  return response.users ?? [];
 }
 
 export async function fetchAdmins(
@@ -427,6 +439,16 @@ export async function deleteDevWorkspace(token: string, workspaceId: string): Pr
   await request(`/dev/workspaces/${encodeURIComponent(workspaceId)}`, {
     token,
     method: 'DELETE',
+  });
+}
+
+export async function impersonateUser(token: string, userId: string): Promise<LoginResponse> {
+  if (!token) {
+    throw new Error('UNAUTHORIZED: Missing token');
+  }
+  return request<LoginResponse>('/dev/impersonate', {
+    token,
+    body: { user_id: userId },
   });
 }
 

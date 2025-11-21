@@ -20,6 +20,7 @@ import { AdminDriverManager } from '@/features/admin/AdminDriverManager';
 import { AdminDriverDetail } from '@/features/admin/AdminDriverDetail';
 import { AdminTeamList } from '@/features/admin/AdminTeamList';
 import { DevWorkspaceDirectory } from '@/features/admin/DevWorkspaceDirectory';
+import { DevImpersonationPanel } from '@/features/admin/DevImpersonationPanel';
 import { DevDriverAssignmentPanel } from '@/features/admin/DevDriverAssignmentPanel';
 import { WorkspaceInviteShareCard } from '@/features/admin/WorkspaceInviteShareCard';
 import { DriverStopsPanel } from '@/features/driver/DriverStopsPanel';
@@ -315,6 +316,11 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
               </View>
             ) : (
               <>
+                {isDevUser ? (
+                  <View style={styles.block}>
+                    <DevImpersonationPanel refreshSignal={refreshSignal} />
+                  </View>
+                ) : null}
                 {isDevUser ? (
                   <View style={styles.block}>
                     <DevDriverAssignmentPanel

@@ -73,6 +73,14 @@ export type AdminSummary = {
   emailOrPhone: string;
 };
 
+export type DevUserSummary = {
+  id: string;
+  fullName: string | null;
+  emailOrPhone: string;
+  role: UserRole;
+  workspaceId: string | null;
+};
+
 export type DriverStopStatus = 'pending' | 'complete';
 
 export type DriverStop = {
