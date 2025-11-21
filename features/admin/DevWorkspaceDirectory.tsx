@@ -45,6 +45,12 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
   const [driverActionId, setDriverActionId] = useState<string | null>(null);
   const [driverActionType, setDriverActionType] = useState<'assign' | 'remove' | null>(null);
   const [transferMessage, setTransferMessage] = useState<string | null>(null);
+  const resolveWorkspaceError = useCallback((message: string) => {
+    if (message.toLowerCase().includes('workspace not found')) {
+      return 'Select or create a workspace before moving drivers.';
+    }
+    return message;
+  }, []);
 
   useEffect(() => {
     setSelectedWorkspaceId(workspaceId ?? null);
@@ -146,6 +152,11 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
       setWorkspaces((prev) => [result.workspace, ...prev]);
       setNewWorkspaceName('');
       setNewWorkspaceInvite(result.invite);
+      await selectWorkspace(result.workspace.id);
+      setSelectedWorkspaceId(result.workspace.id);
+      setTransferMessage(`${result.workspace.name} is ready. Start inviting your drivers.`);
+      onOpenWorkspace?.();
+      void loadWorkspaceDrivers(result.workspace.id);
     } catch (error) {
       Alert.alert(
         'Workspace not created',
@@ -186,9 +197,11 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     } catch (error) {
       Alert.alert(
         'Move failed',
-        getFriendlyError(error, {
-          fallback: "We couldn't remove that driver. Try again.",
-        })
+        resolveWorkspaceError(
+          getFriendlyError(error, {
+            fallback: "We couldn't remove that driver. Try again.",
+          })
+        )
       );
     } finally {
       setDriverActionId(null);
@@ -216,9 +229,11 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     } catch (error) {
       Alert.alert(
         'Assignment failed',
-        getFriendlyError(error, {
-          fallback: "We couldn't move that driver. Try again.",
-        })
+        resolveWorkspaceError(
+          getFriendlyError(error, {
+            fallback: "We couldn't move that driver. Try again.",
+          })
+        )
       );
     } finally {
       setDriverActionId(null);
@@ -229,37 +244,34 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
   const renderWorkspaceCard = (workspace: WorkspaceSummary) => {
     const isActive = workspace.id === selectedWorkspaceId;
     return (
-      <View key={workspace.id} style={[styles.workspaceCard, isActive && styles.workspaceCardActive]}>
+      <Pressable
+        key={workspace.id}
+        style={({ pressed }) => [
+          styles.workspaceCard,
+          isActive && styles.workspaceCardActive,
+          pressed && styles.workspaceCardPressed,
+        ]}
+        onPress={() => void handleSelectWorkspace(workspace, false)}
+      >
         <View style={styles.workspaceHeader}>
-          <Text style={styles.workspaceName}>{workspace.name}</Text>
+          <View>
+            <Text style={styles.workspaceName}>{workspace.name}</Text>
+            {workspace.createdAt ? (
+              <Text style={styles.workspaceSub}>Created {formatDate(workspace.createdAt)}</Text>
+            ) : null}
+          </View>
           {isActive ? <Text style={styles.workspaceBadge}>Active</Text> : null}
         </View>
-        {workspace.createdAt ? (
-          <Text style={styles.workspaceSub}>Created {formatDate(workspace.createdAt)}</Text>
-        ) : null}
-        <View style={styles.workspaceActions}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              pressed && styles.secondaryButtonPressed,
-            ]}
-            onPress={() => void handleSelectWorkspace(workspace, false)}
-          >
-            <Text style={styles.secondaryButtonText}>
-              {isActive ? 'Selected' : 'Set active'}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [
-              styles.primaryButton,
-              pressed && styles.primaryButtonPressed,
-            ]}
-            onPress={() => void handleSelectWorkspace(workspace, true)}
-          >
-            <Text style={styles.primaryButtonText}>Open company</Text>
-          </Pressable>
-        </View>
-      </View>
+        <Pressable
+          style={({ pressed }) => [
+            styles.primaryButton,
+            pressed && styles.primaryButtonPressed,
+          ]}
+          onPress={() => void handleSelectWorkspace(workspace, true)}
+        >
+          <Text style={styles.primaryButtonText}>Open workspace</Text>
+        </Pressable>
+      </Pressable>
     );
   };
 
@@ -638,11 +650,14 @@ function createStyles(
       borderWidth: 1,
       borderColor: colors.border,
       padding: 16,
-      gap: 8,
+      gap: 16,
       backgroundColor: colors.surface,
     },
     workspaceCardActive: {
       borderColor: colors.primary,
+    },
+    workspaceCardPressed: {
+      opacity: 0.9,
     },
     workspaceHeader: {
       flexDirection: 'row',
@@ -666,10 +681,6 @@ function createStyles(
       color: isDark ? colors.background : colors.surface,
       fontWeight: '600',
       fontSize: 12,
-    },
-    workspaceActions: {
-      flexDirection: 'row',
-      gap: 12,
     },
     loaderRow: {
       flexDirection: 'row',
