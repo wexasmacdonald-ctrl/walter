@@ -467,11 +467,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
-    paddingHorizontal: 24,
-    paddingTop: 48,
-    paddingBottom: 112,
-    gap: 24,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 64,
+    gap: 20,
     alignItems: 'stretch',
+    flexGrow: 1,
   },
   containerDesktop: {
     alignItems: 'flex-start',
