@@ -36,6 +36,10 @@ export function getFriendlyError(error: unknown, options: FriendlyErrorOptions):
     return 'Your session expired. Please sign in again.';
   }
 
+  if (normalized.includes('daily limit') || normalized.includes('free tier')) {
+    return 'Daily limit reached on the free plan. Enter a workspace invite code in Settings to unlock unlimited usage.';
+  }
+
   if (normalized.includes('too many addresses') || normalized.includes('mapbox limit')) {
     return 'Too many addresses at once. Try fewer than 150 and try again.';
   }

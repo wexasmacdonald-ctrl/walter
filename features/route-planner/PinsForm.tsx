@@ -31,7 +31,7 @@ function extractHouseNumber(address: string): string | null {
 }
 
 export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps) {
-  const { token, signOut } = useAuth();
+  const { token, signOut, user } = useAuth();
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const placeholderColor = colors.mutedText;
@@ -47,6 +47,12 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editingValue, setEditingValue] = useState('');
+  const isBusinessTier = user?.businessTier === 'business';
+  const planSummary = isBusinessTier
+    ? user?.businessName
+      ? `${user.businessName} · Business tier (unlimited)`
+      : 'Business tier · Unlimited stops'
+    : 'Free tier · 30 new stops every 24 hours · Use Settings to unlock the business tier.';
 
   useEffect(() => {
     setSelected((prev) => {
@@ -260,6 +266,18 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
           }, 0);
           throw new Error('Session expired. Please sign in again.');
         }
+        if (payload?.error === 'FREE_TIER_LIMIT_REACHED') {
+          const resetDate =
+            typeof payload?.resetsAt === 'string' ? new Date(payload.resetsAt) : null;
+          const resetLabel =
+            resetDate && !Number.isNaN(resetDate.getTime())
+              ? resetDate.toLocaleTimeString()
+              : null;
+          const friendly = resetLabel
+            ? `Daily limit reached on the free plan. Try again after ${resetLabel} or enter a workspace invite code in Settings to unlock unlimited usage.`
+            : 'Daily limit reached on the free plan. Enter a workspace invite code in Settings to unlock unlimited usage.';
+          throw new Error(friendly);
+        }
         throw new Error(
           typeof payload?.error === 'string'
             ? `${payload.error}: ${payload.message ?? 'Request failed.'}`
@@ -322,6 +340,9 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
   return (
     <View style={styles.container}>
       <Text style={styles.heading}>Load Addresses Onto The Map</Text>
+      <View style={styles.planBanner}>
+        <Text style={styles.planBannerText}>{planSummary}</Text>
+      </View>
       {showInput ? (
         <>
           <Text style={styles.instructions}>
@@ -569,6 +590,20 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       fontWeight: '600',
       marginBottom: 12,
       color: colors.text,
+    },
+    planBanner: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryMuted,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      marginBottom: 12,
+    },
+    planBannerText: {
+      color: colors.primary,
+      fontWeight: '600',
+      textAlign: 'center',
     },
     instructions: {
       color: colors.mutedText,

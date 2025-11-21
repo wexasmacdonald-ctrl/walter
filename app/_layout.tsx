@@ -2,32 +2,52 @@ import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } fro
 import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import type { ReactNode } from 'react';
+import { useMemo } from 'react';
 import 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View } from 'react-native';
 
 import { AuthProvider } from '@/features/auth/auth-context';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ThemeProvider, useTheme } from '@/features/theme/theme-context';
 import { AppHeader } from '@/components/AppHeader';
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <AuthProvider>
       <ThemeProvider>
-        <NavigationThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <GlobalScreenWrapper>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="index" options={{ animation: 'slide_from_bottom' }} />
-              <Stack.Screen name="legal/[doc]" />
-            </Stack>
-          </GlobalScreenWrapper>
-          <StatusBar style="auto" />
-        </NavigationThemeProvider>
+        <NavigationBridge />
       </ThemeProvider>
     </AuthProvider>
+  );
+}
+
+function NavigationBridge() {
+  const { theme, colors } = useTheme();
+  const navigationTheme = useMemo(() => {
+    const base = theme === 'dark' ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        background: colors.background,
+        card: colors.surface,
+        border: colors.border,
+        text: colors.text,
+        primary: colors.primary,
+      },
+    };
+  }, [theme, colors]);
+
+  return (
+    <NavigationThemeProvider value={navigationTheme}>
+      <GlobalScreenWrapper>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="legal/[doc]" />
+        </Stack>
+      </GlobalScreenWrapper>
+      <StatusBarController />
+    </NavigationThemeProvider>
   );
 }
 
@@ -48,5 +68,16 @@ function GlobalScreenWrapper({ children }: { children: ReactNode }) {
       ) : null}
       <View style={{ flex: 1 }}>{children}</View>
     </View>
+  );
+}
+
+function StatusBarController() {
+  const { isDark, colors } = useTheme();
+  return (
+    <StatusBar
+      style={isDark ? 'light' : 'dark'}
+      backgroundColor={colors.background}
+      translucent={false}
+    />
   );
 }

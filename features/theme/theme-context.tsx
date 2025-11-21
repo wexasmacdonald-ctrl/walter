@@ -61,8 +61,16 @@ const darkColors: ThemeColors = {
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
+function getInitialTheme(): Theme {
+  const system = Appearance.getColorScheme();
+  if (system === 'dark' || system === 'light') {
+    return system;
+  }
+  return 'light';
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('light');
+  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
 
   useEffect(() => {
     let cancelled = false;

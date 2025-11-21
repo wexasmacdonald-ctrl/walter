@@ -1,4 +1,3 @@
-import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
@@ -20,6 +19,7 @@ import { useAuth } from '@/features/auth/auth-context';
 import { AdminDriverManager } from '@/features/admin/AdminDriverManager';
 import { AdminDriverDetail } from '@/features/admin/AdminDriverDetail';
 import { AdminTeamList } from '@/features/admin/AdminTeamList';
+import { DevWorkspaceDirectory } from '@/features/admin/DevWorkspaceDirectory';
 import { DriverStopsPanel } from '@/features/driver/DriverStopsPanel';
 import type { UserRole } from '@/features/auth/types';
 import { SettingsMenu } from '@/components/SettingsMenu';
@@ -69,13 +69,12 @@ export default function PinPlannerRoot() {
 }
 
 function LoadingScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   return (
     <SafeAreaView
       style={[styles.safeArea, styles.loadingScreen, { backgroundColor: colors.background }]}
       edges={['top', 'left', 'right']}
     >
-      <StatusBar style={isDark ? 'light' : 'dark'} />
       <AppHeader />
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -98,7 +97,7 @@ type PlannerContainerProps = {
 };
 
 function PlannerContainer({ children, headerRight }: PlannerContainerProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   return (
     <KeyboardAvoidingView
       style={[styles.keyboardAvoiding, { backgroundColor: colors.background }]}
@@ -109,7 +108,6 @@ function PlannerContainer({ children, headerRight }: PlannerContainerProps) {
         style={[styles.safeArea, { backgroundColor: colors.background }]}
         edges={['top', 'left', 'right']}
       >
-        <StatusBar style={isDark ? 'light' : 'dark'} />
         <AppHeader rightSlot={headerRight} />
         {children}
       </SafeAreaView>
@@ -170,10 +168,13 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
     getProfile,
     updateProfile,
     verifyPassword,
+    applyTeamAccessCode,
   } = useAuth();
   const { colors } = useTheme();
   const [activeDriverId, setActiveDriverId] = useState<string | null>(null);
   const [showCreateUserCard, setShowCreateUserCard] = useState(false);
+  const [devView, setDevView] = useState<'operations' | 'workspaces'>('operations');
+  const isDevUser = user?.role === 'dev';
 
   const handleCloseDriverEditor = () => setActiveDriverId(null);
   const handleUserCreated = useCallback(
@@ -185,60 +186,121 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
     [onRefreshSignal]
   );
 
+  const showWorkspaceDirectory = isDevUser && devView === 'workspaces' && !activeDriverId;
+
   const menuTrigger = (
     <SettingsMenu
       userName={user?.fullName}
       userRole={user?.role ?? 'admin'}
+      businessTier={user?.businessTier ?? 'free'}
+      businessName={user?.businessName ?? null}
       onDeleteAccount={deleteAccount}
       onSignOut={signOut}
       onChangePassword={changePassword}
       onGetProfile={getProfile}
       onUpdateProfile={updateProfile}
       onVerifyPassword={verifyPassword}
+      onApplyTeamAccessCode={applyTeamAccessCode}
+      onOpenWorkspaceConsole={isDevUser ? () => setDevView('workspaces') : undefined}
     />
   );
 
   return (
     <PlannerContainer headerRight={menuTrigger}>
-      {activeDriverId ? (
-        <AdminDriverDetail
-          driverId={activeDriverId}
-          onClose={handleCloseDriverEditor}
-          refreshSignal={refreshSignal}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-        />
-      ) : (
-        <ScrollView
-          style={[styles.screen, { backgroundColor: colors.background }]}
-          contentContainerStyle={[
-            styles.container,
-            IS_WEB && styles.containerDesktop,
-            { backgroundColor: colors.background },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          contentInsetAdjustmentBehavior="automatic"
-          automaticallyAdjustKeyboardInsets
-          refreshControl={createRefreshControl(refreshing, onRefresh)}
-        >
-          <View style={styles.block}>
-            <View style={styles.headerInfo}>
-              <Text style={[styles.headerGreeting, { color: colors.text }]}>
-                {user?.fullName ? `Welcome, ${user.fullName}` : 'Welcome back'}
+      <View style={styles.plannerContent}>
+        {isDevUser && !activeDriverId ? (
+          <View
+            style={[
+              styles.block,
+              styles.devToggleWrapper,
+              { borderColor: colors.border, backgroundColor: colors.surface },
+            ]}
+          >
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setDevView('operations')}
+              style={({ pressed }) => [
+                styles.devToggleButton,
+                devView === 'operations' && { backgroundColor: colors.primary },
+                pressed && styles.devToggleButtonPressed,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.devToggleButtonText,
+                  { color: devView === 'operations' ? colors.surface : colors.text },
+                ]}
+              >
+                Driver ops
               </Text>
-              <Text style={[styles.headerRole, { color: colors.mutedText }]}>
-                Signed in as{' '}
-                <Text style={[styles.headerRoleHighlight, { color: colors.primary }]}>
-                  {user.role}
-                </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setDevView('workspaces')}
+              style={({ pressed }) => [
+                styles.devToggleButton,
+                devView === 'workspaces' && { backgroundColor: colors.primary },
+                pressed && styles.devToggleButtonPressed,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.devToggleButtonText,
+                  { color: devView === 'workspaces' ? colors.surface : colors.text },
+                ]}
+              >
+                Workspaces
               </Text>
-            </View>
+            </Pressable>
           </View>
+        ) : null}
+        {showWorkspaceDirectory ? (
+          <DevWorkspaceDirectory onOpenWorkspace={() => setDevView('operations')} />
+        ) : activeDriverId ? (
+          <AdminDriverDetail
+            driverId={activeDriverId}
+            onClose={handleCloseDriverEditor}
+            refreshSignal={refreshSignal}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+          />
+        ) : (
+          <ScrollView
+            style={[styles.screen, { backgroundColor: colors.background }]}
+            contentContainerStyle={[
+              styles.container,
+              IS_WEB && styles.containerDesktop,
+              { backgroundColor: colors.background },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            contentInsetAdjustmentBehavior="automatic"
+            automaticallyAdjustKeyboardInsets
+            refreshControl={createRefreshControl(refreshing, onRefresh)}
+          >
+            <View style={styles.block}>
+              <View style={styles.headerInfo}>
+                <Text style={[styles.headerGreeting, { color: colors.text }]}>
+                  {user?.fullName ? `Welcome, ${user.fullName}` : 'Welcome back'}
+                </Text>
+                <Text style={[styles.headerRole, { color: colors.mutedText }]}>
+                  Signed in as{' '}
+                  <Text style={[styles.headerRoleHighlight, { color: colors.primary }]}>
+                    {user.role}
+                  </Text>
+                </Text>
+                <Text style={[styles.headerRole, { color: colors.mutedText }]}>
+                  Plan{' '}
+                  <Text style={[styles.headerRoleHighlight, { color: colors.primary }]}>
+                    {user?.businessTier === 'business' ? 'business tier' : 'free tier'}
+                  </Text>
+                </Text>
+              </View>
+            </View>
 
             <View style={styles.block}>
               <Pressable
-                accessibilityRole="button"
+                accessibilityRole='button'
                 onPress={() => setShowCreateUserCard((prev) => !prev)}
                 style={({ pressed }) => [
                   styles.toggleButton,
@@ -267,7 +329,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
               ) : null}
             </View>
 
-            {user?.role === 'dev' ? (
+            {isDevUser ? (
               <View style={styles.block}>
                 <AdminTeamList refreshSignal={refreshSignal} />
               </View>
@@ -278,11 +340,10 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
                 onSelectDriver={setActiveDriverId}
                 refreshSignal={refreshSignal}
               />
-          </View>
-
-          <StatusBar style="auto" />
-        </ScrollView>
-      )}
+            </View>
+          </ScrollView>
+        )}
+      </View>
     </PlannerContainer>
   );
 }
@@ -296,6 +357,7 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
     getProfile,
     updateProfile,
     verifyPassword,
+    applyTeamAccessCode,
   } = useAuth();
   const { colors } = useTheme();
 
@@ -303,12 +365,15 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
     <SettingsMenu
       userName={user?.fullName}
       userRole={user?.role ?? 'driver'}
+      businessTier={user?.businessTier ?? 'free'}
+      businessName={user?.businessName ?? null}
       onDeleteAccount={deleteAccount}
       onSignOut={signOut}
       onChangePassword={changePassword}
       onGetProfile={getProfile}
       onUpdateProfile={updateProfile}
       onVerifyPassword={verifyPassword}
+      onApplyTeamAccessCode={applyTeamAccessCode}
     />
   );
 
@@ -333,6 +398,12 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
               {user?.role}
             </Text>
           </Text>
+          <Text style={[styles.headerRole, { color: colors.mutedText }]}>
+            Plan{' '}
+            <Text style={[styles.headerRoleHighlight, { color: colors.primary }]}>
+              {user?.businessTier === 'business' ? 'business tier' : 'free tier'}
+            </Text>
+          </Text>
         </View>
 
         <DriverStopsPanel refreshSignal={refreshSignal} />
@@ -352,6 +423,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   screen: {
+    flex: 1,
+  },
+  plannerContent: {
     flex: 1,
   },
   container: {
@@ -384,6 +458,26 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   toggleButtonText: {
+    fontWeight: '600',
+  },
+  devToggleWrapper: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderRadius: 999,
+    padding: 4,
+    gap: 4,
+  },
+  devToggleButton: {
+    flex: 1,
+    borderRadius: 999,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  devToggleButtonPressed: {
+    opacity: 0.9,
+  },
+  devToggleButtonText: {
     fontWeight: '600',
   },
   loadingContainer: {

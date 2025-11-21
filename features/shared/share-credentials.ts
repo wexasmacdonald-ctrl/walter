@@ -23,5 +23,5 @@ function buildShareTitle(payload: CredentialSharePayload) {
 
 function buildShareMessage(payload: CredentialSharePayload) {
   const displayName = payload.fullName?.trim() || payload.emailOrPhone;
-  return `Hey ${displayName}, here's your password for Blow-Pin: ${payload.tempPassword}. Sign in and update it from Settings once you're in.`;
+  return `Hey ${displayName}, here's your password for the route planner: ${payload.tempPassword}. Sign in and update it from Settings once you're in.`;
 }

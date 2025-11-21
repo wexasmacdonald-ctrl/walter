@@ -51,6 +51,11 @@ Endpoints:
 | GET    | /admin/driver-stops | Admin only. Returns the current stops for a driver (`driver_id` query). |
 | POST   | /admin/driver-stops | Admin only. Replaces a driver’s stops; geocodes every address from scratch. |
 | POST   | /auth/change-password | Authenticated users can update their password. |
+| POST   | /account/team-access-code | Authenticated users submit a workspace invite code to join a company workspace (and unlock unlimited usage). |
+| GET    | /workspace/invites | Admin only. Lists invite codes for the active workspace. |
+| POST   | /workspace/invites | Admin only. Creates a new workspace invite code (optional limits/expiry). |
+| GET    | /dev/workspaces | Dev-only. Lists every workspace so developers can switch between companies. |
+| POST   | /dev/workspaces | Dev-only. Creates a new workspace plus a starter invite code. |
 | GET    | /driver/stops | Drivers (or admins with `driver_id`) fetch the assigned list. |
 | POST   | /driver/stops/:id/complete | Drivers mark a stop complete. |
 | POST   | /driver/stops/:id/undo | Drivers undo a completion (status returns to `pending`). |
@@ -78,6 +83,11 @@ Endpoints:
 `
 
 Legacy keys (stops, input, etc.) are still accepted but always normalized to a trimmed array.
+
+### Plans & usage limits
+
+- **Free tier** – self-service registrations start here and can geocode up to **30 new stops per rolling 24-hour window** until they join a company workspace. When the limit is reached the worker returns `FREE_TIER_LIMIT_REACHED` along with `limit`, `used`, and `resetsAt` metadata so clients can show a friendly banner.
+- **Business tier** – unlimited geocoding for any account that belongs to a workspace. Admin-created users inherit their workspace automatically, and dispatchers can generate invite codes (Settings → Workspace invites) for drivers to join later.
 
 ### Mapbox calls
 
@@ -197,6 +207,8 @@ create table public.users (
   role text not null check (role in ('admin', 'driver')),
   status text not null default 'active',
   must_change_password boolean not null default false,
+  business_tier text not null default 'free' check (business_tier in ('free', 'business')),
+  business_name text,
   created_at timestamptz not null default now()
 );
 
@@ -213,6 +225,21 @@ create table public.driver_stops (
 
 create index driver_stops_driver_id_sort_order_idx
   on public.driver_stops (driver_id, sort_order);
+
+create table public.address_usage_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.users(id) on delete cascade,
+  address_count integer not null,
+  created_at timestamptz not null default now()
+);
+
+create index address_usage_events_user_id_created_at_idx
+  on public.address_usage_events (user_id, created_at);
 ```
 
+> Already live? Add the business_tier + business_name columns to public.users and create the public.address_usage_events table so the worker can enforce the free-tier limiter.
+
 Admins manage each driver’s list through the Expo app; whenever they save, the worker deletes the driver’s existing rows, geocodes the new newline list, and inserts the refreshed coordinates.
+
+
+

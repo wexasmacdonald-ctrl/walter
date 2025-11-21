@@ -76,6 +76,18 @@ type AuthenticatedUser = {
   claims: JwtClaims;
 };
 
+type AuthResponsePayload = {
+  token: string;
+  user: {
+    id: string;
+    fullName: string | null;
+    emailOrPhone: string | null;
+    role: UserRole;
+    mustChangePassword: boolean;
+    tokenExpiresAt: number;
+  };
+};
+
 type RouteContext = {
   authUser: AuthenticatedUser | null;
   authError?: 'TOKEN_INVALID' | 'TOKEN_EXPIRED';
@@ -93,7 +105,7 @@ type SupabaseUserRow = {
 
 type SupabaseInsertPayload = {
   id: string;
-  full_name: string;
+  full_name: string | null;
   email_or_phone: string;
   role: UserRole;
   status: string;
@@ -126,6 +138,7 @@ const DEFAULT_ADMIN_PASSWORD = 'AdminPass';
 const MAPBOX_BATCH_LIMIT = 1000;
 const MAPBOX_FORWARD_ENDPOINT =
   'https://api.mapbox.com/search/geocode/v6/forward?limit=1';
+const SESSION_EXPIRATION_SECONDS = 60 * 60 * 24 * 365 * 10; // ~10 years for trusted devices
 const MAPBOX_BATCH_ENDPOINT =
   'https://api.mapbox.com/search/geocode/v6/batch';
 
@@ -193,6 +206,10 @@ export default {
 
     if (request.method === 'POST' && url.pathname === '/auth/login') {
       return handleAuthLogin(request, env, respond);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/auth/register') {
+      return handleAuthRegister(request, env, respond);
     }
 
     if (request.method === 'POST' && url.pathname === '/admin/create-user') {
@@ -459,38 +476,119 @@ async function handleAuthLogin(
     return respond({ error: 'INVALID_CREDENTIALS' }, 401);
   }
 
-  const effectiveRole = deriveUserRole(user);
-  const now = Math.floor(Date.now() / 1000);
-  const expiresInSeconds = 60 * 60 * 24 * 365 * 10; // ~10 years to keep trusted devices signed in
-  const claims: JwtClaims = {
-    sub: user.id,
-    role: effectiveRole,
-    full_name: user.full_name,
-    email_or_phone: user.email_or_phone,
-    must_change_password: user.must_change_password ?? false,
-    iat: now,
-    exp: now + expiresInSeconds,
-  };
-
-  let token: string;
   try {
-    token = await signJwt(claims, env.JWT_SIGNING_KEY);
+    const session = await buildSessionPayload(user, env);
+    return respond(session);
   } catch (error) {
-    console.error('Failed to sign JWT', error);
+    console.error('Failed to create auth session', error);
     return respond({ error: 'AUTH_ERROR' }, 500);
   }
+}
 
-  return respond({
-    token,
-    user: {
-      id: user.id,
-      fullName: user.full_name,
-      emailOrPhone: user.email_or_phone,
-      role: effectiveRole,
-      mustChangePassword: Boolean(user.must_change_password),
-      tokenExpiresAt: claims.exp,
-    },
-  });
+async function handleAuthRegister(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY || !env.JWT_SIGNING_KEY) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase or JWT configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const fullNameInput = typeof body?.full_name === 'string' ? body.full_name.trim() : '';
+  const emailOrPhone = typeof body?.email_or_phone === 'string' ? body.email_or_phone.trim() : '';
+  const password = typeof body?.password === 'string' ? body.password : '';
+
+  if (!emailOrPhone) {
+    return respond(
+      { error: 'INVALID_IDENTIFIER', message: 'Email or phone is required.' },
+      400
+    );
+  }
+
+  if (!password || password.length < 8) {
+    return respond(
+      {
+        error: 'WEAK_PASSWORD',
+        message: 'Choose a password with at least 8 characters.',
+      },
+      400
+    );
+  }
+
+  let existing: SupabaseUserRow | null = null;
+  try {
+    existing = await fetchUserByIdentifier(env, emailOrPhone);
+  } catch (error) {
+    console.error('Failed to check for existing user during registration', error);
+    return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
+  }
+
+  if (existing) {
+    return respond(
+      {
+        error: 'USER_EXISTS',
+        message: 'An account already exists for this email or phone number.',
+      },
+      409
+    );
+  }
+
+  const passwordHash = await hashPassword(password);
+  const payload: SupabaseInsertPayload = {
+    id: crypto.randomUUID(),
+    full_name: fullNameInput.length > 0 ? fullNameInput : null,
+    email_or_phone: emailOrPhone,
+    role: 'driver',
+    status: STATUS_ACTIVE,
+    password_hash: passwordHash,
+    must_change_password: false,
+  };
+
+  try {
+    await supabaseInsert(env, 'users', payload);
+  } catch (error) {
+    console.error('Failed to register user', error);
+    return respond({ error: 'USER_CREATE_FAILED' }, 500);
+  }
+
+  let created: SupabaseUserRow | null = null;
+  try {
+    created = await fetchUserByIdentifier(env, emailOrPhone);
+  } catch (error) {
+    console.error('Failed to load created user', error);
+    return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
+  }
+
+  if (!created) {
+    return respond(
+      {
+        error: 'USER_NOT_FOUND',
+        message: 'Account created but could not be loaded. Try signing in.',
+      },
+      500
+    );
+  }
+
+  try {
+    const session = await buildSessionPayload(created, env);
+    return respond(session, 201);
+  } catch (error) {
+    console.error('Failed to create session after registration', error);
+    return respond({ error: 'AUTH_ERROR' }, 500);
+  }
 }
 
 async function handleAdminCreateUser(
@@ -2586,6 +2684,32 @@ function generateTempPassword(length = 12): string {
     result += alphabet[buffer[i] % alphabet.length];
   }
   return result;
+}
+
+async function buildSessionPayload(user: SupabaseUserRow, env: Env): Promise<AuthResponsePayload> {
+  const effectiveRole = deriveUserRole(user);
+  const now = Math.floor(Date.now() / 1000);
+  const claims: JwtClaims = {
+    sub: user.id,
+    role: effectiveRole,
+    full_name: user.full_name,
+    email_or_phone: user.email_or_phone,
+    must_change_password: user.must_change_password ?? false,
+    iat: now,
+    exp: now + SESSION_EXPIRATION_SECONDS,
+  };
+  const token = await signJwt(claims, env.JWT_SIGNING_KEY!);
+  return {
+    token,
+    user: {
+      id: user.id,
+      fullName: user.full_name,
+      emailOrPhone: user.email_or_phone,
+      role: effectiveRole,
+      mustChangePassword: Boolean(user.must_change_password),
+      tokenExpiresAt: claims.exp,
+    },
+  };
 }
 
 async function signJwt(claims: JwtClaims, secret: string): Promise<string> {

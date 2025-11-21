@@ -1,11 +1,16 @@
 export type UserRole = 'admin' | 'driver' | 'dev';
 
+export type BusinessTier = 'free' | 'business';
+
 export type AuthUser = {
   id: string;
   fullName: string | null;
   emailOrPhone: string | null;
   role: UserRole;
   mustChangePassword: boolean;
+  businessTier: BusinessTier;
+  businessName: string | null;
+  workspaceId: string | null;
   tokenExpiresAt?: number;
 };
 
@@ -17,12 +22,22 @@ export type LoginResponse = {
 export type AccountProfile = {
   fullName: string | null;
   emailOrPhone: string | null;
+  businessName: string | null;
+  businessTier: BusinessTier;
+  workspaceId: string | null;
 };
 
 export type CreateUserInput = {
   fullName?: string | null;
   emailOrPhone: string;
   role?: UserRole;
+};
+
+export type RegisterInput = {
+  fullName?: string | null;
+  emailOrPhone: string;
+  password: string;
+  businessName?: string | null;
 };
 
 export type CreateUserResponse = {
@@ -67,4 +82,22 @@ export type DriverStop = {
   lng: number | null;
   sortOrder: number | null;
   status: DriverStopStatus;
+};
+
+export type WorkspaceInvite = {
+  id: string;
+  workspaceId: string;
+  code: string;
+  label: string | null;
+  maxUses: number | null;
+  uses: number;
+  expiresAt: string | null;
+  createdAt: string;
+};
+
+export type WorkspaceSummary = {
+  id: string;
+  name: string;
+  createdBy?: string | null;
+  createdAt?: string | null;
 };
