@@ -302,6 +302,24 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
               </View>
             </View>
 
+            {isDevUser ? (
+              <>
+                <View style={styles.block}>
+                  <DevImpersonationPanel refreshSignal={refreshSignal} />
+                </View>
+                <View style={styles.block}>
+                  <DevDriverAssignmentPanel
+                    refreshSignal={refreshSignal}
+                    onAssigned={onRefreshSignal}
+                    onOpenWorkspaceDirectory={() => setDevView('workspaces')}
+                  />
+                </View>
+              </>
+            ) : (
+              <View style={styles.block}>
+                <WorkspaceInviteShareCard />
+              </View>
+            )}
             {isDevUser && !hasWorkspaceContext ? (
               <View style={styles.block}>
                 <View style={[styles.instructions, { borderColor: colors.border }]}>
@@ -316,25 +334,6 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
               </View>
             ) : (
               <>
-                {isDevUser ? (
-                  <View style={styles.block}>
-                    <DevImpersonationPanel refreshSignal={refreshSignal} />
-                  </View>
-                ) : null}
-                {isDevUser ? (
-                  <View style={styles.block}>
-                    <DevDriverAssignmentPanel
-                      refreshSignal={refreshSignal}
-                      onAssigned={onRefreshSignal}
-                      onOpenWorkspaceDirectory={() => setDevView('workspaces')}
-                    />
-                  </View>
-                ) : null}
-                {!isDevUser ? (
-                  <View style={styles.block}>
-                    <WorkspaceInviteShareCard />
-                  </View>
-                ) : null}
                 <View style={styles.block}>
                   <Pressable
                     accessibilityRole='button'
