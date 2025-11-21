@@ -137,6 +137,25 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     void loadFreeDrivers();
   }, [loadFreeDrivers]);
 
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+    if (selectedWorkspaceId || workspaces.length === 0) {
+      return;
+    }
+    const defaultWorkspace = workspaces[0];
+    setSelectedWorkspaceId(defaultWorkspace.id);
+    void selectWorkspace(defaultWorkspace.id);
+    void loadWorkspaceDrivers(defaultWorkspace.id);
+  }, [
+    token,
+    selectedWorkspaceId,
+    workspaces,
+    selectWorkspace,
+    loadWorkspaceDrivers,
+  ]);
+
   const handleCreateWorkspace = async () => {
     if (!token || creatingWorkspace) {
       return;
