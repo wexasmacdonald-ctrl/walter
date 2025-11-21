@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useMemo } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 
@@ -15,6 +16,7 @@ export function AppHeader({ rightSlot, showDivider = true }: AppHeaderProps) {
   const pathname = usePathname();
   const { colors } = useTheme();
   const { user, isImpersonating, endImpersonation } = useAuth();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const handleLogoPress = () => {
     if (!user) {
@@ -73,15 +75,16 @@ export function AppHeader({ rightSlot, showDivider = true }: AppHeaderProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    minHeight: 46,
-  },
+function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
+  return StyleSheet.create({
+    container: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingVertical: 2,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      minHeight: 46,
+    },
   logoButton: {
     width: 64,
     height: 64,
@@ -137,9 +140,10 @@ const styles = StyleSheet.create({
   returnButtonPressed: {
     opacity: 0.85,
   },
-  returnButtonText: {
-    color: colors.surface,
-    fontWeight: '600',
-    fontSize: 12,
-  },
-});
+    returnButtonText: {
+      color: colors.surface,
+      fontWeight: '600',
+      fontSize: 12,
+    },
+  });
+}

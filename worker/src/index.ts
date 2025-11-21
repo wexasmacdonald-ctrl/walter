@@ -101,6 +101,9 @@ type SupabaseUserRow = {
   role: UserRole;
   status?: string | null;
   must_change_password?: boolean | null;
+  workspace_id?: string | null;
+  business_tier?: string | null;
+  business_name?: string | null;
 };
 
 type SupabaseInsertPayload = {
@@ -317,6 +320,18 @@ export default {
     if (request.method === 'GET' && url.pathname === '/driver/stops') {
       return requireAuth(routeContext, respond, ['driver', 'admin'], () =>
         handleDriverListStops(request, env, respond, routeContext)
+      );
+    }
+
+    if (request.method === 'GET' && url.pathname === '/dev/users') {
+      return requireAuth(routeContext, respond, ['dev'], () =>
+        handleDevListUsers(env, respond)
+      );
+    }
+
+    if (request.method === 'POST' && url.pathname === '/dev/impersonate') {
+      return requireAuth(routeContext, respond, ['dev'], () =>
+        handleDevImpersonate(request, env, respond, routeContext)
       );
     }
 
@@ -1592,6 +1607,100 @@ async function handleDriverListStops(
   }
 }
 
+async function handleDevListUsers(
+  env: Env,
+  respond: (data: unknown, status?: number) => Response
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return respond(
+      { error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' },
+      500
+    );
+  }
+
+  try {
+    const users = await listAllUsers(env);
+    const summaries = users.map((entry) => ({
+      id: entry.id,
+      fullName: entry.full_name ?? null,
+      emailOrPhone: entry.email_or_phone ?? '',
+      role: deriveUserRole(entry),
+      status: normalizeStatus(entry.status),
+      workspaceId: entry.workspace_id ?? null,
+    }));
+    return respond({ users: summaries });
+  } catch (error) {
+    console.error('Failed to list users for dev', error);
+    return respond({ error: 'USER_LIST_FAILED' }, 500);
+  }
+}
+
+async function handleDevImpersonate(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY || !env.JWT_SIGNING_KEY) {
+    return respond(
+      { error: 'CONFIG_ERROR', message: 'Supabase or JWT configuration is incomplete.' },
+      500
+    );
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const userId =
+    typeof body?.user_id === 'string' && body.user_id.trim().length > 0
+      ? body.user_id.trim()
+      : null;
+  if (!userId) {
+    return respond(
+      { error: 'INVALID_USER_ID', message: 'Provide a valid user_id to impersonate.' },
+      400
+    );
+  }
+  if (userId === context.authUser?.id) {
+    return respond({ error: 'NO_OP', message: 'Already running as this user.' }, 400);
+  }
+
+  let target: SupabaseUserRow | null = null;
+  try {
+    target = await fetchUserById(env, userId);
+  } catch (error) {
+    console.error('Failed to fetch target user for impersonation', error);
+    return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
+  }
+
+  if (!target) {
+    return respond({ error: 'USER_NOT_FOUND' }, 404);
+  }
+
+  const targetRole = deriveUserRole(target);
+  if (targetRole === 'dev') {
+    return respond(
+      { error: 'FORBIDDEN', message: 'Impersonating developer accounts is not allowed.' },
+      403
+    );
+  }
+  if (!isAllowedStatus(target.status)) {
+    return respond({ error: 'USER_INACTIVE', message: 'Target account is inactive.' }, 400);
+  }
+
+  try {
+    const session = await buildSessionPayload(target, env);
+    return respond(session);
+  } catch (error) {
+    console.error('Failed to create impersonation session', error);
+    return respond({ error: 'IMPERSONATION_FAILED' }, 500);
+  }
+}
+
 async function handleDriverStopStatusUpdate(
   request: Request,
   env: Env,
@@ -2359,6 +2468,23 @@ async function fetchDrivers(env: Env): Promise<UserSummary[]> {
 
 async function fetchAdmins(env: Env): Promise<UserSummary[]> {
   return fetchUsersByRole(env, 'admin');
+}
+
+async function listAllUsers(env: Env): Promise<SupabaseUserRow[]> {
+  const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
+  url.searchParams.set(
+    'select',
+    'id,full_name,email_or_phone,password_hash,role,status,must_change_password,workspace_id,business_tier,business_name'
+  );
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: supabaseHeaders(env),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase select users failed (${response.status}): ${errorBody}`);
+  }
+  return (await response.json()) as SupabaseUserRow[];
 }
 
 async function fetchDriverStops(env: Env, driverId: string): Promise<DriverStopView[]> {
