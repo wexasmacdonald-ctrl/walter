@@ -74,7 +74,7 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     setWorkspacesError(null);
     try {
       const list = await authApi.fetchDevWorkspaces(token);
-      setWorkspaces(list);
+      setWorkspaces(dedupeWorkspaces(list));
     } catch (error) {
       setWorkspacesError(
         getFriendlyError(error, {
@@ -216,7 +216,7 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     setNewWorkspaceInvite(null);
     try {
       const result = await authApi.createDevWorkspace(token, { name: trimmed });
-      setWorkspaces((prev) => [result.workspace, ...prev]);
+      setWorkspaces((prev) => dedupeWorkspaces([result.workspace, ...prev]));
       setNewWorkspaceName('');
       setNewWorkspaceInvite(result.invite);
       setTransferMessage(`${result.workspace.name} is ready. Start inviting your drivers.`);
@@ -457,25 +457,45 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     );
   };
 
-  const renderWorkspaceButton = (workspace: WorkspaceSummary) => (
-    <Pressable
-      key={workspace.id}
-      onPress={() => void handleOpenWorkspace(workspace)}
-      style={({ pressed }) => [
-        styles.processButton,
-        pressed && styles.processButtonPressed,
-        workspace.id === activeWorkspaceId && styles.processButtonActive,
-      ]}
-    >
-      <View style={styles.processHeader}>
-        <Text style={styles.processName}>{workspace.name}</Text>
-        <Text style={styles.processBadge}>Company</Text>
+  const renderWorkspaceButton = (workspace: WorkspaceSummary) => {
+    const deleting = deletingWorkspaceId === workspace.id;
+    return (
+      <View key={workspace.id} style={styles.processRow}>
+        <Pressable
+          onPress={() => void handleOpenWorkspace(workspace)}
+          style={({ pressed }) => [
+            styles.processButton,
+            pressed && styles.processButtonPressed,
+            workspace.id === activeWorkspaceId && styles.processButtonActive,
+          ]}
+        >
+          <View style={styles.processHeader}>
+            <Text style={styles.processName}>{workspace.name}</Text>
+            <Text style={styles.processBadge}>Company</Text>
+          </View>
+          {workspace.createdAt ? (
+            <Text style={styles.processHint}>Created {formatDate(workspace.createdAt)}</Text>
+          ) : null}
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.deleteProcessButton,
+            pressed && styles.deleteProcessButtonPressed,
+            deleting && styles.deleteProcessButtonDisabled,
+          ]}
+          disabled={deleting}
+          onPress={() => confirmDeleteWorkspace(workspace)}
+        >
+          {deleting ? (
+            <ActivityIndicator size="small" color={colors.surface} />
+          ) : (
+            <Text style={styles.deleteProcessButtonText}>Delete</Text>
+          )}
+        </Pressable>
       </View>
-      {workspace.createdAt ? (
-        <Text style={styles.processHint}>Created {formatDate(workspace.createdAt)}</Text>
-      ) : null}
-    </Pressable>
-  );
+    );
+  };
 
   const renderMenuView = () => (
     <ScrollView
@@ -884,6 +904,14 @@ function formatDate(value: string): string {
   });
 }
 
+function dedupeWorkspaces(list: WorkspaceSummary[]): WorkspaceSummary[] {
+  const seen = new Map<string, WorkspaceSummary>();
+  list.forEach((workspace) => {
+    seen.set(workspace.id, workspace);
+  });
+  return Array.from(seen.values());
+}
+
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
   return StyleSheet.create({
     screen: {
@@ -1046,6 +1074,11 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     processList: {
       gap: 12,
     },
+    processRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
     processButton: {
       borderRadius: 12,
       borderWidth: 1,
@@ -1053,6 +1086,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       padding: 16,
       backgroundColor: colors.surface,
       gap: 4,
+      flex: 1,
     },
     processButtonPressed: {
       opacity: 0.9,
@@ -1265,6 +1299,27 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     errorText: {
       color: colors.danger,
+    },
+    deleteProcessButton: {
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.danger,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      backgroundColor: colors.danger,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    deleteProcessButtonPressed: {
+      opacity: 0.85,
+    },
+    deleteProcessButtonDisabled: {
+      opacity: 0.6,
+    },
+    deleteProcessButtonText: {
+      color: colors.surface,
+      fontWeight: '600',
+      fontSize: 12,
     },
   });
 }
