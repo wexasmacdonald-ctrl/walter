@@ -44,7 +44,7 @@ export function AppHeader({ rightSlot, showDivider = true }: AppHeaderProps) {
         style={({ pressed }) => [styles.logoButton, pressed && styles.logoButtonPressed]}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <Image source={require('@/assets/images/icon.png')} style={styles.logo} />
+        <Image source={require('@/assets/images/icon.png')} style={styles.logo} resizeMode="contain" />
       </Pressable>
       <View style={styles.spacer} />
       {rightSlot ? <View style={styles.rightSlot}>{rightSlot}</View> : null}
@@ -76,7 +76,6 @@ const styles = StyleSheet.create({
   logo: {
     width: 96,
     height: 96,
-    resizeMode: 'contain',
   },
   spacer: {
     flex: 1,

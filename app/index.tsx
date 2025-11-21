@@ -319,7 +319,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
                   <View style={styles.block}>
                     <DevDriverAssignmentPanel
                       refreshSignal={refreshSignal}
-                      onAssigned={bumpRefreshSignal}
+                      onAssigned={onRefreshSignal}
                       onOpenWorkspaceDirectory={() => setDevView('workspaces')}
                     />
                   </View>
