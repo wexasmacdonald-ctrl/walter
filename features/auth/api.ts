@@ -423,6 +423,13 @@ export async function createDevWorkspace(
   };
 }
 
+export async function deleteDevWorkspace(token: string, workspaceId: string): Promise<void> {
+  await request(`/dev/workspaces/${encodeURIComponent(workspaceId)}`, {
+    token,
+    method: 'DELETE',
+  });
+}
+
 export async function updateDriverStopLocation(
   token: string,
   stopId: string,

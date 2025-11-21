@@ -45,6 +45,7 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
   const [driverActionId, setDriverActionId] = useState<string | null>(null);
   const [driverActionType, setDriverActionType] = useState<'assign' | 'remove' | null>(null);
   const [transferMessage, setTransferMessage] = useState<string | null>(null);
+  const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(null);
   const resolveWorkspaceError = useCallback((message: string) => {
     if (message.toLowerCase().includes('workspace not found')) {
       return 'Select or create a workspace before moving drivers.';
@@ -157,6 +158,7 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
       setTransferMessage(`${result.workspace.name} is ready. Start inviting your drivers.`);
       onOpenWorkspace?.();
       void loadWorkspaceDrivers(result.workspace.id);
+      void loadFreeDrivers();
     } catch (error) {
       Alert.alert(
         'Workspace not created',
@@ -241,8 +243,54 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     }
   };
 
+  const handleDeleteWorkspace = async (workspace: WorkspaceSummary) => {
+    if (!token) {
+      return;
+    }
+    setDeletingWorkspaceId(workspace.id);
+    setTransferMessage(null);
+    try {
+      await authApi.deleteDevWorkspace(token, workspace.id);
+      setWorkspaces((prev) => prev.filter((entry) => entry.id !== workspace.id));
+      if (workspace.id === selectedWorkspaceId) {
+        setSelectedWorkspaceId(null);
+        setWorkspaceDrivers([]);
+        setTransferMessage('Workspace deleted. Drivers moved to the free tier.');
+      }
+      void loadWorkspaces();
+      void loadFreeDrivers();
+    } catch (error) {
+      Alert.alert(
+        'Delete failed',
+        getFriendlyError(error, {
+          fallback: "We couldn't delete that workspace. Try again.",
+        })
+      );
+    } finally {
+      setDeletingWorkspaceId(null);
+    }
+  };
+
+  const confirmDeleteWorkspace = (workspace: WorkspaceSummary) => {
+    Alert.alert(
+      'Delete workspace?',
+      `This removes ${workspace.name} and returns every driver to the free tier.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete workspace',
+          style: 'destructive',
+          onPress: () => {
+            void handleDeleteWorkspace(workspace);
+          },
+        },
+      ]
+    );
+  };
+
   const renderWorkspaceCard = (workspace: WorkspaceSummary) => {
     const isActive = workspace.id === selectedWorkspaceId;
+    const isDeleting = deletingWorkspaceId === workspace.id;
     return (
       <Pressable
         key={workspace.id}
@@ -270,6 +318,21 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
           onPress={() => void handleSelectWorkspace(workspace, true)}
         >
           <Text style={styles.primaryButtonText}>Open workspace</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [
+            styles.dangerButton,
+            pressed && styles.dangerButtonPressed,
+            isDeleting && styles.dangerButtonDisabled,
+          ]}
+          onPress={() => confirmDeleteWorkspace(workspace)}
+          disabled={isDeleting}
+        >
+          {isDeleting ? (
+            <ActivityIndicator color={colors.surface} size="small" />
+          ) : (
+            <Text style={styles.dangerButtonText}>Delete workspace</Text>
+          )}
         </Pressable>
       </Pressable>
     );
@@ -589,6 +652,24 @@ function createStyles(
     },
     primaryButtonText: {
       color: colors.surface,
+      fontWeight: '600',
+    },
+    dangerButton: {
+      borderRadius: 12,
+      paddingVertical: 10,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.danger,
+      backgroundColor: colors.surface,
+    },
+    dangerButtonPressed: {
+      backgroundColor: colors.dangerMuted,
+    },
+    dangerButtonDisabled: {
+      opacity: 0.6,
+    },
+    dangerButtonText: {
+      color: colors.danger,
       fontWeight: '600',
     },
     secondaryButton: {

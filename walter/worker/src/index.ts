@@ -406,6 +406,12 @@ export default {
       );
     }
 
+    if (request.method === 'DELETE' && /^\/dev\/workspaces\/[^/]+$/.test(url.pathname)) {
+      return requireAuth(routeContext, respond, ['dev'], () =>
+        handleDevDeleteWorkspace(request, env, respond, routeContext)
+      );
+    }
+
     if (request.method === 'POST' && url.pathname === '/account/team-access-code') {
       return requireAuth(routeContext, respond, ['admin', 'driver'], () =>
         handleAccountJoinWorkspace(request, env, respond, routeContext)
@@ -1510,6 +1516,54 @@ async function handleDevCreateWorkspace(
   }
 }
 
+async function handleDevDeleteWorkspace(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+    return respond({ error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' }, 500);
+  }
+
+  const match = request.url.match(/\/dev\/workspaces\/([^/]+)$/);
+  const workspaceId = match?.[1] ? decodeURIComponent(match[1]) : '';
+  if (!workspaceId) {
+    return respond({ error: 'INVALID_WORKSPACE_ID', message: 'Workspace id is required.' }, 400);
+  }
+
+  let workspace: WorkspaceRow | null = null;
+  try {
+    workspace = await fetchWorkspaceById(env, workspaceId);
+  } catch (error) {
+    console.error('Failed to fetch workspace for delete', error);
+    return respond({ error: 'WORKSPACE_LOOKUP_FAILED' }, 500);
+  }
+
+  if (!workspace) {
+    return respond({ error: 'WORKSPACE_NOT_FOUND' }, 404);
+  }
+
+  try {
+    await releaseWorkspaceUsers(env, workspaceId);
+    await clearWorkspaceDriverStops(env, workspaceId);
+    await deleteWorkspaceInvites(env, workspaceId);
+    await deleteWorkspaceById(env, workspaceId);
+    return respond({
+      status: 'ok',
+      workspace: {
+        id: workspace.id,
+        name: workspace.name,
+        createdBy: workspace.created_by ?? null,
+        createdAt: workspace.created_at ?? null,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to delete workspace', error);
+    return respond({ error: 'WORKSPACE_DELETE_FAILED' }, 500);
+  }
+}
+
 async function handleDevListFreeDrivers(
   env: Env,
   respond: (data: unknown, status?: number) => Response
@@ -2591,7 +2645,6 @@ async function fetchUsersByRole(
       id: row.id,
       fullName: row.full_name,
       emailOrPhone: row.email_or_phone,
-      emailOrPhone: row.email_or_phone,
       workspaceId: row.workspace_id ?? null,
     }));
 }
@@ -2830,6 +2883,76 @@ async function createWorkspace(env: Env, name: string, createdBy: string | null)
     throw new Error('WORKSPACE_CREATE_FAILED');
   }
   return rows[0];
+}
+
+async function releaseWorkspaceUsers(env: Env, workspaceId: string): Promise<void> {
+  const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
+  url.searchParams.set('workspace_id', `eq.${workspaceId}`);
+  const response = await fetch(url.toString(), {
+    method: 'PATCH',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify({
+      workspace_id: null,
+      business_tier: 'free',
+      business_name: null,
+    }),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase release users failed (${response.status}): ${errorBody}`);
+  }
+}
+
+async function clearWorkspaceDriverStops(env: Env, workspaceId: string): Promise<void> {
+  const url = new URL('/rest/v1/driver_stops', normalizeSupabaseUrl(env.SUPABASE_URL!));
+  url.searchParams.set('workspace_id', `eq.${workspaceId}`);
+  const response = await fetch(url.toString(), {
+    method: 'PATCH',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify({ workspace_id: null }),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase release driver stops failed (${response.status}): ${errorBody}`);
+  }
+}
+
+async function deleteWorkspaceInvites(env: Env, workspaceId: string): Promise<void> {
+  const url = new URL('/rest/v1/workspace_invites', normalizeSupabaseUrl(env.SUPABASE_URL!));
+  url.searchParams.set('workspace_id', `eq.${workspaceId}`);
+  const response = await fetch(url.toString(), {
+    method: 'DELETE',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=minimal',
+    },
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase delete invites failed (${response.status}): ${errorBody}`);
+  }
+}
+
+async function deleteWorkspaceById(env: Env, workspaceId: string): Promise<void> {
+  const url = new URL(`/rest/v1/${WORKSPACE_TABLE}`, normalizeSupabaseUrl(env.SUPABASE_URL!));
+  url.searchParams.set('id', `eq.${workspaceId}`);
+  const response = await fetch(url.toString(), {
+    method: 'DELETE',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=minimal',
+    },
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase delete workspace failed (${response.status}): ${errorBody}`);
+  }
 }
 
 async function fetchWorkspaceInvites(
