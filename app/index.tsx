@@ -20,6 +20,7 @@ import { AdminDriverManager } from '@/features/admin/AdminDriverManager';
 import { AdminDriverDetail } from '@/features/admin/AdminDriverDetail';
 import { AdminTeamList } from '@/features/admin/AdminTeamList';
 import { DevWorkspaceDirectory } from '@/features/admin/DevWorkspaceDirectory';
+import { WorkspaceInviteShareCard } from '@/features/admin/WorkspaceInviteShareCard';
 import { DriverStopsPanel } from '@/features/driver/DriverStopsPanel';
 import type { UserRole } from '@/features/auth/types';
 import { SettingsMenu } from '@/components/SettingsMenu';
@@ -203,7 +204,6 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
       onUpdateProfile={updateProfile}
       onVerifyPassword={verifyPassword}
       onApplyTeamAccessCode={applyTeamAccessCode}
-      onOpenWorkspaceConsole={isDevUser ? () => setDevView('workspaces') : undefined}
     />
   );
 
@@ -314,6 +314,11 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
               </View>
             ) : (
               <>
+                {!isDevUser ? (
+                  <View style={styles.block}>
+                    <WorkspaceInviteShareCard />
+                  </View>
+                ) : null}
                 <View style={styles.block}>
                   <Pressable
                     accessibilityRole='button'

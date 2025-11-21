@@ -22,7 +22,6 @@ type AdminCreateUserCardProps = {
 };
 
 const ROLE_OPTIONS: Array<{ label: string; value: UserRole }> = [
-  { label: 'Driver', value: 'driver' },
   { label: 'Admin', value: 'admin' },
   { label: 'Developer', value: 'dev' },
 ];
@@ -35,7 +34,7 @@ export function AdminCreateUserCard({ onUserCreated }: AdminCreateUserCardProps)
   const onPrimary = isDark ? colors.background : colors.surface;
   const [fullName, setFullName] = useState('');
   const [emailOrPhone, setEmailOrPhone] = useState('');
-  const [role, setRole] = useState<UserRole>('driver');
+  const [role, setRole] = useState<UserRole>('admin');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
@@ -62,7 +61,7 @@ export function AdminCreateUserCard({ onUserCreated }: AdminCreateUserCardProps)
   const resetForm = () => {
     setFullName('');
     setEmailOrPhone('');
-    setRole('driver');
+    setRole('admin');
   };
 
   const shareMessage = async (payload?: CredentialSharePayload) => {
@@ -151,8 +150,8 @@ export function AdminCreateUserCard({ onUserCreated }: AdminCreateUserCardProps)
     <View style={styles.card}>
       <Text style={styles.title}>Create login</Text>
       <Text style={styles.subtitle}>
-        Generate credentials for a driver or another admin. Share the temporary password right away—
-        they can change it later.
+        Generate credentials for another admin or developer. Drivers should join with your company
+        invite code instead of getting a manual login.
       </Text>
       <View style={styles.fieldGroup}>
         <Text style={styles.label}>Name</Text>
@@ -199,11 +198,9 @@ export function AdminCreateUserCard({ onUserCreated }: AdminCreateUserCardProps)
           ))}
         </View>
         <Text style={styles.roleHint}>
-          {role === 'driver'
-            ? 'Drivers can only see their assigned stops.'
-            : role === 'admin'
-              ? 'Admins can manage drivers, addresses, and credentials.'
-              : 'Developers get admin powers but stay hidden from the admin roster.'}
+          {role === 'admin'
+            ? 'Admins can manage drivers, addresses, and credentials.'
+            : 'Developers get admin powers but stay hidden from the admin roster.'}
         </Text>
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}

@@ -20,28 +20,34 @@ type DevWorkspaceDirectoryProps = {
   onOpenWorkspace?: () => void;
 };
 
+type DirectoryView = 'menu' | 'workspace' | 'free-tier';
+
 export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectoryProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
-  const {
-    token,
-    workspaceId,
-    selectWorkspace,
-    adminUpdateUserProfile,
-  } = useAuth();
+  const { token, workspaceId, selectWorkspace, adminUpdateUserProfile } = useAuth();
+  const [view, setView] = useState<DirectoryView>('menu');
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [workspacesLoading, setWorkspacesLoading] = useState(false);
   const [workspacesError, setWorkspacesError] = useState<string | null>(null);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [creatingWorkspace, setCreatingWorkspace] = useState(false);
   const [newWorkspaceInvite, setNewWorkspaceInvite] = useState<WorkspaceInvite | null>(null);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(workspaceId ?? null);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(workspaceId ?? null);
   const [workspaceDrivers, setWorkspaceDrivers] = useState<DriverSummary[]>([]);
   const [workspaceDriversLoading, setWorkspaceDriversLoading] = useState(false);
   const [workspaceDriversError, setWorkspaceDriversError] = useState<string | null>(null);
   const [freeDrivers, setFreeDrivers] = useState<DriverSummary[]>([]);
   const [freeDriversLoading, setFreeDriversLoading] = useState(false);
   const [freeDriversError, setFreeDriversError] = useState<string | null>(null);
+  const [freeTierTargetId, setFreeTierTargetId] = useState<string | null>(null);
+  const [invites, setInvites] = useState<WorkspaceInvite[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [invitesError, setInvitesError] = useState<string | null>(null);
+  const [inviteLabel, setInviteLabel] = useState('');
+  const [inviteMaxUses, setInviteMaxUses] = useState('');
+  const [inviteExpiresAt, setInviteExpiresAt] = useState('');
+  const [inviteProcessing, setInviteProcessing] = useState(false);
   const [driverActionId, setDriverActionId] = useState<string | null>(null);
   const [driverActionType, setDriverActionType] = useState<'assign' | 'remove' | null>(null);
   const [transferMessage, setTransferMessage] = useState<string | null>(null);
@@ -54,11 +60,11 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
   }, []);
 
   useEffect(() => {
-    setSelectedWorkspaceId(workspaceId ?? null);
+    setActiveWorkspaceId(workspaceId ?? null);
   }, [workspaceId]);
 
-  const selectedWorkspace =
-    workspaces.find((entry) => entry.id === selectedWorkspaceId) ?? null;
+  const activeWorkspace =
+    workspaces.find((entry) => entry.id === activeWorkspaceId) ?? null;
 
   const loadWorkspaces = useCallback(async () => {
     if (!token) {
@@ -125,36 +131,77 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     }
   }, [token]);
 
+  const loadWorkspaceInvites = useCallback(
+    async (workspaceToLoad: string | null) => {
+      if (!token || !workspaceToLoad) {
+        setInvites([]);
+        setInvitesError(null);
+        return;
+      }
+      setInvitesLoading(true);
+      setInvitesError(null);
+      try {
+        const list = await authApi.getWorkspaceInvites(token, workspaceToLoad);
+        setInvites(list);
+      } catch (error) {
+        setInvitesError(
+          error instanceof Error
+            ? error.message
+            : "We couldn't load invite codes. Try again."
+        );
+      } finally {
+        setInvitesLoading(false);
+      }
+    },
+    [token]
+  );
+
   useEffect(() => {
     void loadWorkspaces();
   }, [loadWorkspaces]);
 
   useEffect(() => {
-    void loadWorkspaceDrivers(selectedWorkspaceId);
-  }, [loadWorkspaceDrivers, selectedWorkspaceId]);
+    void loadWorkspaceDrivers(activeWorkspaceId);
+  }, [loadWorkspaceDrivers, activeWorkspaceId]);
 
   useEffect(() => {
     void loadFreeDrivers();
   }, [loadFreeDrivers]);
 
   useEffect(() => {
-    if (!token) {
+    void loadWorkspaceInvites(activeWorkspaceId);
+  }, [loadWorkspaceInvites, activeWorkspaceId]);
+
+  useEffect(() => {
+    if (!token || workspaces.length === 0) {
       return;
     }
-    if (selectedWorkspaceId || workspaces.length === 0) {
+    if (activeWorkspaceId && workspaces.some((entry) => entry.id === activeWorkspaceId)) {
       return;
     }
-    const defaultWorkspace = workspaces[0];
-    setSelectedWorkspaceId(defaultWorkspace.id);
-    void selectWorkspace(defaultWorkspace.id);
-    void loadWorkspaceDrivers(defaultWorkspace.id);
-  }, [
-    token,
-    selectedWorkspaceId,
-    workspaces,
-    selectWorkspace,
-    loadWorkspaceDrivers,
-  ]);
+    const fallback = workspaces[0];
+    setActiveWorkspaceId(fallback.id);
+    void selectWorkspace(fallback.id);
+  }, [token, workspaces, activeWorkspaceId, selectWorkspace]);
+
+  useEffect(() => {
+    if (workspaces.length === 0) {
+      setFreeTierTargetId(null);
+      return;
+    }
+    if (freeTierTargetId && workspaces.some((entry) => entry.id === freeTierTargetId)) {
+      return;
+    }
+    setFreeTierTargetId(workspaces[0].id);
+  }, [workspaces, freeTierTargetId]);
+
+  const focusWorkspace = useCallback(
+    async (workspaceToSelect: string | null) => {
+      await selectWorkspace(workspaceToSelect);
+      setActiveWorkspaceId(workspaceToSelect);
+    },
+    [selectWorkspace]
+  );
 
   const handleCreateWorkspace = async () => {
     if (!token || creatingWorkspace) {
@@ -172,10 +219,10 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
       setWorkspaces((prev) => [result.workspace, ...prev]);
       setNewWorkspaceName('');
       setNewWorkspaceInvite(result.invite);
-      await selectWorkspace(result.workspace.id);
-      setSelectedWorkspaceId(result.workspace.id);
       setTransferMessage(`${result.workspace.name} is ready. Start inviting your drivers.`);
-      onOpenWorkspace?.();
+      setView('workspace');
+      setFreeTierTargetId(result.workspace.id);
+      await focusWorkspace(result.workspace.id);
       void loadWorkspaceDrivers(result.workspace.id);
       void loadFreeDrivers();
     } catch (error) {
@@ -190,17 +237,33 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     }
   };
 
-  const handleSelectWorkspace = async (workspace: WorkspaceSummary, openAfterSelect: boolean) => {
-    await selectWorkspace(workspace.id);
-    setSelectedWorkspaceId(workspace.id);
+  const handleOpenWorkspace = async (workspace: WorkspaceSummary) => {
+    await focusWorkspace(workspace.id);
     setTransferMessage(null);
-    if (openAfterSelect) {
-      onOpenWorkspace?.();
+    setView('workspace');
+  };
+
+  const handleBackToDirectory = () => {
+    setView('menu');
+    setTransferMessage(null);
+  };
+
+  const handleOpenFreeTier = () => {
+    setView('free-tier');
+    setTransferMessage(null);
+  };
+
+  const handleOpenWorkspaceOps = async () => {
+    if (!activeWorkspace) {
+      Alert.alert('Pick a company', 'Select a workspace before opening driver tools.');
+      return;
     }
+    await focusWorkspace(activeWorkspace.id);
+    onOpenWorkspace?.();
   };
 
   const handleRemoveDriver = async (driver: DriverSummary) => {
-    if (!selectedWorkspaceId) {
+    if (!activeWorkspaceId) {
       return;
     }
     setDriverActionId(driver.id);
@@ -209,7 +272,7 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     try {
       await adminUpdateUserProfile(driver.id, { workspaceId: null });
       await Promise.allSettled([
-        loadWorkspaceDrivers(selectedWorkspaceId),
+        loadWorkspaceDrivers(activeWorkspaceId),
         loadFreeDrivers(),
       ]);
       setTransferMessage(
@@ -230,22 +293,25 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     }
   };
 
-  const handleAssignDriver = async (driver: DriverSummary) => {
-    if (!selectedWorkspaceId) {
+  const handleAssignDriver = async (driver: DriverSummary, destinationId?: string | null) => {
+    const targetId = destinationId ?? activeWorkspaceId;
+    if (!targetId) {
       Alert.alert('Pick a workspace', 'Select a company before assigning drivers.');
       return;
     }
+    const targetWorkspace =
+      workspaces.find((entry) => entry.id === targetId) ?? activeWorkspace;
     setDriverActionId(driver.id);
     setDriverActionType('assign');
     setTransferMessage(null);
     try {
-      await adminUpdateUserProfile(driver.id, { workspaceId: selectedWorkspaceId });
-      await Promise.allSettled([
-        loadWorkspaceDrivers(selectedWorkspaceId),
-        loadFreeDrivers(),
-      ]);
+      await adminUpdateUserProfile(driver.id, { workspaceId: targetId });
+      if (targetId === activeWorkspaceId) {
+        await loadWorkspaceDrivers(targetId);
+      }
+      await loadFreeDrivers();
       setTransferMessage(
-        `${driver.fullName ?? driver.emailOrPhone} joined ${selectedWorkspace?.name ?? 'the workspace'}.`
+        `${driver.fullName ?? driver.emailOrPhone} joined ${targetWorkspace?.name ?? 'the workspace'}.`
       );
     } catch (error) {
       Alert.alert(
@@ -271,9 +337,11 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     try {
       await authApi.deleteDevWorkspace(token, workspace.id);
       setWorkspaces((prev) => prev.filter((entry) => entry.id !== workspace.id));
-      if (workspace.id === selectedWorkspaceId) {
-        setSelectedWorkspaceId(null);
+      if (workspace.id === activeWorkspaceId) {
+        setActiveWorkspaceId(null);
         setWorkspaceDrivers([]);
+        setInvites([]);
+        setView('menu');
         setTransferMessage('Workspace deleted. Drivers moved to the free tier.');
       }
       void loadWorkspaces();
@@ -307,69 +375,63 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     );
   };
 
-  const renderWorkspaceCard = (workspace: WorkspaceSummary) => {
-    const isActive = workspace.id === selectedWorkspaceId;
-    const isDeleting = deletingWorkspaceId === workspace.id;
-    return (
-      <Pressable
-        key={workspace.id}
-        style={({ pressed }) => [
-          styles.workspaceCard,
-          isActive && styles.workspaceCardActive,
-          pressed && styles.workspaceCardPressed,
-        ]}
-        onPress={() => void handleSelectWorkspace(workspace, false)}
-      >
-        <View style={styles.workspaceHeader}>
-          <View>
-            <Text style={styles.workspaceName}>{workspace.name}</Text>
-            {workspace.createdAt ? (
-              <Text style={styles.workspaceSub}>Created {formatDate(workspace.createdAt)}</Text>
-            ) : null}
-          </View>
-          {isActive ? <Text style={styles.workspaceBadge}>Active</Text> : null}
-        </View>
-        <Pressable
-          style={({ pressed }) => [
-            styles.primaryButton,
-            pressed && styles.primaryButtonPressed,
-          ]}
-          onPress={() => void handleSelectWorkspace(workspace, true)}
-        >
-          <Text style={styles.primaryButtonText}>Open workspace</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [
-            styles.dangerButton,
-            pressed && styles.dangerButtonPressed,
-            isDeleting && styles.dangerButtonDisabled,
-          ]}
-          onPress={() => confirmDeleteWorkspace(workspace)}
-          disabled={isDeleting}
-        >
-          {isDeleting ? (
-            <ActivityIndicator color={colors.surface} size="small" />
-          ) : (
-            <Text style={styles.dangerButtonText}>Delete workspace</Text>
-          )}
-        </Pressable>
-      </Pressable>
-    );
+  const handleCreateInvite = async () => {
+    if (!token || !activeWorkspaceId || inviteProcessing) {
+      return;
+    }
+    const trimmedLabel = inviteLabel.trim();
+    const trimmedMaxUses = inviteMaxUses.trim();
+    const trimmedExpires = inviteExpiresAt.trim();
+    let parsedMax: number | null = null;
+    if (trimmedMaxUses.length > 0) {
+      parsedMax = Number.parseInt(trimmedMaxUses, 10);
+      if (!parsedMax || parsedMax <= 0) {
+        setInvitesError('Max uses must be a positive number.');
+        return;
+      }
+    }
+    setInviteProcessing(true);
+    setInvitesError(null);
+    try {
+      const invite = await authApi.createWorkspaceInviteCode(token, activeWorkspaceId, {
+        label: trimmedLabel || null,
+        maxUses: parsedMax,
+        expiresAt: trimmedExpires || null,
+      });
+      setInvites((prev) => [invite, ...prev]);
+      setInviteLabel('');
+      setInviteMaxUses('');
+      setInviteExpiresAt('');
+    } catch (error) {
+      setInvitesError(
+        error instanceof Error ? error.message : 'Failed to create invite code. Try again.'
+      );
+    } finally {
+      setInviteProcessing(false);
+    }
   };
 
   const renderDriverRow = (
     driver: DriverSummary,
     action: 'assign' | 'remove',
-    disabled: boolean
+    disabled: boolean,
+    destinationId?: string | null
   ) => {
     const busy = driverActionId === driver.id && driverActionType === action;
+    const destinationWorkspace =
+      destinationId && action === 'assign'
+        ? workspaces.find((entry) => entry.id === destinationId)
+        : activeWorkspace;
     const label =
       action === 'assign'
-        ? `Add to ${selectedWorkspace?.name ?? 'workspace'}`
+        ? destinationWorkspace
+          ? `Add to ${destinationWorkspace.name}`
+          : 'Add to workspace'
         : 'Move to free tier';
-    const onPress = action === 'assign'
-      ? () => void handleAssignDriver(driver)
-      : () => void handleRemoveDriver(driver);
+    const onPress =
+      action === 'assign'
+        ? () => void handleAssignDriver(driver, destinationId)
+        : () => void handleRemoveDriver(driver);
     return (
       <View key={driver.id} style={styles.driverRow}>
         <View style={styles.driverInfo}>
@@ -395,17 +457,36 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     );
   };
 
-  return (
+  const renderWorkspaceButton = (workspace: WorkspaceSummary) => (
+    <Pressable
+      key={workspace.id}
+      onPress={() => void handleOpenWorkspace(workspace)}
+      style={({ pressed }) => [
+        styles.processButton,
+        pressed && styles.processButtonPressed,
+        workspace.id === activeWorkspaceId && styles.processButtonActive,
+      ]}
+    >
+      <View style={styles.processHeader}>
+        <Text style={styles.processName}>{workspace.name}</Text>
+        <Text style={styles.processBadge}>Company</Text>
+      </View>
+      {workspace.createdAt ? (
+        <Text style={styles.processHint}>Created {formatDate(workspace.createdAt)}</Text>
+      ) : null}
+    </Pressable>
+  );
+
+  const renderMenuView = () => (
     <ScrollView
       style={[styles.screen, { backgroundColor: colors.background }]}
       contentContainerStyle={[styles.container, { backgroundColor: colors.background }]}
-      keyboardShouldPersistTaps="handled"
     >
       <View style={styles.heroCard}>
         <Text style={styles.heroTitle}>Workspace directory</Text>
         <Text style={styles.heroBody}>
-          Create polished companies, share invite codes, and move drivers between teams without
-          leaving this console.
+          Pick a process to open a full-page console. Every company and the free tier has its own
+          button so you always see the whole story.
         </Text>
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
@@ -422,8 +503,8 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Create a new workspace</Text>
         <Text style={styles.cardBody}>
-          Launch a ready-to-use company profile with a single click. The first invite code is
-          generated automatically so you can onboard drivers right away.
+          Launch a ready-to-use company profile with a single click. A shareable invite code appears
+          instantly so dispatchers can join the team.
         </Text>
         <View style={styles.formField}>
           <Text style={styles.formLabel}>Workspace name</Text>
@@ -463,48 +544,194 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
 
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>Companies</Text>
+          <Text style={styles.cardTitle}>Processes</Text>
           <Pressable
             style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}
             onPress={() => void loadWorkspaces()}
           >
-            <Text style={styles.linkButtonText}>Refresh list</Text>
+            <Text style={styles.linkButtonText}>Refresh companies</Text>
           </Pressable>
         </View>
-        {workspacesError ? <Text style={styles.errorText}>{workspacesError}</Text> : null}
-        {workspacesLoading ? (
-          <View style={styles.loaderRow}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={styles.loaderText}>Loading workspaces...</Text>
-          </View>
-        ) : workspaces.length === 0 ? (
-          <Text style={styles.emptyText}>No workspaces yet. Create one above.</Text>
-        ) : (
-          <View style={styles.workspaceGrid}>
-            {workspaces.map((workspace) => renderWorkspaceCard(workspace))}
-          </View>
-        )}
+        <Text style={styles.cardBody}>
+          Buttons appear under each other so nothing is hidden. Select the view you want to manage.
+        </Text>
+        <View style={styles.processList}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.processButton,
+              pressed && styles.processButtonPressed,
+              view === 'free-tier' && styles.processButtonActive,
+            ]}
+            onPress={handleOpenFreeTier}
+          >
+            <View style={styles.processHeader}>
+              <Text style={styles.processName}>Free tier users</Text>
+              <Text style={styles.processBadge}>Roster</Text>
+            </View>
+            {freeDriversLoading ? (
+              <Text style={styles.processHint}>Loading driver count...</Text>
+            ) : (
+              <Text style={styles.processHint}>
+                {freeDrivers.length === 0
+                  ? 'No drivers waiting right now.'
+                  : `${freeDrivers.length} driver${freeDrivers.length === 1 ? '' : 's'} waiting.`}
+              </Text>
+            )}
+          </Pressable>
+          {workspacesError ? <Text style={styles.errorText}>{workspacesError}</Text> : null}
+          {workspacesLoading ? (
+            <View style={styles.loaderRow}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={styles.loaderText}>Loading workspaces...</Text>
+            </View>
+          ) : workspaces.length === 0 ? (
+            <Text style={styles.emptyText}>No companies yet. Create your first workspace above.</Text>
+          ) : (
+            workspaces.map(renderWorkspaceButton)
+          )}
+        </View>
+      </View>
+    </ScrollView>
+  );
+
+  const renderWorkspaceView = () => (
+    <ScrollView
+      style={[styles.screen, { backgroundColor: colors.background }]}
+      contentContainerStyle={[styles.container, { backgroundColor: colors.background }]}
+    >
+      <View style={styles.detailCard}>
+        <Pressable
+          style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
+          onPress={handleBackToDirectory}
+        >
+          <Text style={styles.backButtonText}>← Back to directory</Text>
+        </Pressable>
+        <Text style={styles.detailTitle}>{activeWorkspace?.name ?? 'Select a company'}</Text>
+        {activeWorkspace?.createdAt ? (
+          <Text style={styles.detailSub}>Created {formatDate(activeWorkspace.createdAt)}</Text>
+        ) : null}
+        {transferMessage ? <Text style={styles.successText}>{transferMessage}</Text> : null}
+        <View style={styles.detailActions}>
+          <Pressable
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+            onPress={handleOpenFreeTier}
+          >
+            <Text style={styles.secondaryButtonText}>Free tier roster</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
+            onPress={handleOpenWorkspaceOps}
+          >
+            <Text style={styles.primaryButtonText}>Open driver ops</Text>
+          </Pressable>
+        </View>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Driver transfers</Text>
-        <Text style={styles.cardBody}>
-          Select a company to review its driver list, remove inactive accounts, or promote free-tier
-          drivers into the team.
-        </Text>
-        {transferMessage ? <Text style={styles.successText}>{transferMessage}</Text> : null}
-        <View style={styles.transferColumns}>
-          <View style={styles.transferColumn}>
-            <View style={styles.columnHeader}>
-              <Text style={styles.columnTitle}>
-                {selectedWorkspace?.name ?? 'Select a workspace'}
-              </Text>
-              {selectedWorkspace ? (
-                <Text style={styles.columnSub}>Driver roster</Text>
+      {activeWorkspace ? (
+        <>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Invite codes</Text>
+            <Text style={styles.cardBody}>
+              Share single-use or multi-use codes with dispatchers. Each code unlocks the business
+              tier automatically.
+            </Text>
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Label (optional)</Text>
+              <TextInput
+                style={styles.formInput}
+                placeholder="e.g. East hub"
+                placeholderTextColor={colors.mutedText}
+                value={inviteLabel}
+                onChangeText={setInviteLabel}
+              />
+            </View>
+            <View style={styles.formRow}>
+              <View style={[styles.formField, styles.formHalf]}>
+                <Text style={styles.formLabel}>Max uses</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="Unlimited"
+                  placeholderTextColor={colors.mutedText}
+                  value={inviteMaxUses}
+                  onChangeText={setInviteMaxUses}
+                  keyboardType="number-pad"
+                />
+              </View>
+              <View style={[styles.formField, styles.formHalf]}>
+                <Text style={styles.formLabel}>Expires at</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={colors.mutedText}
+                  value={inviteExpiresAt}
+                  onChangeText={setInviteExpiresAt}
+                />
+              </View>
+            </View>
+            {invitesError ? <Text style={styles.errorText}>{invitesError}</Text> : null}
+            <Pressable
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && styles.primaryButtonPressed,
+                inviteProcessing && styles.primaryButtonDisabled,
+              ]}
+              onPress={handleCreateInvite}
+              disabled={inviteProcessing}
+            >
+              {inviteProcessing ? (
+                <ActivityIndicator color={colors.surface} />
               ) : (
-                <Text style={styles.columnSub}>Pick a company above to manage</Text>
+                <Text style={styles.primaryButtonText}>Create invite</Text>
+              )}
+            </Pressable>
+            <View style={styles.inviteList}>
+              {invitesLoading ? (
+                <View style={styles.loaderRow}>
+                  <ActivityIndicator color={colors.primary} />
+                  <Text style={styles.loaderText}>Loading invites…</Text>
+                </View>
+              ) : invites.length === 0 ? (
+                <Text style={styles.cardBody}>No invites yet. Create your first code above.</Text>
+              ) : (
+                invites.map((invite) => (
+                  <View key={invite.id} style={styles.inviteRow}>
+                    <View style={styles.inviteRowHeader}>
+                      <Text style={styles.inviteCode}>{invite.code}</Text>
+                      <Text style={styles.inviteUses}>
+                        {invite.maxUses
+                          ? `${invite.uses}/${invite.maxUses}`
+                          : `${invite.uses} use${invite.uses === 1 ? '' : 's'}`}
+                      </Text>
+                    </View>
+                    {invite.label ? (
+                      <Text style={styles.inviteLabel}>{invite.label}</Text>
+                    ) : null}
+                    {invite.expiresAt ? (
+                      <Text style={styles.inviteExpire}>
+                        Expires {new Date(invite.expiresAt).toLocaleString()}
+                      </Text>
+                    ) : (
+                      <Text style={styles.inviteExpire}>No expiry</Text>
+                    )}
+                  </View>
+                ))
               )}
             </View>
+          </View>
+
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardTitle}>Driver roster</Text>
+              <Pressable
+                style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}
+                onPress={() => void loadWorkspaceDrivers(activeWorkspace.id)}
+              >
+                <Text style={styles.linkButtonText}>Refresh roster</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.cardBody}>
+              Everyone currently assigned to {activeWorkspace.name}.
+            </Text>
             {workspaceDriversError ? (
               <Text style={styles.errorText}>{workspaceDriversError}</Text>
             ) : workspaceDriversLoading ? (
@@ -514,42 +741,135 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
               </View>
             ) : workspaceDrivers.length === 0 ? (
               <Text style={styles.emptyText}>
-                {selectedWorkspace
-                  ? 'No drivers yet. Invite a team member to populate this list.'
-                  : 'Select a workspace to see its roster.'}
+                No drivers yet. Jump to the free tier to assign your first user.
               </Text>
             ) : (
-              workspaceDrivers.map((driver) =>
-                renderDriverRow(driver, 'remove', !selectedWorkspaceId)
-              )
+              workspaceDrivers.map((driver) => renderDriverRow(driver, 'remove', false))
             )}
           </View>
-          <View style={styles.transferColumn}>
-            <View style={styles.columnHeader}>
-              <Text style={styles.columnTitle}>Free tier</Text>
-              <Text style={styles.columnSub}>Ready to assign</Text>
-            </View>
-            {freeDriversError ? (
-              <Text style={styles.errorText}>{freeDriversError}</Text>
-            ) : freeDriversLoading ? (
-              <View style={styles.loaderRow}>
-                <ActivityIndicator color={colors.primary} />
-                <Text style={styles.loaderText}>Loading free-tier drivers...</Text>
-              </View>
-            ) : freeDrivers.length === 0 ? (
-              <Text style={styles.emptyText}>
-                Every driver currently belongs to a workspace.
-              </Text>
-            ) : (
-              freeDrivers.map((driver) =>
-                renderDriverRow(driver, 'assign', !selectedWorkspaceId)
-              )
-            )}
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Danger zone</Text>
+            <Text style={styles.cardBody}>
+              Deleting a workspace moves every driver back to the free tier immediately.
+            </Text>
+            <Pressable
+              style={({ pressed }) => [
+                styles.dangerButton,
+                pressed && styles.dangerButtonPressed,
+                deletingWorkspaceId === activeWorkspace.id && styles.dangerButtonDisabled,
+              ]}
+              onPress={() => confirmDeleteWorkspace(activeWorkspace)}
+              disabled={deletingWorkspaceId === activeWorkspace.id}
+            >
+              {deletingWorkspaceId === activeWorkspace.id ? (
+                <ActivityIndicator color={colors.surface} size="small" />
+              ) : (
+                <Text style={styles.dangerButtonText}>Delete workspace</Text>
+              )}
+            </Pressable>
           </View>
+        </>
+      ) : (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Select a company</Text>
+          <Text style={styles.cardBody}>
+            Choose a workspace from the directory to see its drivers and invite codes.
+          </Text>
+          <Pressable
+            style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
+            onPress={handleBackToDirectory}
+          >
+            <Text style={styles.primaryButtonText}>Open directory</Text>
+          </Pressable>
         </View>
+      )}
+    </ScrollView>
+  );
+
+  const renderFreeTierView = () => (
+    <ScrollView
+      style={[styles.screen, { backgroundColor: colors.background }]}
+      contentContainerStyle={[styles.container, { backgroundColor: colors.background }]}
+    >
+      <View style={styles.detailCard}>
+        <Pressable
+          style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
+          onPress={handleBackToDirectory}
+        >
+          <Text style={styles.backButtonText}>← Back to directory</Text>
+        </Pressable>
+        <Text style={styles.detailTitle}>Free tier users</Text>
+        <Text style={styles.detailSub}>Drivers waiting for a company assignment.</Text>
+        {transferMessage ? <Text style={styles.successText}>{transferMessage}</Text> : null}
+        <View style={styles.formField}>
+          <Text style={styles.formLabel}>Assign drivers to</Text>
+          {workspaces.length === 0 ? (
+            <Text style={styles.emptyText}>Create a workspace before assigning drivers.</Text>
+          ) : (
+            <View style={styles.targetList}>
+              {workspaces.map((workspace) => (
+                <Pressable
+                  key={workspace.id}
+                  style={({ pressed }) => [
+                    styles.targetButton,
+                    pressed && styles.targetButtonPressed,
+                    freeTierTargetId === workspace.id && styles.targetButtonActive,
+                  ]}
+                  onPress={() => setFreeTierTargetId(workspace.id)}
+                >
+                  <Text
+                    style={[
+                      styles.targetButtonText,
+                      freeTierTargetId === workspace.id && styles.targetButtonTextActive,
+                    ]}
+                  >
+                    {workspace.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle}>Unassigned drivers</Text>
+          <Pressable
+            style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}
+            onPress={() => void loadFreeDrivers()}
+          >
+            <Text style={styles.linkButtonText}>Refresh list</Text>
+          </Pressable>
+        </View>
+        {freeDriversError ? (
+          <Text style={styles.errorText}>{freeDriversError}</Text>
+        ) : freeDriversLoading ? (
+          <View style={styles.loaderRow}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={styles.loaderText}>Loading free-tier drivers...</Text>
+          </View>
+        ) : freeDrivers.length === 0 ? (
+          <Text style={styles.emptyText}>
+            Every driver currently belongs to a workspace.
+          </Text>
+        ) : (
+          freeDrivers.map((driver) =>
+            renderDriverRow(driver, 'assign', !freeTierTargetId, freeTierTargetId)
+          )
+        )}
       </View>
     </ScrollView>
   );
+
+  if (view === 'workspace') {
+    return renderWorkspaceView();
+  }
+  if (view === 'free-tier') {
+    return renderFreeTierView();
+  }
+  return renderMenuView();
 }
 
 function formatDate(value: string): string {
@@ -564,10 +884,7 @@ function formatDate(value: string): string {
   });
 }
 
-function createStyles(
-  colors: ReturnType<typeof useTheme>['colors'],
-  isDark: boolean
-) {
+function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
   return StyleSheet.create({
     screen: {
       flex: 1,
@@ -620,12 +937,12 @@ function createStyles(
       letterSpacing: 0.8,
     },
     card: {
-      borderRadius: 16,
+      borderRadius: 14,
       borderWidth: 1,
       borderColor: colors.border,
-      backgroundColor: colors.surface,
-      padding: 24,
+      padding: 16,
       gap: 16,
+      backgroundColor: colors.surface,
     },
     cardHeader: {
       flexDirection: 'row',
@@ -633,8 +950,8 @@ function createStyles(
       justifyContent: 'space-between',
     },
     cardTitle: {
-      fontSize: 20,
       fontWeight: '600',
+      fontSize: 18,
       color: colors.text,
     },
     cardBody: {
@@ -644,9 +961,26 @@ function createStyles(
     formField: {
       gap: 8,
     },
+    formRow: {
+      flexDirection: 'row',
+      gap: 12,
+    },
+    formHalf: {
+      flex: 1,
+    },
     formLabel: {
-      fontWeight: '600',
       color: colors.text,
+      fontWeight: '600',
+    },
+    formInput: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      fontSize: 15,
+      color: colors.text,
+      backgroundColor: colors.surface,
     },
     textInput: {
       borderRadius: 10,
@@ -654,14 +988,16 @@ function createStyles(
       borderColor: colors.border,
       paddingHorizontal: 14,
       paddingVertical: 10,
+      fontSize: 16,
       color: colors.text,
       backgroundColor: colors.surface,
     },
     primaryButton: {
-      borderRadius: 12,
+      borderRadius: 10,
       paddingVertical: 12,
-      alignItems: 'center',
+      paddingHorizontal: 16,
       backgroundColor: colors.primary,
+      alignItems: 'center',
     },
     primaryButtonPressed: {
       opacity: 0.9,
@@ -673,114 +1009,79 @@ function createStyles(
       color: colors.surface,
       fontWeight: '600',
     },
-    dangerButton: {
-      borderRadius: 12,
-      paddingVertical: 10,
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: colors.danger,
-      backgroundColor: colors.surface,
-    },
-    dangerButtonPressed: {
-      backgroundColor: colors.dangerMuted,
-    },
-    dangerButtonDisabled: {
-      opacity: 0.6,
-    },
-    dangerButtonText: {
-      color: colors.danger,
-      fontWeight: '600',
-    },
     secondaryButton: {
-      borderRadius: 12,
-      paddingVertical: 10,
-      paddingHorizontal: 16,
+      borderRadius: 10,
       borderWidth: 1,
       borderColor: colors.border,
-      backgroundColor: colors.surface,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
     },
     secondaryButtonPressed: {
-      opacity: 0.85,
+      opacity: 0.9,
     },
     secondaryButtonText: {
       color: colors.text,
       fontWeight: '600',
     },
     inviteCard: {
+      gap: 4,
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.border,
       padding: 16,
-      gap: 4,
-      backgroundColor: colors.surface,
+      backgroundColor: isDark ? '#1e293b' : '#eff6ff',
     },
     inviteHint: {
-      fontSize: 12,
       color: colors.mutedText,
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
+      fontSize: 12,
     },
     inviteCode: {
-      fontSize: 24,
+      fontSize: 22,
       fontWeight: '700',
-      color: colors.primary,
+      color: colors.text,
     },
     inviteCaption: {
       color: colors.mutedText,
     },
-    linkButton: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 999,
-      backgroundColor: colors.primary,
+    processList: {
+      gap: 12,
     },
-    linkButtonPressed: {
-      opacity: 0.9,
-    },
-    linkButtonText: {
-      color: colors.surface,
-      fontWeight: '600',
-      fontSize: 12,
-    },
-    workspaceGrid: {
-      gap: 16,
-    },
-    workspaceCard: {
-      borderRadius: 14,
+    processButton: {
+      borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.border,
       padding: 16,
-      gap: 16,
       backgroundColor: colors.surface,
+      gap: 4,
     },
-    workspaceCardActive: {
-      borderColor: colors.primary,
-    },
-    workspaceCardPressed: {
+    processButtonPressed: {
       opacity: 0.9,
     },
-    workspaceHeader: {
+    processButtonActive: {
+      borderColor: colors.primary,
+    },
+    processHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
     },
-    workspaceName: {
-      fontWeight: '600',
+    processName: {
       fontSize: 16,
+      fontWeight: '600',
       color: colors.text,
     },
-    workspaceSub: {
-      color: colors.mutedText,
-      fontSize: 12,
-    },
-    workspaceBadge: {
+    processBadge: {
       paddingHorizontal: 10,
       paddingVertical: 2,
       borderRadius: 999,
       backgroundColor: colors.primary,
       color: isDark ? colors.background : colors.surface,
-      fontWeight: '600',
       fontSize: 12,
+      fontWeight: '600',
+    },
+    processHint: {
+      color: colors.mutedText,
+      fontSize: 13,
     },
     loaderRow: {
       flexDirection: 'row',
@@ -794,36 +1095,111 @@ function createStyles(
       color: colors.mutedText,
       fontStyle: 'italic',
     },
-    errorText: {
-      color: colors.danger,
-    },
-    successText: {
-      color: colors.success,
-      fontWeight: '600',
-    },
-    transferColumns: {
-      flexDirection: 'column',
-      gap: 24,
-    },
-    transferColumn: {
-      gap: 12,
-      borderRadius: 12,
+    detailCard: {
+      borderRadius: 14,
       borderWidth: 1,
       borderColor: colors.border,
       padding: 16,
+      gap: 12,
       backgroundColor: colors.surface,
     },
-    columnHeader: {
-      gap: 4,
+    backButton: {
+      alignSelf: 'flex-start',
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      borderRadius: 999,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
-    columnTitle: {
+    backButtonPressed: {
+      opacity: 0.85,
+    },
+    backButtonText: {
+      color: colors.text,
       fontWeight: '600',
-      fontSize: 16,
+    },
+    detailTitle: {
+      fontSize: 22,
+      fontWeight: '700',
       color: colors.text,
     },
-    columnSub: {
+    detailSub: {
+      color: colors.mutedText,
+    },
+    detailActions: {
+      flexDirection: 'row',
+      gap: 12,
+      flexWrap: 'wrap',
+    },
+    inviteList: {
+      gap: 12,
+    },
+    inviteRow: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 12,
+      gap: 4,
+    },
+    inviteRowHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    inviteUses: {
       color: colors.mutedText,
       fontSize: 12,
+    },
+    inviteLabel: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    inviteExpire: {
+      color: colors.mutedText,
+      fontSize: 12,
+    },
+    linkButton: {
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    linkButtonPressed: {
+      opacity: 0.85,
+    },
+    linkButtonText: {
+      color: colors.text,
+      fontWeight: '600',
+      fontSize: 12,
+    },
+    targetList: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    targetButton: {
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      backgroundColor: colors.surface,
+    },
+    targetButtonActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary,
+    },
+    targetButtonPressed: {
+      opacity: 0.85,
+    },
+    targetButtonText: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    targetButtonTextActive: {
+      color: colors.surface,
     },
     driverRow: {
       flexDirection: 'row',
@@ -865,6 +1241,30 @@ function createStyles(
       fontWeight: '600',
       fontSize: 12,
       textAlign: 'center',
+    },
+    dangerButton: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.danger,
+      paddingVertical: 10,
+      alignItems: 'center',
+    },
+    dangerButtonPressed: {
+      backgroundColor: colors.dangerMuted,
+    },
+    dangerButtonDisabled: {
+      opacity: 0.7,
+    },
+    dangerButtonText: {
+      color: colors.danger,
+      fontWeight: '600',
+    },
+    successText: {
+      color: colors.success,
+      fontWeight: '600',
+    },
+    errorText: {
+      color: colors.danger,
     },
   });
 }

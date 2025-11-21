@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,9 +14,6 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/features/theme/theme-context';
-import { useAuth } from '@/features/auth/auth-context';
-import * as authApi from '@/features/auth/api';
-import type { WorkspaceInvite } from '@/features/auth/types';
 import { openPrivacyPolicy, openTermsOfUse } from '@/features/legal/legal-documents';
 import type { AuthUser, BusinessTier } from '@/features/auth/types';
 
@@ -47,7 +44,6 @@ type SettingsMenuProps = {
   onVerifyPassword: (password: string) => Promise<void>;
   onAfterDeleteAccount?: () => void | Promise<void>;
   onApplyTeamAccessCode: (code: string) => Promise<AuthUser>;
-  onOpenWorkspaceConsole?: () => void;
 };
 
 type ProcessingAction = null | 'account' | 'profile' | 'password';
@@ -66,10 +62,8 @@ export function SettingsMenu({
   onVerifyPassword,
   onAfterDeleteAccount,
   onApplyTeamAccessCode,
-  onOpenWorkspaceConsole,
 }: SettingsMenuProps) {
   const { colors, isDark, toggleTheme } = useTheme();
-  const { token, workspaceId, user: authUser } = useAuth();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const insets = useSafeAreaInsets();
   const [visible, setVisible] = useState(false);
@@ -96,55 +90,14 @@ export function SettingsMenu({
   const [teamCodeStatus, setTeamCodeStatus] = useState<'idle' | 'loading' | 'success'>('idle');
   const [teamCodeError, setTeamCodeError] = useState<string | null>(null);
   const [teamCodeMessage, setTeamCodeMessage] = useState<string | null>(null);
-  const [invites, setInvites] = useState<WorkspaceInvite[]>([]);
-  const [invitesLoading, setInvitesLoading] = useState(false);
-  const [invitesError, setInvitesError] = useState<string | null>(null);
-  const [inviteLabel, setInviteLabel] = useState('');
-  const [inviteMaxUses, setInviteMaxUses] = useState('');
-  const [inviteExpiresAt, setInviteExpiresAt] = useState('');
-  const [inviteProcessing, setInviteProcessing] = useState(false);
-  const effectiveWorkspaceId = workspaceId ?? authUser?.workspaceId ?? null;
-  const isDevUser = userRole === 'dev';
-  const isAdminUser = userRole === 'admin' || userRole === 'dev';
 
   useEffect(() => {
     if (!visible) {
       resetState();
     }
-  }, [visible]);
+  }, [visible, resetState]);
 
-  useEffect(() => {
-    if (!visible || !token || !effectiveWorkspaceId || userRole === 'driver') {
-      return;
-    }
-    let cancelled = false;
-    setInvitesLoading(true);
-    setInvitesError(null);
-    authApi
-      .getWorkspaceInvites(token, effectiveWorkspaceId)
-      .then((next) => {
-        if (!cancelled) {
-          setInvites(next);
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setInvitesError(
-            error instanceof Error ? error.message : 'Failed to load workspace invites.'
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setInvitesLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [visible, token, effectiveWorkspaceId, userRole]);
-
-  const resetState = () => {
+  const resetState = useCallback(() => {
     setView('main');
     setProcessing(null);
     setProfileError(null);
@@ -160,7 +113,7 @@ export function SettingsMenu({
     setTeamCodeError(null);
     setTeamCodeStatus('idle');
     setTeamCodeMessage(null);
-  };
+  }, [businessName]);
 
   const handleOpenMenu = () => {
     setVisible(true);
@@ -377,41 +330,6 @@ export function SettingsMenu({
     }
   };
 
-  const handleCreateInviteCode = async () => {
-    if (!token || !effectiveWorkspaceId) {
-      setInvitesError('Workspace unavailable. Try again.');
-      return;
-    }
-    if (inviteProcessing) {
-      return;
-    }
-    const parsedMax =
-      inviteMaxUses.trim().length > 0 ? Number.parseInt(inviteMaxUses.trim(), 10) : null;
-    if (inviteMaxUses.trim().length > 0 && (!parsedMax || Number.isNaN(parsedMax) || parsedMax <= 0)) {
-      setInvitesError('Max uses must be a positive number.');
-      return;
-    }
-    setInviteProcessing(true);
-    setInvitesError(null);
-    try {
-      const invite = await authApi.createWorkspaceInviteCode(token, effectiveWorkspaceId, {
-        label: inviteLabel.trim() || null,
-        maxUses: parsedMax,
-        expiresAt: inviteExpiresAt.trim() || null,
-      });
-      setInvites((prev) => [invite, ...prev]);
-      setInviteLabel('');
-      setInviteMaxUses('');
-      setInviteExpiresAt('');
-    } catch (error) {
-      setInvitesError(
-        error instanceof Error ? error.message : 'Failed to create invite code. Try again.'
-      );
-    } finally {
-      setInviteProcessing(false);
-    }
-  };
-
   const renderMainView = () => (
     <>
       <View style={styles.profileCard}>
@@ -497,115 +415,6 @@ export function SettingsMenu({
             )}
           </Pressable>
         </View>
-        {isAdminUser && effectiveWorkspaceId ? (
-          <View style={styles.inviteSection}>
-            <Text style={styles.sectionTitle}>Workspace invites</Text>
-            <Text style={styles.teamCodeHint}>
-              Generate invite codes for drivers or admins. Each code can include an optional label
-              and usage limit.
-            </Text>
-            {invitesError ? <Text style={styles.errorText}>{invitesError}</Text> : null}
-            <View style={styles.formField}>
-              <Text style={styles.formLabel}>Label (optional)</Text>
-              <TextInput
-                style={styles.formInput}
-                placeholder="e.g. East Hub"
-                placeholderTextColor={colors.mutedText}
-                value={inviteLabel}
-                onChangeText={setInviteLabel}
-              />
-            </View>
-            <View style={styles.formField}>
-              <Text style={styles.formLabel}>Max uses (optional)</Text>
-              <TextInput
-                style={styles.formInput}
-                placeholder="Leave empty for unlimited"
-                placeholderTextColor={colors.mutedText}
-                keyboardType="number-pad"
-                value={inviteMaxUses}
-                onChangeText={setInviteMaxUses}
-              />
-            </View>
-            <View style={styles.formField}>
-              <Text style={styles.formLabel}>Expires at (optional)</Text>
-              <TextInput
-                style={styles.formInput}
-                placeholder="2025-12-31T23:59:59Z"
-                placeholderTextColor={colors.mutedText}
-                value={inviteExpiresAt}
-                onChangeText={setInviteExpiresAt}
-                autoCapitalize="none"
-              />
-            </View>
-            <Pressable
-              style={({ pressed }) => [
-                styles.teamCodeButton,
-                pressed && styles.teamCodeButtonPressed,
-                inviteProcessing && styles.teamCodeButtonDisabled,
-              ]}
-              onPress={handleCreateInviteCode}
-              disabled={inviteProcessing}
-            >
-              {inviteProcessing ? (
-                <ActivityIndicator color={colors.surface} />
-              ) : (
-                <Text style={styles.teamCodeButtonText}>Create invite</Text>
-              )}
-            </Pressable>
-            <View style={styles.inviteList}>
-              {invitesLoading ? (
-                <View style={styles.loaderRow}>
-                  <ActivityIndicator color={colors.primary} />
-                  <Text style={styles.loaderText}>Loading invites…</Text>
-                </View>
-              ) : invites.length === 0 ? (
-                <Text style={styles.teamCodeHint}>No invites yet.</Text>
-              ) : (
-                invites.map((invite) => (
-                  <View key={invite.id} style={styles.inviteRow}>
-                    <View style={styles.inviteRowHeader}>
-                      <Text style={styles.inviteCode}>{invite.code}</Text>
-                      <Text style={styles.inviteUses}>
-                        {invite.maxUses ? `${invite.uses}/${invite.maxUses}` : `${invite.uses} uses`}
-                      </Text>
-                    </View>
-                    {invite.label ? (
-                      <Text style={styles.inviteLabel}>{invite.label}</Text>
-                    ) : null}
-                    {invite.expiresAt ? (
-                      <Text style={styles.inviteExpire}>
-                        Expires {new Date(invite.expiresAt).toLocaleString()}
-                      </Text>
-                    ) : (
-                      <Text style={styles.inviteExpire}>No expiry</Text>
-                    )}
-                  </View>
-                ))
-              )}
-            </View>
-          </View>
-        ) : null}
-        {isDevUser ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Workspace directory</Text>
-            <Text style={styles.teamCodeHint}>
-              Create companies, share invite codes, and move drivers between teams without leaving
-              the workspace directory.
-            </Text>
-            <Pressable
-              style={({ pressed }) => [
-                styles.teamCodeButton,
-                pressed && styles.teamCodeButtonPressed,
-              ]}
-              onPress={() => {
-                setVisible(false);
-                onOpenWorkspaceConsole?.();
-              }}
-            >
-              <Text style={styles.teamCodeButtonText}>Open workspace directory</Text>
-            </Pressable>
-          </View>
-        ) : null}
       </View>
 
       <View style={styles.section}>
@@ -1217,43 +1026,6 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     teamCodeSuccess: {
       color: colors.success,
       fontWeight: '600',
-      fontSize: 12,
-    },
-    inviteSection: {
-      marginTop: 24,
-      gap: 12,
-    },
-    inviteList: {
-      gap: 8,
-    },
-    inviteRow: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 8,
-      padding: 12,
-      backgroundColor: colors.surface,
-      gap: 4,
-    },
-    inviteRowHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    inviteCode: {
-      fontWeight: '700',
-      color: colors.text,
-      letterSpacing: 1,
-    },
-    inviteUses: {
-      color: colors.mutedText,
-      fontSize: 12,
-    },
-    inviteLabel: {
-      color: colors.text,
-      fontSize: 12,
-    },
-    inviteExpire: {
-      color: colors.mutedText,
       fontSize: 12,
     },
     menuItem: {
