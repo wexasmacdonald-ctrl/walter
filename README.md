@@ -115,21 +115,6 @@ Returned payload:
 
 ---
 
-## Deploying the Worker
-
-From walter/worker:
-
-`bash
-npm install   # only if dependencies changed
-npx wrangler deploy
-`
-
-Successful deploy shows:
-
-`
-https://blow-api.wexasmacdonald.workers.dev
-Current Version ID: 32254276-0838-4c57-aa39-4cce1753e12e
-`
 
 ### Manual verification
 
