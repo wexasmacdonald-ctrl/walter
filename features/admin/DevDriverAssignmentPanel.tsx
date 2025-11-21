@@ -224,6 +224,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     headerRow: {
       flexDirection: 'row',
       gap: 12,
+      alignItems: 'flex-start',
     },
     title: {
       fontSize: 20,

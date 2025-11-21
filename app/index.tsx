@@ -304,6 +304,19 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
 
             {isDevUser ? (
               <>
+                {isDevUser && !hasWorkspaceContext ? (
+                  <View style={styles.block}>
+                    <View style={[styles.instructions, { borderColor: colors.border }]}>
+                      <Text style={[styles.instructionsTitle, { color: colors.text }]}>
+                        Select a workspace
+                      </Text>
+                      <Text style={[styles.instructionsBody, { color: colors.mutedText }]}>
+                        Use the Workspaces tab above to pick or create a company before managing
+                        drivers and admins.
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
                 <View style={styles.block}>
                   <DevImpersonationPanel refreshSignal={refreshSignal} />
                 </View>
@@ -320,65 +333,49 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
                 <WorkspaceInviteShareCard />
               </View>
             )}
-            {isDevUser && !hasWorkspaceContext ? (
+            <View style={styles.block}>
+              <Pressable
+                accessibilityRole='button'
+                onPress={() => setShowCreateUserCard((prev) => !prev)}
+                style={({ pressed }) => [
+                  styles.toggleButton,
+                  { borderColor: colors.border, backgroundColor: colors.surface },
+                  pressed && styles.toggleButtonPressed,
+                  showCreateUserCard && {
+                    backgroundColor: colors.primary,
+                    borderColor: colors.primary,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.toggleButtonText,
+                    { color: colors.text },
+                    showCreateUserCard && { color: colors.surface },
+                  ]}
+                >
+                  {showCreateUserCard ? 'Hide login form' : 'Create login'}
+                </Text>
+              </Pressable>
+              {showCreateUserCard ? (
+                <View style={styles.blockSpacing}>
+                  <AdminCreateUserCard onUserCreated={handleUserCreated} />
+                </View>
+              ) : null}
+            </View>
+
+            {isDevUser ? (
               <View style={styles.block}>
-                <View style={[styles.instructions, { borderColor: colors.border }]}>
-                  <Text style={[styles.instructionsTitle, { color: colors.text }]}>
-                    Select a workspace
-                  </Text>
-                  <Text style={[styles.instructionsBody, { color: colors.mutedText }]}>
-                    Use the Workspaces tab above to pick or create a company before managing drivers
-                    and admins.
-                  </Text>
-                </View>
+                <AdminTeamList refreshSignal={refreshSignal} />
               </View>
-            ) : (
-              <>
-                <View style={styles.block}>
-                  <Pressable
-                    accessibilityRole='button'
-                    onPress={() => setShowCreateUserCard((prev) => !prev)}
-                    style={({ pressed }) => [
-                      styles.toggleButton,
-                      { borderColor: colors.border, backgroundColor: colors.surface },
-                      pressed && styles.toggleButtonPressed,
-                      showCreateUserCard && {
-                        backgroundColor: colors.primary,
-                        borderColor: colors.primary,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.toggleButtonText,
-                        { color: colors.text },
-                        showCreateUserCard && { color: colors.surface },
-                      ]}
-                    >
-                      {showCreateUserCard ? 'Hide login form' : 'Create login'}
-                    </Text>
-                  </Pressable>
-                  {showCreateUserCard ? (
-                    <View style={styles.blockSpacing}>
-                      <AdminCreateUserCard onUserCreated={handleUserCreated} />
-                    </View>
-                  ) : null}
-                </View>
+            ) : null}
 
-                {isDevUser ? (
-                  <View style={styles.block}>
-                    <AdminTeamList refreshSignal={refreshSignal} />
-                  </View>
-                ) : null}
-
-                <View style={styles.block}>
-                  <AdminDriverManager
-                    onSelectDriver={setActiveDriverId}
-                    refreshSignal={refreshSignal}
-                  />
-                </View>
-              </>
-            )}
+            <View style={styles.block}>
+              <AdminDriverManager
+                onSelectDriver={setActiveDriverId}
+                refreshSignal={refreshSignal}
+              />
+            </View>
           </ScrollView>
         )}
       </View>
