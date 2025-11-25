@@ -24,6 +24,7 @@ export type MapScreenProps = {
     stopId: string,
     coordinate: { latitude: number; longitude: number }
   ) => Promise<void> | void;
+  exitFullScreenSignal?: number;
 };
 
 type MapPin = {
@@ -44,6 +45,7 @@ export function MapScreen({
   onCompleteStop,
   onUndoStop,
   onAdjustPin,
+  exitFullScreenSignal,
 }: MapScreenProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -110,6 +112,12 @@ export function MapScreen({
       setSelectedId(null);
     }
   }, [selectedId, mapPins]);
+
+  useEffect(() => {
+    if (typeof exitFullScreenSignal === 'number') {
+      setIsFullScreen(false);
+    }
+  }, [exitFullScreenSignal]);
 
   const handleSelect = (id: string) => {
     setSelectedId((prev) => (prev === id ? null : id));

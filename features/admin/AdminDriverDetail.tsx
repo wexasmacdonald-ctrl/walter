@@ -86,6 +86,7 @@ export function AdminDriverDetail({
   const [accountExpanded, setAccountExpanded] = useState(false);
   const [addStopsExpanded, setAddStopsExpanded] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(false);
+  const [mapExitSignal, setMapExitSignal] = useState(0);
   const [newPasswordValue, setNewPasswordValue] = useState('');
   const [confirmPasswordValue, setConfirmPasswordValue] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -419,6 +420,7 @@ export function AdminDriverDetail({
     setPinSaveMessage(null);
     setPinSaveTone(null);
     setMapExpanded(true);
+    setMapExitSignal((prev) => prev + 1);
     setPinEditor({
       stop,
       coordinate: { latitude, longitude },
@@ -1073,6 +1075,7 @@ export function AdminDriverDetail({
                 pins={mapPins}
                 loading={loadingStops}
                 onAdjustPin={handleRequestPinAdjust}
+                exitFullScreenSignal={mapExitSignal}
                 onAdjustPinDrag={handleSavePinLocationDirect}
               />
               <Text style={styles.mapNote}>
