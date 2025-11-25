@@ -1,0 +1,4 @@
+name = "blow-api"
+main = "src/index.ts"
+account_id = "0fdc77dde2c5558d9366c2e376e07057"
+compatibility_date = "2025-11-25"

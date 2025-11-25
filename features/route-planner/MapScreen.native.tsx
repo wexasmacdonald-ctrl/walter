@@ -10,12 +10,11 @@ import {
   UIManager,
   View,
 } from 'react-native';
-import MapView, { PROVIDER_GOOGLE, type LatLng } from 'react-native-maps';
 import * as Location from 'expo-location';
 
-import { MarkerBadge } from '@/components/MarkerBadge';
 import { useTheme } from '@/features/theme/theme-context';
 import type { Stop } from './types';
+import type { LatLng } from 'react-native-maps';
 
 export type MapScreenProps = {
   pins: Stop[];
@@ -30,6 +29,9 @@ type UserLocation = {
   longitude: number;
 };
 
+type MapModule = typeof import('react-native-maps') | null;
+type MapViewType = MapModule extends null ? null : MapModule['default'];
+
 export function MapScreen({
   pins,
   loading = false,
@@ -37,6 +39,33 @@ export function MapScreen({
   onUndoStop,
   onAdjustPin,
 }: MapScreenProps) {
+  // Expo Go does not bundle react-native-maps. Load at runtime so we can fall back gracefully.
+  const mapModule = useMemo<MapModule>(() => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      return require('react-native-maps');
+    } catch (error) {
+      console.warn('react-native-maps unavailable; rendering fallback map view', error);
+      return null;
+    }
+  }, []);
+
+  const MapView: MapViewType = mapModule?.default ?? null;
+  const MarkerBadge = useMemo(() => {
+    if (!mapModule) {
+      return null;
+    }
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const badge = require('@/components/MarkerBadge').MarkerBadge as
+        | typeof import('@/components/MarkerBadge').MarkerBadge
+        | undefined;
+      return badge ?? null;
+    } catch (error) {
+      console.warn('MarkerBadge unavailable; falling back to simple markers', error);
+      return null;
+    }
+  }, [mapModule]);
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [location, setLocation] = useState<UserLocation | null>(null);
@@ -48,9 +77,12 @@ export function MapScreen({
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [actioningId, setActioningId] = useState<string | null>(null);
 
-  const mapRef = useRef<MapView | null>(null);
-  const modalMapRef = useRef<MapView | null>(null);
-  const mapProvider = useMemo(() => (supportsGoogleMapsProvider() ? PROVIDER_GOOGLE : undefined), []);
+  const mapRef = useRef<MapViewType | null>(null);
+  const modalMapRef = useRef<MapViewType | null>(null);
+  const mapProvider = useMemo(
+    () => (mapModule && supportsGoogleMapsProvider(mapModule) ? mapModule.PROVIDER_GOOGLE : undefined),
+    [mapModule]
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -222,8 +254,11 @@ export function MapScreen({
     ]);
   };
 
-  const renderMarkers = () =>
-    markers.map((marker) => {
+  const renderMarkers = () => {
+    if (!MarkerBadge) {
+      return null;
+    }
+    return markers.map((marker) => {
       const isSelected = marker.id === selectedId;
       const isConfirmed = marker.status === 'complete' || Boolean(confirmed[marker.id]);
       const backgroundColor = isSelected
@@ -249,6 +284,7 @@ export function MapScreen({
         />
       );
     });
+  };
 
   const canAdjustPin = typeof onAdjustPin === 'function';
 
@@ -370,6 +406,42 @@ export function MapScreen({
     </View>
   );
 
+  if (!MapView) {
+    return (
+      <View style={[styles.container, styles.fallbackContainer, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+        <Text style={[styles.fallbackTitle, { color: colors.text }]}>Map unavailable in Expo Go</Text>
+        <Text style={[styles.fallbackBody, { color: colors.mutedText }]}>
+          The native Google Maps module (react-native-maps) is not bundled in Expo Go. Use a custom dev client or
+          production build to view the interactive map. Showing pinned stops below for reference.
+        </Text>
+        {pins.length === 0 ? (
+          <Text style={{ color: colors.mutedText }}>No pins yet.</Text>
+        ) : (
+          <View style={{ gap: 8 }}>
+            {pins.map((pin, index) => (
+              <View
+                key={pin.id ?? index}
+                style={[styles.fallbackRow, { borderColor: colors.border }]}
+              >
+                <Text style={[styles.fallbackBadge, { color: colors.primary }]}>{index + 1}</Text>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={[styles.fallbackAddress, { color: colors.text }]} numberOfLines={2}>
+                    {pin.address}
+                  </Text>
+                  <Text style={{ color: colors.mutedText, fontSize: 12 }}>
+                    {typeof pin.lat === 'number' && typeof pin.lng === 'number'
+                      ? `(${pin.lat.toFixed(4)}, ${pin.lng.toFixed(4)})`
+                      : 'No coordinates yet'}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -446,7 +518,7 @@ function extractHouseNumber(address: string | null | undefined): string | null {
   return match ? match[1] : null;
 }
 
-function fitToMarkers(map: MapView | null, coords: LatLng[]) {
+function fitToMarkers(map: MapViewType | null, coords: LatLng[]) {
   if (!map || coords.length === 0) {
     return;
   }
@@ -667,6 +739,36 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     mapTypeOptionTextActive: {
       color: onPrimary,
     },
+    fallbackContainer: {
+      gap: 12,
+      borderRadius: 16,
+      borderWidth: 1,
+      padding: 16,
+    },
+    fallbackTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    fallbackBody: {
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    fallbackRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      paddingVertical: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    fallbackBadge: {
+      width: 26,
+      textAlign: 'center',
+      fontWeight: '700',
+    },
+    fallbackAddress: {
+      fontSize: 14,
+      fontWeight: '500',
+    },
   });
 }
 
@@ -697,9 +799,9 @@ function parseHex(input: string): [number, number, number] {
   return [r, g, b];
 }
 
-function supportsGoogleMapsProvider(): boolean {
+function supportsGoogleMapsProvider(mapModule: MapModule): boolean {
   if (Platform.OS === 'android') {
-    return true;
+    return Boolean(mapModule?.default);
   }
   if (Platform.OS !== 'ios') {
     return false;

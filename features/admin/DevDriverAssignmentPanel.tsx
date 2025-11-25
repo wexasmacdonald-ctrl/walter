@@ -16,13 +16,11 @@ import { getFriendlyError } from '@/features/shared/get-friendly-error';
 type DevDriverAssignmentPanelProps = {
   refreshSignal?: number;
   onAssigned?: () => void;
-  onOpenWorkspaceDirectory?: () => void;
 };
 
 export function DevDriverAssignmentPanel({
   refreshSignal,
   onAssigned,
-  onOpenWorkspaceDirectory,
 }: DevDriverAssignmentPanelProps) {
   const { token, adminUpdateUserProfile } = useAuth();
   const { colors, isDark } = useTheme();
@@ -131,12 +129,6 @@ export function DevDriverAssignmentPanel({
           <Text style={styles.emptyText}>
             Create your first company before assigning drivers.
           </Text>
-          <Pressable
-            style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}
-            onPress={onOpenWorkspaceDirectory}
-          >
-            <Text style={styles.linkButtonText}>Open workspace tools</Text>
-          </Pressable>
         </View>
       ) : null}
 

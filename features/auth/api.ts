@@ -8,6 +8,7 @@ import type {
   CreateUserInput,
   CreateUserResponse,
   DevUserSummary,
+  DriverLookupResult,
   DriverStop,
   DriverSummary,
   LoginResponse,
@@ -196,6 +197,22 @@ export async function fetchDrivers(
   return response.drivers ?? [];
 }
 
+export async function findDriverByIdentifier(
+  token: string,
+  identifier: string,
+  workspaceId?: string | null
+): Promise<DriverLookupResult> {
+  const response = await request<{ driver: DriverLookupResult }>(
+    `/admin/driver-lookup?identifier=${encodeURIComponent(identifier)}`,
+    {
+      token,
+      method: 'GET',
+      workspaceId,
+    }
+  );
+  return response.driver;
+}
+
 export async function fetchDevFreeDrivers(token: string): Promise<DriverSummary[]> {
   if (!token) {
     return [];
@@ -322,7 +339,7 @@ export async function deleteUserAccount(
 export async function adminUpdateUserProfile(
   token: string,
   userId: string,
-  updates: { fullName?: string | null; emailOrPhone?: string; workspaceId?: string | null },
+  updates: { fullName?: string | null; emailOrPhone?: string; workspaceId?: string | null; role?: UserRole },
   scopeWorkspaceId?: string | null
 ): Promise<AdminUserProfileUpdateResponse> {
   const payload: Record<string, string | null | undefined> = {
@@ -336,6 +353,9 @@ export async function adminUpdateUserProfile(
   }
   if (Object.prototype.hasOwnProperty.call(updates, 'workspaceId')) {
     payload.workspace_id = updates.workspaceId ?? null;
+  }
+  if (updates.role !== undefined) {
+    payload.role = updates.role;
   }
   return request<AdminUserProfileUpdateResponse>('/admin/users/update-profile', {
     token,

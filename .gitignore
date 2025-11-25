@@ -27,6 +27,10 @@ expo-env.d.ts
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+scripts/test-*.ts
+scripts/validate-*.ts
+scripts/prove-promotion.ts
+stubs/
 
 # macOS
 .DS_Store
@@ -34,7 +38,10 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env.local
 worker/.dev.vars
+walter/worker/.dev.vars
+.dev.vars
 
 # typescript
 *.tsbuildinfo
@@ -44,4 +51,3 @@ app-example
 # generated native folders
 /ios
 /android
-.env.local

@@ -12,7 +12,7 @@ type AdminTeamListProps = {
 };
 
 export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
-  const { token, user, deleteUserAccount } = useAuth();
+  const { token, user, deleteUserAccount, workspaceId } = useAuth();
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [admins, setAdmins] = useState<AdminSummary[]>([]);
@@ -21,7 +21,7 @@ export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token) {
+    if (!token || !workspaceId) {
       return;
     }
     let cancelled = false;
@@ -29,7 +29,7 @@ export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
       try {
         setLoading(true);
         setError(null);
-        const result = await authApi.fetchAdmins(token);
+        const result = await authApi.fetchAdmins(token, workspaceId);
         if (!cancelled) {
           setAdmins(result);
         }
@@ -51,7 +51,7 @@ export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
     return () => {
       cancelled = true;
     };
-  }, [token, refreshSignal]);
+  }, [token, workspaceId, refreshSignal]);
 
   const otherAdmins = useMemo(
     () => admins.filter((admin) => admin.id !== user?.id),
@@ -88,7 +88,7 @@ export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
     );
   };
 
-  const canDeleteAdmins = user?.role === 'dev';
+  const canDeleteAdmins = user?.role === 'dev' || user?.role === 'admin';
 
   return (
     <View style={styles.card}>

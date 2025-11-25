@@ -47,8 +47,14 @@ export function AdminDriverDetail({
   refreshing = false,
   onRefresh,
 }: AdminDriverDetailProps) {
-  const { token, resetUserPassword, deleteUserAccount, adminUpdateUserProfile, adminUpdateUserPassword } =
-    useAuth();
+  const {
+    token,
+    workspaceId,
+    resetUserPassword,
+    deleteUserAccount,
+    adminUpdateUserProfile,
+    adminUpdateUserPassword,
+  } = useAuth();
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [driver, setDriver] = useState<DriverSummary | null>(null);
@@ -74,6 +80,7 @@ export function AdminDriverDetail({
   const [accountContact, setAccountContact] = useState('');
   const [accountError, setAccountError] = useState<string | null>(null);
   const [accountSaving, setAccountSaving] = useState(false);
+  const [roleUpdating, setRoleUpdating] = useState(false);
   const [accountExpanded, setAccountExpanded] = useState(false);
   const [addStopsExpanded, setAddStopsExpanded] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(false);
@@ -88,13 +95,13 @@ export function AdminDriverDetail({
   const driverPasswordConfirmInputRef = useRef<TextInput | null>(null);
 
   useEffect(() => {
-    if (!token) {
+    if (!token || !workspaceId) {
       return;
     }
     async function loadDriver() {
       try {
         setLoadingDriver(true);
-        const drivers = await authApi.fetchDrivers(token);
+        const drivers = await authApi.fetchDrivers(token, workspaceId);
         setDriver(drivers.find((entry) => entry.id === driverId) ?? null);
     } catch (err) {
       setError(
@@ -107,7 +114,7 @@ export function AdminDriverDetail({
     }
     }
     loadDriver();
-  }, [token, driverId, refreshSignal]);
+  }, [token, workspaceId, driverId, refreshSignal]);
 
   useEffect(() => {
     setShowStopsList(false);
@@ -137,13 +144,13 @@ export function AdminDriverDetail({
   }, [driver?.id]);
 
   useEffect(() => {
-    if (!token) {
+    if (!token || !workspaceId) {
       return;
     }
     async function loadStops() {
       try {
         setLoadingStops(true);
-        const result = await authApi.fetchDriverStops(token, driverId);
+        const result = await authApi.fetchDriverStops(token, driverId, workspaceId);
         setStops(result);
     } catch (err) {
       setError(
@@ -156,7 +163,7 @@ export function AdminDriverDetail({
     }
     }
     loadStops();
-  }, [token, driverId, refreshSignal]);
+  }, [token, workspaceId, driverId, refreshSignal]);
 
   useEffect(() => {
     setSelectedIds((prev) => {
@@ -675,6 +682,39 @@ export function AdminDriverDetail({
     }
   };
 
+  const handlePromoteToAdmin = async () => {
+    if (!driver || roleUpdating) {
+      return;
+    }
+    setAccountError(null);
+    setRoleUpdating(true);
+    try {
+      const currentEmailOrPhone = driver.emailOrPhone || accountContact.trim();
+      const payload = {
+        role: 'admin' as const,
+        fullName: driver.fullName ?? (accountName.trim() || null),
+        emailOrPhone: currentEmailOrPhone,
+      };
+      try {
+        await adminUpdateUserProfile(driver.id, payload, workspaceId ?? undefined);
+      } catch (error) {
+        // Retry without workspace scoping in case the API requires a global context.
+        await adminUpdateUserProfile(driver.id, payload, undefined);
+      }
+      Alert.alert('Role updated', 'This user is now an admin.');
+      onRefresh?.();
+      onClose();
+    } catch (err) {
+      setAccountError(
+        getFriendlyError(err, {
+          fallback: "We couldn't promote this user. Try again.",
+        })
+      );
+    } finally {
+      setRoleUpdating(false);
+    }
+  };
+
   const handleSaveDriverPassword = async () => {
     if (!driver || passwordSaving) {
       return;
@@ -750,16 +790,16 @@ export function AdminDriverDetail({
                 styles.collapseToggle,
                 pressed && styles.collapseTogglePressed,
               ]}
-              onPress={() => setAccountExpanded((prev) => !prev)}
-            >
-              <Text style={styles.collapseToggleLabel}>
-                {accountExpanded ? 'Hide account tools' : 'Edit account'}
-              </Text>
-            </Pressable>
-            {accountExpanded ? (
-              <View style={styles.accountSection}>
-                <View style={styles.accountForm}>
-                  <Text style={styles.accountLabel}>Full name</Text>
+            onPress={() => setAccountExpanded((prev) => !prev)}
+          >
+            <Text style={styles.collapseToggleLabel}>
+              {accountExpanded ? 'Hide account tools' : 'Edit account'}
+            </Text>
+          </Pressable>
+          {accountExpanded ? (
+            <View style={styles.accountSection}>
+              <View style={styles.accountForm}>
+                <Text style={styles.accountLabel}>Full name</Text>
                   <TextInput
                     ref={accountNameInputRef}
                     style={styles.accountInput}
@@ -880,10 +920,27 @@ export function AdminDriverDetail({
                       <Text style={styles.accountButtonDangerLabel}>Delete account</Text>
                     )}
                   </Pressable>
-                </View>
               </View>
-            ) : null}
-          </View>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.promoteButton,
+                  pressed && styles.promoteButtonPressed,
+                  roleUpdating && styles.promoteButtonDisabled,
+                ]}
+                onPress={handlePromoteToAdmin}
+                disabled={roleUpdating}
+              >
+                {roleUpdating ? (
+                  <ActivityIndicator color={colors.surface} />
+                ) : (
+                  <Text style={[styles.promoteButtonText, { color: colors.surface }]}>
+                    Promote to admin
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
         ) : null}
 
         <View style={styles.collapseSection}>
@@ -1498,6 +1555,24 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     accountButtonDangerLabel: {
       color: colors.danger,
+      fontWeight: '600',
+    },
+    promoteButton: {
+      borderRadius: 999,
+      paddingVertical: 12,
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      marginTop: 4,
+    },
+    promoteButtonPressed: {
+      opacity: 0.9,
+    },
+    promoteButtonDisabled: {
+      opacity: 0.6,
+    },
+    promoteButtonText: {
       fontWeight: '600',
     },
     textArea: {

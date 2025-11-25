@@ -10,10 +10,12 @@ import type {
   CreateUserResponse,
   ResetUserPasswordResponse,
   RegisterInput,
+  UserRole,
 } from './types';
 
 const AUTH_STORAGE_KEY = 'auth/session';
 const DEV_WORKSPACE_KEY = 'auth/dev-workspace';
+const DEV_WORKSPACE_NAME_KEY = 'auth/dev-workspace-name';
 const IMPERSONATOR_STORAGE_KEY = 'auth/impersonator';
 
 type AuthStatus = 'loading' | 'ready';
@@ -23,6 +25,7 @@ type AuthContextValue = {
   token: string | null;
   status: AuthStatus;
   workspaceId: string | null;
+  workspaceName: string | null;
   impersonatorSession: AuthSession | null;
   isImpersonating: boolean;
   signIn: (identifier: string, password: string) => Promise<void>;
@@ -42,12 +45,12 @@ type AuthContextValue = {
   deleteUserAccount: (userId: string) => Promise<void>;
   adminUpdateUserProfile: (
     userId: string,
-    updates: { fullName?: string | null; emailOrPhone?: string; workspaceId?: string | null }
+    updates: { fullName?: string | null; emailOrPhone?: string; workspaceId?: string | null; role?: UserRole }
   ) => Promise<AdminUserProfileUpdateResponse>;
   adminUpdateUserPassword: (userId: string, newPassword: string) => Promise<void>;
   verifyPassword: (password: string) => Promise<void>;
   applyTeamAccessCode: (code: string) => Promise<AuthUser>;
-  selectWorkspace: (workspaceId: string | null) => Promise<void>;
+  selectWorkspace: (workspaceId: string | null, workspaceName?: string | null) => Promise<void>;
   impersonateUser: (userId: string) => Promise<void>;
   endImpersonation: () => Promise<void>;
 };
@@ -69,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [activeWorkspaceName, setActiveWorkspaceName] = useState<string | null>(null);
   const [impersonatorSession, setImpersonatorSession] = useState<AuthSession | null>(null);
   const workspaceScope = useMemo(() => {
     if (!user) {
@@ -83,15 +87,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const syncWorkspaceSelection = useCallback(async (nextUser: AuthUser | null) => {
     if (!nextUser) {
       setActiveWorkspaceId(null);
-      await AsyncStorage.removeItem(DEV_WORKSPACE_KEY);
+      setActiveWorkspaceName(null);
+      await AsyncStorage.multiRemove([DEV_WORKSPACE_KEY, DEV_WORKSPACE_NAME_KEY]);
       return;
     }
     if (nextUser.role === 'dev') {
-      const stored = await AsyncStorage.getItem(DEV_WORKSPACE_KEY);
-      setActiveWorkspaceId(stored ?? nextUser.workspaceId ?? null);
+      const [storedId, storedName] = await Promise.all([
+        AsyncStorage.getItem(DEV_WORKSPACE_KEY),
+        AsyncStorage.getItem(DEV_WORKSPACE_NAME_KEY),
+      ]);
+      const normalizedName =
+        storedName && storedName.length > 0 ? storedName : nextUser.businessName ?? null;
+      setActiveWorkspaceId(storedId ?? nextUser.workspaceId ?? null);
+      setActiveWorkspaceName(normalizedName);
     } else {
       setActiveWorkspaceId(nextUser.workspaceId ?? null);
-      await AsyncStorage.removeItem(DEV_WORKSPACE_KEY);
+      setActiveWorkspaceName(nextUser.businessName ?? null);
+      await AsyncStorage.multiRemove([DEV_WORKSPACE_KEY, DEV_WORKSPACE_NAME_KEY]);
     }
   }, []);
 
@@ -409,19 +421,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [impersonatorSession, persistSession, syncWorkspaceSelection]);
 
   const selectWorkspace = useCallback(
-    async (workspaceId: string | null) => {
+    async (workspaceId: string | null, workspaceName?: string | null) => {
       if (user?.role !== 'dev') {
         return;
       }
+      const normalizedName =
+        workspaceName && workspaceName.trim().length > 0 ? workspaceName.trim() : null;
       setActiveWorkspaceId(workspaceId);
+      setActiveWorkspaceName(normalizedName);
       if (workspaceId) {
         await AsyncStorage.setItem(DEV_WORKSPACE_KEY, workspaceId);
+        await AsyncStorage.setItem(DEV_WORKSPACE_NAME_KEY, normalizedName ?? '');
       } else {
-        await AsyncStorage.removeItem(DEV_WORKSPACE_KEY);
+        await AsyncStorage.multiRemove([DEV_WORKSPACE_KEY, DEV_WORKSPACE_NAME_KEY]);
       }
     },
     [user?.role]
   );
+
+  const effectiveWorkspaceName = useMemo(() => {
+    if (!user) {
+      return null;
+    }
+    if (user.role === 'dev') {
+      return activeWorkspaceName;
+    }
+    return user.businessName ?? activeWorkspaceName ?? null;
+  }, [user, activeWorkspaceName]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -429,6 +455,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       token,
       status,
       workspaceId: workspaceScope,
+      workspaceName: effectiveWorkspaceName,
       impersonatorSession,
       isImpersonating: Boolean(impersonatorSession),
       signIn,
@@ -455,6 +482,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       token,
       status,
       workspaceScope,
+      effectiveWorkspaceName,
       signIn,
       register,
       signOut,

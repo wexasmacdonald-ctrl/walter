@@ -158,6 +158,14 @@ curl -X POST https://blow-api.wexasmacdonald.workers.dev/admin/driver-stops \
 
 ---
 
+## Deployment (worker)
+
+- Deploy from `walter/worker/` with `wrangler deploy`; `walter/worker/wrangler.toml` is the single config (name/account/date).
+- The `worker/` folder is a legacy copy; code is synced, but do not deploy from there to avoid mismatched configs.
+- Keep secrets in env files only (e.g., `.env.local`, `.dev.vars`), which are gitignored.
+
+---
+
 ## Common Failure Cases
 
 - **UNAUTHORIZED / TOKEN_EXPIRED** - Missing or invalid bearer token. Sign in and retry.

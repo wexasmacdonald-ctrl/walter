@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -65,6 +66,16 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
 
   const activeWorkspace =
     workspaces.find((entry) => entry.id === activeWorkspaceId) ?? null;
+
+  const focusWorkspace = useCallback(
+    async (workspaceToSelect: WorkspaceSummary | null) => {
+      const nextId = workspaceToSelect?.id ?? null;
+      const nextName = workspaceToSelect?.name ?? null;
+      setActiveWorkspaceId(nextId);
+      await selectWorkspace(nextId, nextName ?? undefined);
+    },
+    [selectWorkspace]
+  );
 
   const loadWorkspaces = useCallback(async () => {
     if (!token) {
@@ -180,9 +191,8 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
       return;
     }
     const fallback = workspaces[0];
-    setActiveWorkspaceId(fallback.id);
-    void selectWorkspace(fallback.id);
-  }, [token, workspaces, activeWorkspaceId, selectWorkspace]);
+    void focusWorkspace(fallback);
+  }, [token, workspaces, activeWorkspaceId, focusWorkspace]);
 
   useEffect(() => {
     if (workspaces.length === 0) {
@@ -194,14 +204,6 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     }
     setFreeTierTargetId(workspaces[0].id);
   }, [workspaces, freeTierTargetId]);
-
-  const focusWorkspace = useCallback(
-    async (workspaceToSelect: string | null) => {
-      await selectWorkspace(workspaceToSelect);
-      setActiveWorkspaceId(workspaceToSelect);
-    },
-    [selectWorkspace]
-  );
 
   const handleCreateWorkspace = async () => {
     if (!token || creatingWorkspace) {
@@ -222,7 +224,7 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
       setTransferMessage(`${result.workspace.name} is ready. Start inviting your drivers.`);
       setView('workspace');
       setFreeTierTargetId(result.workspace.id);
-      await focusWorkspace(result.workspace.id);
+      await focusWorkspace(result.workspace);
       void loadWorkspaceDrivers(result.workspace.id);
       void loadFreeDrivers();
     } catch (error) {
@@ -237,10 +239,13 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     }
   };
 
-  const handleOpenWorkspace = async (workspace: WorkspaceSummary) => {
-    await focusWorkspace(workspace.id);
+  const handleOpenWorkspace = async (workspace: WorkspaceSummary, openOps = false) => {
+    await focusWorkspace(workspace);
     setTransferMessage(null);
     setView('workspace');
+    if (openOps) {
+      onOpenWorkspace?.();
+    }
   };
 
   const handleBackToDirectory = () => {
@@ -258,7 +263,7 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
       Alert.alert('Pick a company', 'Select a workspace before opening driver tools.');
       return;
     }
-    await focusWorkspace(activeWorkspace.id);
+    await focusWorkspace(activeWorkspace);
     onOpenWorkspace?.();
   };
 
@@ -459,40 +464,66 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
 
   const renderWorkspaceButton = (workspace: WorkspaceSummary) => {
     const deleting = deletingWorkspaceId === workspace.id;
+    const isActive = workspace.id === activeWorkspaceId;
     return (
-      <View key={workspace.id} style={styles.processRow}>
-        <Pressable
-          onPress={() => void handleOpenWorkspace(workspace)}
-          style={({ pressed }) => [
-            styles.processButton,
-            pressed && styles.processButtonPressed,
-            workspace.id === activeWorkspaceId && styles.processButtonActive,
-          ]}
-        >
-          <View style={styles.processHeader}>
-            <Text style={styles.processName}>{workspace.name}</Text>
-            <Text style={styles.processBadge}>Company</Text>
+      <View
+        key={workspace.id}
+        style={[
+          styles.directoryCard,
+          isActive && styles.directoryCardActive,
+        ]}
+      >
+        <View style={styles.directoryHeader}>
+          <View>
+            <Text style={styles.directoryName}>{workspace.name}</Text>
+            {workspace.createdAt ? (
+              <Text style={styles.directoryMeta}>Created {formatDate(workspace.createdAt)}</Text>
+            ) : null}
           </View>
-          {workspace.createdAt ? (
-            <Text style={styles.processHint}>Created {formatDate(workspace.createdAt)}</Text>
-          ) : null}
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.deleteProcessButton,
-            pressed && styles.deleteProcessButtonPressed,
-            deleting && styles.deleteProcessButtonDisabled,
-          ]}
-          disabled={deleting}
-          onPress={() => confirmDeleteWorkspace(workspace)}
-        >
-          {deleting ? (
-            <ActivityIndicator size="small" color={colors.surface} />
-          ) : (
-            <Text style={styles.deleteProcessButtonText}>Delete</Text>
-          )}
-        </Pressable>
+          {isActive ? <Text style={styles.directoryBadge}>Active</Text> : null}
+        </View>
+        <Text style={styles.directoryHint}>
+          Generate invites or open driver tools for this company. Actions below always apply to{' '}
+          {workspace.name}.
+        </Text>
+        <View style={styles.directoryActions}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.primaryButton,
+              pressed && styles.primaryButtonPressed,
+            ]}
+            onPress={() => void handleOpenWorkspace(workspace, true)}
+          >
+            <Text style={styles.primaryButtonText}>Open operations</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              pressed && styles.secondaryButtonPressed,
+            ]}
+            onPress={() => void handleOpenWorkspace(workspace)}
+          >
+            <Text style={styles.secondaryButtonText}>Preview console</Text>
+          </Pressable>
+        </View>
+        <View style={styles.directoryFooter}>
+          <Pressable
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.linkButton,
+              pressed && styles.linkButtonPressed,
+              deleting && styles.linkButtonDisabled,
+            ]}
+            onPress={() => confirmDeleteWorkspace(workspace)}
+            disabled={deleting}
+          >
+            {deleting ? (
+              <ActivityIndicator size="small" color={colors.danger} />
+            ) : (
+              <Text style={[styles.linkButtonText, styles.dangerLink]}>Delete workspace</Text>
+            )}
+          </Pressable>
+        </View>
       </View>
     );
   };
@@ -964,6 +995,57 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       fontSize: 11,
       letterSpacing: 0.8,
     },
+    directoryCard: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 18,
+      padding: 16,
+      gap: 12,
+      backgroundColor: colors.surface,
+      shadowColor: colors.overlay,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: Platform.OS === 'web' ? 0 : 0.06,
+      shadowRadius: 16,
+      elevation: 1,
+    },
+    directoryCardActive: {
+      borderColor: colors.primary,
+    },
+    directoryHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    directoryName: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    directoryMeta: {
+      color: colors.mutedText,
+    },
+    directoryBadge: {
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 4,
+      backgroundColor: colors.primaryMuted,
+      color: colors.primary,
+      fontWeight: '600',
+      fontSize: 12,
+    },
+    directoryHint: {
+      color: colors.mutedText,
+    },
+    directoryActions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
+    },
+    directoryFooter: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+    },
     card: {
       borderRadius: 14,
       borderWidth: 1,
@@ -1207,6 +1289,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.text,
       fontWeight: '600',
       fontSize: 12,
+    },
+    dangerLink: {
+      color: colors.danger,
     },
     targetList: {
       flexDirection: 'row',

@@ -72,7 +72,6 @@ export function SettingsMenu({
 
   const [profileName, setProfileName] = useState('');
   const [profileContact, setProfileContact] = useState('');
-  const [profileBusinessName, setProfileBusinessName] = useState(businessName ?? '');
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
 
@@ -90,6 +89,7 @@ export function SettingsMenu({
   const [teamCodeStatus, setTeamCodeStatus] = useState<'idle' | 'loading' | 'success'>('idle');
   const [teamCodeError, setTeamCodeError] = useState<string | null>(null);
   const [teamCodeMessage, setTeamCodeMessage] = useState<string | null>(null);
+  const showTeamCodeForm = userRole !== 'dev' && businessTier !== 'business';
 
   const resetState = useCallback(() => {
     setView('main');
@@ -102,12 +102,11 @@ export function SettingsMenu({
     setConfirmPasswordInput('');
     setConfirmPasswordError(null);
     setConfirmProcessing(false);
-    setProfileBusinessName(businessName ?? '');
     setTeamCode('');
     setTeamCodeError(null);
     setTeamCodeStatus('idle');
     setTeamCodeMessage(null);
-  }, [businessName]);
+  }, []);
 
   useEffect(() => {
     if (!visible) {
@@ -204,7 +203,6 @@ export function SettingsMenu({
       const profile = await onGetProfile();
       setProfileName(profile.fullName ?? '');
       setProfileContact(profile.emailOrPhone ?? '');
-      setProfileBusinessName(profile.businessName ?? '');
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Failed to load account profile.';
@@ -235,17 +233,13 @@ export function SettingsMenu({
     const payload: {
       fullName?: string | null;
       emailOrPhone?: string;
-      businessName?: string | null;
     } = {};
     payload.fullName = profileName.trim() === '' ? null : profileName.trim();
     payload.emailOrPhone = contact;
-    payload.businessName =
-      profileBusinessName.trim() === '' ? null : profileBusinessName.trim();
 
     const updated = await onUpdateProfile(payload);
     setProfileName(updated.fullName ?? '');
     setProfileContact(updated.emailOrPhone ?? '');
-    setProfileBusinessName(updated.businessName ?? '');
       Alert.alert('Profile updated', 'Account details saved.');
       setView('main');
     } catch (error) {
@@ -367,54 +361,56 @@ export function SettingsMenu({
               : 'Add a business or team name from Account details.'}
           </Text>
         </View>
-        <View style={styles.teamCodeBlock}>
-          <Text style={styles.formLabel}>Workspace invite code</Text>
-          <Text style={styles.teamCodeHint}>
-            Enter the workspace invite code from your dispatcher to join their workspace and unlock
-            the business tier.
-          </Text>
-          <TextInput
-            style={styles.teamCodeInput}
-            placeholder="e.g. NORTHHUB-92A"
-            placeholderTextColor={colors.mutedText}
-            value={teamCode}
-            onChangeText={(text) => {
-              setTeamCode(text);
-              if (teamCodeError) {
-                setTeamCodeError(null);
-              }
-              if (teamCodeStatus === 'success') {
-                setTeamCodeStatus('idle');
-                setTeamCodeMessage(null);
-              }
-            }}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            accessible
-            accessibilityLabel="Workspace invite code"
-          />
-          {teamCodeError ? <Text style={styles.errorText}>{teamCodeError}</Text> : null}
-          {teamCodeStatus === 'success' && teamCodeMessage ? (
-            <Text style={styles.teamCodeSuccess}>{teamCodeMessage}</Text>
-          ) : null}
-          <Pressable
-            style={({ pressed }) => [
-              styles.teamCodeButton,
-              pressed && styles.teamCodeButtonPressed,
-              teamCodeStatus === 'loading' && styles.teamCodeButtonDisabled,
-            ]}
-            onPress={handleApplyTeamCode}
-            disabled={teamCodeStatus === 'loading'}
-          >
-            {teamCodeStatus === 'loading' ? (
-              <ActivityIndicator color={colors.surface} />
-            ) : (
-              <Text style={styles.teamCodeButtonText}>
-                {businessTier === 'business' ? 'Refresh workspace access' : 'Join workspace'}
-              </Text>
-            )}
-          </Pressable>
-        </View>
+        {showTeamCodeForm ? (
+          <View style={styles.teamCodeBlock}>
+            <Text style={styles.formLabel}>Workspace invite code</Text>
+            <Text style={styles.teamCodeHint}>
+              Enter the workspace invite code from your dispatcher to join their workspace and unlock
+              the business tier.
+            </Text>
+            <TextInput
+              style={styles.teamCodeInput}
+              placeholder="e.g. NORTHHUB-92A"
+              placeholderTextColor={colors.mutedText}
+              value={teamCode}
+              onChangeText={(text) => {
+                setTeamCode(text);
+                if (teamCodeError) {
+                  setTeamCodeError(null);
+                }
+                if (teamCodeStatus === 'success') {
+                  setTeamCodeStatus('idle');
+                  setTeamCodeMessage(null);
+                }
+              }}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              accessible
+              accessibilityLabel="Workspace invite code"
+            />
+            {teamCodeError ? <Text style={styles.errorText}>{teamCodeError}</Text> : null}
+            {teamCodeStatus === 'success' && teamCodeMessage ? (
+              <Text style={styles.teamCodeSuccess}>{teamCodeMessage}</Text>
+            ) : null}
+            <Pressable
+              style={({ pressed }) => [
+                styles.teamCodeButton,
+                pressed && styles.teamCodeButtonPressed,
+                teamCodeStatus === 'loading' && styles.teamCodeButtonDisabled,
+              ]}
+              onPress={handleApplyTeamCode}
+              disabled={teamCodeStatus === 'loading'}
+            >
+              {teamCodeStatus === 'loading' ? (
+                <ActivityIndicator color={colors.surface} />
+              ) : (
+                <Text style={styles.teamCodeButtonText}>
+                  {businessTier === 'business' ? 'Refresh workspace access' : 'Join workspace'}
+                </Text>
+              )}
+            </Pressable>
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.section}>
@@ -528,17 +524,6 @@ export function SettingsMenu({
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="email-address"
-              placeholderTextColor={colors.mutedText}
-            />
-          </View>
-          <View style={styles.formField}>
-            <Text style={styles.formLabel}>Business or team name</Text>
-            <TextInput
-              style={styles.formInput}
-              value={profileBusinessName}
-              onChangeText={setProfileBusinessName}
-              placeholder="Fleet name or depot"
-              autoCapitalize="words"
               placeholderTextColor={colors.mutedText}
             />
           </View>

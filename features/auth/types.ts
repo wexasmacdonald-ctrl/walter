@@ -58,6 +58,7 @@ export type AdminUserProfileUpdateResponse = {
     id: string;
     fullName: string | null;
     emailOrPhone: string | null;
+    role?: UserRole;
   };
 };
 
@@ -65,6 +66,14 @@ export type DriverSummary = {
   id: string;
   fullName: string | null;
   emailOrPhone: string;
+};
+
+export type DriverLookupResult = {
+  id: string;
+  fullName: string | null;
+  emailOrPhone: string;
+  workspaceId: string | null;
+  workspaceName: string | null;
 };
 
 export type AdminSummary = {

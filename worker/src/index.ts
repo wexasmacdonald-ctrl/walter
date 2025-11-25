@@ -1,4 +1,4 @@
-import * as bcrypt from 'bcryptjs';
+import bcrypt from 'bcryptjs';
 
 type UserRole = 'admin' | 'driver' | 'dev';
 type BusinessTier = 'free' | 'business';
@@ -8,6 +8,7 @@ type Env = {
   JWT_SIGNING_KEY?: string;
   SUPABASE_URL?: string;
   SUPABASE_SERVICE_KEY?: string;
+  SUPABASE_SERVICE_ROLE?: string;
   CORS_ORIGINS?: string;
 };
 
@@ -554,7 +555,7 @@ async function handleAuthLogin(
   env: Env,
   respond: (data: unknown, status?: number) => Response
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY || !env.JWT_SIGNING_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE) || !env.JWT_SIGNING_KEY) {
     return respond(
       {
         error: 'CONFIG_ERROR',
@@ -637,7 +638,7 @@ async function handleAuthRegister(
   env: Env,
   respond: (data: unknown, status?: number) => Response
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY || !env.JWT_SIGNING_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE) || !env.JWT_SIGNING_KEY) {
     return respond(
       {
         error: 'CONFIG_ERROR',
@@ -749,7 +750,7 @@ async function handleAdminCreateUser(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond(
       {
         error: 'CONFIG_ERROR',
@@ -863,7 +864,7 @@ async function handleAdminResetUserPassword(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond(
       {
         error: 'CONFIG_ERROR',
@@ -923,7 +924,7 @@ async function handleAdminDeleteUser(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond(
       {
         error: 'CONFIG_ERROR',
@@ -970,6 +971,11 @@ async function handleAdminDeleteUser(
   } catch (error) {
     console.error('Failed to delete user account', error);
     try {
+      try {
+        await clearUserCreatorReferences(env, user.id);
+      } catch (cleanupError) {
+        console.error('Fallback cleanup before anonymize failed', cleanupError);
+      }
       await anonymizeUser(env, user.id);
       return respond({ status: 'ok', fallback: 'anonymized' });
     } catch (fallbackError) {
@@ -985,7 +991,7 @@ async function handleAdminUpdateUserProfile(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond(
       {
         error: 'CONFIG_ERROR',
@@ -1002,6 +1008,7 @@ async function handleAdminUpdateUserProfile(
     return respond({ error: 'INVALID_JSON' }, 400);
   }
 
+  const workspaceScope = resolveWorkspaceId(context, request);
   const userId = typeof body?.user_id === 'string' ? body.user_id.trim() : '';
   if (!userId) {
     return respond({ error: 'INVALID_USER_ID', message: 'user_id is required.' }, 400);
@@ -1011,6 +1018,10 @@ async function handleAdminUpdateUserProfile(
     typeof body?.full_name === 'string' ? body.full_name.trim() : undefined;
   const emailInput =
     typeof body?.email_or_phone === 'string' ? body.email_or_phone.trim() : undefined;
+  const roleProvided =
+    body !== null && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, 'role');
+  const roleInput =
+    typeof body?.role === 'string' ? body.role.trim().toLowerCase() : undefined;
   const workspaceUpdateProvided =
     body !== null && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, 'workspace_id');
   let workspaceIdInput: string | null | undefined;
@@ -1033,13 +1044,14 @@ async function handleAdminUpdateUserProfile(
 
   if (
     !workspaceUpdateProvided &&
+    !roleProvided &&
     (fullNameInput === undefined || fullNameInput === null) &&
     (emailInput === undefined || emailInput === null)
   ) {
     return respond(
       {
         error: 'INVALID_INPUT',
-        message: 'Provide full_name and/or email_or_phone to update.',
+        message: 'Provide full_name, email_or_phone, workspace_id, or role to update.',
       },
       400
     );
@@ -1057,7 +1069,11 @@ async function handleAdminUpdateUserProfile(
     return respond({ error: 'USER_NOT_FOUND' }, 404);
   }
 
-  if (!canAccessWorkspace(context, user.workspace_id ?? null)) {
+  const canAccessCurrentWorkspace = canAccessWorkspace(context, user.workspace_id ?? null);
+  const canAccessScopedWorkspace =
+    user.workspace_id === null && workspaceScope ? canAccessWorkspace(context, workspaceScope) : false;
+
+  if (!canAccessCurrentWorkspace && !canAccessScopedWorkspace) {
     return respond({ error: 'FORBIDDEN' }, 403);
   }
 
@@ -1067,6 +1083,8 @@ async function handleAdminUpdateUserProfile(
     business_name?: string | null;
     business_tier?: BusinessTier;
     workspace_id?: string | null;
+    role?: UserRole;
+    status?: string;
   } = {};
   if (workspaceUpdateProvided) {
     if (context.authUser.role !== 'dev') {
@@ -1127,6 +1145,37 @@ async function handleAdminUpdateUserProfile(
     updates.email_or_phone = emailInput;
   }
 
+  if (roleProvided) {
+    if (!roleInput) {
+      return respond(
+        { error: 'INVALID_ROLE', message: 'role must be admin, driver, or dev.' },
+        400
+      );
+    }
+    if (roleInput === 'dev') {
+      if (context.authUser.role !== 'dev') {
+        return respond({ error: 'FORBIDDEN' }, 403);
+      }
+      updates.role = 'admin';
+      updates.status = STATUS_DEV_ACTIVE;
+    } else if (roleInput === 'admin') {
+      updates.role = 'admin';
+      updates.status = STATUS_ACTIVE;
+    } else if (roleInput === 'driver') {
+      updates.role = 'driver';
+      updates.status = STATUS_ACTIVE;
+    } else {
+      return respond(
+        { error: 'INVALID_ROLE', message: 'role must be admin, driver, or dev.' },
+        400
+      );
+    }
+
+    if (!workspaceUpdateProvided && user.workspace_id === null && workspaceScope) {
+      updates.workspace_id = workspaceScope;
+    }
+  }
+
   try {
     const updated = await updateUserProfile(env, userId, updates);
     return respond({
@@ -1135,6 +1184,7 @@ async function handleAdminUpdateUserProfile(
         id: updated.id,
         fullName: updated.full_name,
         emailOrPhone: updated.email_or_phone,
+        role: deriveUserRole(updated),
       },
     });
   } catch (error) {
@@ -1149,7 +1199,7 @@ async function handleAdminUpdateUserPassword(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond(
       {
         error: 'CONFIG_ERROR',
@@ -1220,7 +1270,7 @@ async function handleAdminListDrivers(
   context: RouteContext,
   request: Request
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond(
       {
         error: 'CONFIG_ERROR',
@@ -1256,7 +1306,7 @@ async function handleAdminListAdmins(
   context: RouteContext,
   request: Request
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond(
       {
         error: 'CONFIG_ERROR',
@@ -1333,7 +1383,7 @@ async function handleAdminReplaceDriverStops(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY || !env.MAPBOX_ACCESS_TOKEN) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE) || !env.MAPBOX_ACCESS_TOKEN) {
     return respond(
       {
         error: 'CONFIG_ERROR',
@@ -1406,7 +1456,7 @@ async function handleWorkspaceListInvites(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond({ error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' }, 500);
   }
 
@@ -1433,7 +1483,7 @@ async function handleWorkspaceCreateInvite(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond({ error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' }, 500);
   }
 
@@ -1478,7 +1528,7 @@ async function handleDevListWorkspaces(
   env: Env,
   respond: (data: unknown, status?: number) => Response
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond({ error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' }, 500);
   }
 
@@ -1497,7 +1547,7 @@ async function handleDevCreateWorkspace(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond({ error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' }, 500);
   }
 
@@ -1534,7 +1584,7 @@ async function handleDevDeleteWorkspace(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond({ error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' }, 500);
   }
 
@@ -1624,7 +1674,7 @@ async function handleDevImpersonate(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY || !env.JWT_SIGNING_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE) || !env.JWT_SIGNING_KEY) {
     return respond(
       { error: 'CONFIG_ERROR', message: 'Supabase or JWT configuration is incomplete.' },
       500
@@ -1693,7 +1743,7 @@ async function handleAuthChangePassword(
   if (!context.authUser) {
     return respond({ error: 'UNAUTHORIZED' }, 401);
   }
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond(
       { error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' },
       500
@@ -1760,7 +1810,7 @@ async function handleAccountDeleteData(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond(
       {
         error: 'CONFIG_ERROR',
@@ -1789,7 +1839,7 @@ async function handleAccountDeleteAccount(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond(
       {
         error: 'CONFIG_ERROR',
@@ -1825,7 +1875,7 @@ async function handleAccountVerifyPassword(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond(
       {
         error: 'CONFIG_ERROR',
@@ -2026,7 +2076,7 @@ async function handleAccountJoinWorkspace(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY || !env.JWT_SIGNING_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE) || !env.JWT_SIGNING_KEY) {
     return respond(
       {
         error: 'CONFIG_ERROR',
@@ -2159,7 +2209,7 @@ async function handleDriverListStops(
   if (!context.authUser) {
     return respond({ error: 'UNAUTHORIZED' }, 401);
   }
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond(
       { error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' },
       500
@@ -2207,7 +2257,7 @@ async function handleDriverStopStatusUpdate(
   if (!context.authUser) {
     return respond({ error: 'UNAUTHORIZED' }, 401);
   }
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond(
       { error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' },
       500
@@ -2641,9 +2691,13 @@ function extractCoordinates(node: any): { lat: number; lng: number } | null {
 }
 
 function supabaseHeaders(env: Env): HeadersInit {
+  const serviceKey = env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE;
+  if (!serviceKey) {
+    throw new Error('Supabase service key is not configured');
+  }
   return {
-    apikey: env.SUPABASE_SERVICE_KEY!,
-    Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY!}`,
+    apikey: serviceKey,
+    Authorization: `Bearer ${serviceKey}`,
     'Content-Type': 'application/json',
   };
 }
@@ -2737,12 +2791,13 @@ async function fetchUsersByRole(
   return rows
     .filter((row) => {
       if (role === 'admin') {
-        return !isDevStatus(row.status);
+        return row.role === 'admin' && !isDevStatus(row.status);
       }
       if (role === 'dev') {
         return isDevStatus(row.status);
       }
-      return true;
+      // Only keep true driver rows
+      return row.role === 'driver' && !isDevStatus(row.status);
     })
     .map((row) => ({
       id: row.id,
@@ -2849,7 +2904,7 @@ async function enforceFreeTierLimit(
   if (requestedCount <= 0) {
     return { allowed: true, used: 0, limit: FREE_TIER_DAILY_LIMIT, resetsAt: null, message: '' };
   }
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return { allowed: true, used: 0, limit: FREE_TIER_DAILY_LIMIT, resetsAt: null, message: '' };
   }
   const windowStartIso = new Date(Date.now() - FREE_TIER_WINDOW_MS).toISOString();
@@ -2910,7 +2965,7 @@ async function fetchUsageEvents(env: Env, userId: string, sinceIso: string): Pro
 }
 
 async function recordUsageEvent(env: Env, userId: string, addressCount: number): Promise<void> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return;
   }
   if (addressCount <= 0) {
@@ -3299,7 +3354,7 @@ async function deleteDriverStopsRecords(env: Env, driverId: string): Promise<voi
 }
 
 async function deleteUsageEvents(env: Env, userId: string): Promise<void> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return;
   }
   const url = new URL(`/rest/v1/${USAGE_TABLE}`, normalizeSupabaseUrl(env.SUPABASE_URL!));
@@ -3313,6 +3368,10 @@ async function deleteUsageEvents(env: Env, userId: string): Promise<void> {
   });
 
   if (!response.ok) {
+    if (response.status === 404) {
+      // Table not present in this Supabase project; ignore silently
+      return;
+    }
     const errorBody = await response.text();
     throw new Error(`Supabase delete failed (${response.status}): ${errorBody}`);
   }
@@ -3352,6 +3411,8 @@ async function updateUserProfile(
     business_name?: string | null;
     business_tier?: BusinessTier;
     workspace_id?: string | null;
+    role?: UserRole;
+    status?: string;
   }
 ): Promise<SupabaseUserRow> {
   const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
@@ -3405,12 +3466,13 @@ async function anonymizeUser(env: Env, userId: string): Promise<void> {
       Prefer: 'return=minimal',
     },
     body: JSON.stringify({
-      full_name: null,
+      full_name: 'Deleted User',
       email_or_phone: placeholder,
       status: 'deleted',
       must_change_password: false,
       business_name: null,
       business_tier: 'free',
+      workspace_id: null,
     }),
   });
 
@@ -3429,11 +3491,27 @@ async function deleteAccountRecords(env: Env, userId: string, role: UserRole): P
     }
   }
   try {
+    await clearUserCreatorReferences(env, userId);
+  } catch (error) {
+    console.error('Failed to clear creator references during account removal', error);
+  }
+  try {
     await deleteUsageEvents(env, userId);
   } catch (error) {
     console.error('Failed to delete usage events during account removal', error);
   }
-  await deleteUserById(env, userId);
+  try {
+    await deleteUserById(env, userId);
+  } catch (error) {
+    // If FK from invites/workspaces still exist, attempt one more cleanup and retry
+    console.error('Delete user failed, retrying after cleanup', error);
+    try {
+      await clearUserCreatorReferences(env, userId);
+    } catch (cleanupError) {
+      console.error('Retry cleanup failed', cleanupError);
+    }
+    await deleteUserById(env, userId);
+  }
 }
 
 async function wipePersonalData(env: Env, userId: string, role: UserRole): Promise<void> {
@@ -3453,6 +3531,40 @@ async function wipePersonalData(env: Env, userId: string, role: UserRole): Promi
     full_name: null,
     business_name: null,
   });
+}
+
+async function clearUserCreatorReferences(env: Env, userId: string): Promise<void> {
+  // Clear user references that can block delete because of FK constraints
+  // Delete invites authored by this user
+  const invitesUrl = new URL(`/rest/v1/${WORKSPACE_INVITE_TABLE}`, normalizeSupabaseUrl(env.SUPABASE_URL!));
+  invitesUrl.searchParams.set('created_by', `eq.${userId}`);
+  const deleteInvitesRes = await fetch(invitesUrl.toString(), {
+    method: 'DELETE',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=minimal',
+    },
+  });
+  if (!deleteInvitesRes.ok) {
+    const errorBody = await deleteInvitesRes.text();
+    console.error(`Delete invites failed (${deleteInvitesRes.status}): ${errorBody}`);
+  }
+
+  // Null workspace created_by if possible
+  const workspaceUrl = new URL(`/rest/v1/${WORKSPACE_TABLE}`, normalizeSupabaseUrl(env.SUPABASE_URL!));
+  workspaceUrl.searchParams.set('created_by', `eq.${userId}`);
+  const wsRes = await fetch(workspaceUrl.toString(), {
+    method: 'PATCH',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify({ created_by: null }),
+  });
+  if (!wsRes.ok) {
+    const errorBody = await wsRes.text();
+    console.error(`Clear workspace created_by failed (${wsRes.status}): ${errorBody}`);
+  }
 }
 
 const DEFAULT_BCRYPT_ROUNDS = 10;

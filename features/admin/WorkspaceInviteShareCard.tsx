@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -7,6 +7,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
@@ -18,7 +19,7 @@ import { useTheme } from '@/features/theme/theme-context';
 import { getFriendlyError } from '@/features/shared/get-friendly-error';
 
 export function WorkspaceInviteShareCard() {
-  const { token, workspaceId } = useAuth();
+  const { token, workspaceId, workspaceName } = useAuth();
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [invites, setInvites] = useState<WorkspaceInvite[]>([]);
@@ -27,8 +28,24 @@ export function WorkspaceInviteShareCard() {
   const [error, setError] = useState<string | null>(null);
   const [copying, setCopying] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [label, setLabel] = useState('');
   const canShare = Platform.OS !== 'web';
   const latestInvite = invites[0] ?? null;
+  const currentWorkspaceLabel =
+    (workspaceName && workspaceName.trim()) || (workspaceId ? `Workspace ${workspaceId.slice(0, 8)}` : 'Workspace');
+  const inviteExpiryMs = 3 * 60 * 60 * 1000;
+
+  const pruneInvites = useCallback((list: WorkspaceInvite[]) => {
+    const now = Date.now();
+    const filtered = list.filter((invite) => {
+      if (!invite.expiresAt) {
+        return true;
+      }
+      const expires = new Date(invite.expiresAt).getTime();
+      return Number.isFinite(expires) && expires > now;
+    });
+    return filtered.slice(0, 1);
+  }, []);
 
   const loadInvites = useCallback(async () => {
     if (!token || !workspaceId) {
@@ -39,11 +56,11 @@ export function WorkspaceInviteShareCard() {
     setError(null);
     try {
       const result = await authApi.getWorkspaceInvites(token, workspaceId);
-      setInvites(result);
+      setInvites(pruneInvites(result));
     } catch (err) {
       setError(
         getFriendlyError(err, {
-          fallback: "We couldn't load your invite code. Try again soon.",
+          fallback: "We couldn't load invite codes for this workspace.",
         })
       );
     } finally {
@@ -62,12 +79,19 @@ export function WorkspaceInviteShareCard() {
     setCreating(true);
     setError(null);
     try {
-      const invite = await authApi.createWorkspaceInviteCode(token, workspaceId, {});
-      setInvites((prev) => [invite, ...prev]);
+      const payload: Record<string, string> = {};
+      const trimmed = label.trim();
+      if (trimmed.length > 0) {
+        payload.label = trimmed;
+      }
+      payload.expiresAt = new Date(Date.now() + inviteExpiryMs).toISOString();
+      const invite = await authApi.createWorkspaceInviteCode(token, workspaceId, payload);
+      setInvites([invite]);
+      setLabel('');
     } catch (err) {
       setError(
         getFriendlyError(err, {
-          fallback: "We couldn't create a code right now. Try again.",
+          fallback: "We couldn't create that invite right now. Try again.",
         })
       );
     } finally {
@@ -82,111 +106,129 @@ export function WorkspaceInviteShareCard() {
     setCopying(true);
     try {
       await Clipboard.setStringAsync(latestInvite.code);
-      Alert.alert('Company code copied', 'Share it with drivers so they can unlock your workspace.');
+      Alert.alert('Invite copied', `Share it with your team to join ${currentWorkspaceLabel}.`);
     } catch (err) {
-      Alert.alert('Copy failed', 'Copy the invite code manually.');
+      Alert.alert('Copy failed', 'Copy the code manually and try again.');
     } finally {
       setCopying(false);
     }
   };
 
   const handleShare = async () => {
-    if (!latestInvite || !canShare || sharing) {
+    if (!latestInvite || sharing || !canShare) {
       return;
     }
     setSharing(true);
     try {
       await Share.share({
-        message: `Join our workspace in Pin Planner using this invite code: ${latestInvite.code}`,
+        message: `Join ${currentWorkspaceLabel} in Pin Planner with this invite code: ${latestInvite.code}`,
       });
     } catch (err) {
       if (err instanceof Error && err.message.includes('No Activity found')) {
-        Alert.alert('Sharing unavailable', 'Use the copy button to share this code instead.');
+        Alert.alert('Sharing unavailable', 'Use the copy button to send this code.');
       }
     } finally {
       setSharing(false);
     }
   };
 
-  const renderInviteDetails = () => {
+  const renderInviteBody = () => {
     if (loading) {
       return (
         <View style={styles.loaderRow}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.loaderText}>Loading invite code…</Text>
+          <Text style={styles.loaderText}>Loading invite codes...</Text>
         </View>
       );
     }
     if (!latestInvite) {
       return (
         <Text style={styles.emptyText}>
-          Generate a code to invite dispatchers or drivers. Every driver enters it in Settings to
-          unlock the business tier.
+          Generate an invite to onboard dispatchers and drivers into {currentWorkspaceLabel}.
         </Text>
       );
     }
     return (
-      <View style={styles.codeCard}>
-        <Text style={styles.codeLabel}>Current invite code</Text>
-        <Text style={styles.codeValue}>{latestInvite.code}</Text>
-        <Text style={styles.codeMeta}>
-          {latestInvite.maxUses
-            ? `${latestInvite.uses}/${latestInvite.maxUses} uses`
-            : `${latestInvite.uses} use${latestInvite.uses === 1 ? '' : 's'} so far`}
-          {latestInvite.expiresAt ? ` · Expires ${formatDate(latestInvite.expiresAt)}` : ''}
-        </Text>
-        <View style={styles.buttonRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              pressed && styles.secondaryButtonPressed,
-              copying && styles.secondaryButtonDisabled,
-            ]}
-            onPress={() => void handleCopy()}
-            disabled={copying}
-          >
-            {copying ? (
-              <ActivityIndicator color={colors.primary} />
-            ) : (
-              <Text style={styles.secondaryButtonText}>Copy code</Text>
-            )}
-          </Pressable>
-          {canShare ? (
+      <>
+        <View style={styles.codeCard}>
+          <Text style={styles.codeLabel}>Latest invite</Text>
+          <Text style={styles.codeValue}>{latestInvite.code}</Text>
+          <Text style={styles.codeMeta}>
+            {latestInvite.expiresAt ? `Expires ${formatDate(latestInvite.expiresAt)}` : 'Valid for 3 hours'}
+          </Text>
+          <View style={styles.actionRow}>
             <Pressable
               style={({ pressed }) => [
                 styles.secondaryButton,
                 pressed && styles.secondaryButtonPressed,
-                sharing && styles.secondaryButtonDisabled,
+                copying && styles.secondaryButtonDisabled,
               ]}
-              onPress={() => void handleShare()}
-              disabled={sharing}
+              onPress={handleCopy}
+              disabled={copying}
             >
-              {sharing ? (
+              {copying ? (
                 <ActivityIndicator color={colors.primary} />
               ) : (
-                <Text style={styles.secondaryButtonText}>Share link</Text>
+                <Text style={styles.secondaryButtonText}>Copy code</Text>
               )}
             </Pressable>
-          ) : null}
+            {canShare ? (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.secondaryButton,
+                  pressed && styles.secondaryButtonPressed,
+                  sharing && styles.secondaryButtonDisabled,
+                ]}
+                onPress={handleShare}
+                disabled={sharing}
+              >
+                {sharing ? (
+                  <ActivityIndicator color={colors.primary} />
+                ) : (
+                  <Text style={styles.secondaryButtonText}>Share invite</Text>
+                )}
+              </Pressable>
+            ) : null}
+          </View>
         </View>
-      </View>
+        {/* Previous codes suppressed */}
+      </>
     );
   };
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>Share company code</Text>
-      <Text style={styles.subtitle}>
-        Drivers unlock your workspace by entering this invite in Settings › Plan & team.
-      </Text>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {renderInviteDetails()}
+      <View style={styles.titleRow}>
+        <View style={styles.titleColumn}>
+          <Text style={styles.title}>Workspace invites</Text>
+        </View>
+        {workspaceId ? (
+          <View style={styles.workspaceBadge}>
+            <Text style={styles.workspaceBadgeLabel}>Workspace</Text>
+            <Text style={styles.workspaceBadgeValue}>{currentWorkspaceLabel}</Text>
+          </View>
+        ) : null}
+      </View>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {renderInviteBody()}
+      <View style={styles.divider} />
+      <View style={styles.formField}>
+        <Text style={styles.label}>Invite label (optional)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. Dispatch managers"
+          placeholderTextColor={colors.mutedText}
+          autoCapitalize="words"
+          value={label}
+          onChangeText={setLabel}
+        />
+      </View>
       <View style={styles.ctaRow}>
         <Pressable
           style={({ pressed }) => [
             styles.primaryButton,
             pressed && styles.primaryButtonPressed,
-            creating && styles.primaryButtonDisabled,
+            (creating || !workspaceId || !token) && styles.primaryButtonDisabled,
           ]}
           onPress={handleGenerateInvite}
           disabled={creating || !workspaceId || !token}
@@ -230,12 +272,28 @@ function formatDate(value: string): string {
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
   return StyleSheet.create({
     card: {
-      borderRadius: 12,
+      borderRadius: 20,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
       padding: 20,
+      gap: 16,
+      shadowColor: colors.overlay,
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: Platform.OS === 'web' ? 0 : 0.08,
+      shadowRadius: 24,
+      elevation: 2,
+    },
+    titleRow: {
+      flexDirection: 'row',
       gap: 12,
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      flexWrap: 'wrap',
+    },
+    titleColumn: {
+      flex: 1,
+      gap: 8,
     },
     title: {
       fontSize: 20,
@@ -246,7 +304,31 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.mutedText,
       lineHeight: 20,
     },
-    error: {
+    subtitleHighlight: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    workspaceBadge: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: isDark ? '#13233c' : '#f8fafc',
+      gap: 4,
+      minWidth: 180,
+    },
+    workspaceBadgeLabel: {
+      color: colors.mutedText,
+      fontSize: 12,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+    },
+    workspaceBadgeValue: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    errorText: {
       color: colors.danger,
     },
     loaderRow: {
@@ -262,7 +344,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       fontStyle: 'italic',
     },
     codeCard: {
-      borderRadius: 10,
+      borderRadius: 14,
       borderWidth: 1,
       borderColor: colors.border,
       padding: 16,
@@ -270,14 +352,14 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       backgroundColor: isDark ? '#0f172a' : colors.primaryMuted,
     },
     codeLabel: {
-      fontWeight: '600',
       color: colors.mutedText,
+      fontWeight: '600',
       textTransform: 'uppercase',
       fontSize: 12,
       letterSpacing: 0.8,
     },
     codeValue: {
-      fontSize: 26,
+      fontSize: 28,
       fontWeight: '700',
       color: colors.text,
       letterSpacing: 2,
@@ -285,43 +367,17 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     codeMeta: {
       color: colors.mutedText,
     },
-    buttonRow: {
+    actionRow: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 12,
-      marginTop: 4,
-    },
-    ctaRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
       gap: 12,
       flexWrap: 'wrap',
-    },
-    primaryButton: {
-      borderRadius: 10,
-      paddingVertical: 10,
-      paddingHorizontal: 16,
-      backgroundColor: colors.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexGrow: 1,
-    },
-    primaryButtonPressed: {
-      opacity: 0.9,
-    },
-    primaryButtonDisabled: {
-      opacity: 0.7,
-    },
-    primaryButtonText: {
-      color: colors.surface,
-      fontWeight: '600',
     },
     secondaryButton: {
       borderRadius: 999,
       borderWidth: 1,
       borderColor: colors.border,
-      paddingVertical: 8,
-      paddingHorizontal: 16,
+      paddingVertical: 10,
+      paddingHorizontal: 18,
       backgroundColor: colors.surface,
       flexGrow: 1,
       alignItems: 'center',
@@ -330,19 +386,88 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       opacity: 0.85,
     },
     secondaryButtonDisabled: {
-      opacity: 0.6,
+      opacity: 0.5,
     },
     secondaryButtonText: {
       color: colors.text,
+      fontWeight: '600',
+    },
+    history: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 12,
+      gap: 8,
+      backgroundColor: colors.surface,
+    },
+    historyTitle: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    historyRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    historyCode: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    historyMeta: {
+      color: colors.mutedText,
+      fontSize: 12,
+    },
+    divider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+    },
+    formField: {
+      gap: 8,
+    },
+    label: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    input: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      backgroundColor: colors.surface,
+      color: colors.text,
+    },
+    ctaRow: {
+      flexDirection: 'row',
+      gap: 12,
+      flexWrap: 'wrap',
+    },
+    primaryButton: {
+      borderRadius: 999,
+      paddingVertical: 14,
+      paddingHorizontal: 20,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      flexGrow: 1,
+    },
+    primaryButtonPressed: {
+      opacity: 0.9,
+    },
+    primaryButtonDisabled: {
+      opacity: 0.6,
+    },
+    primaryButtonText: {
+      color: colors.surface,
       fontWeight: '600',
     },
     linkButton: {
       borderRadius: 999,
       borderWidth: 1,
       borderColor: colors.border,
-      paddingVertical: 8,
-      paddingHorizontal: 16,
-      backgroundColor: colors.surface,
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     linkButtonPressed: {
       opacity: 0.85,
@@ -353,8 +478,11 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     linkButtonText: {
       color: colors.text,
       fontWeight: '600',
-      fontSize: 13,
     },
   });
 }
+
+
+
+
 

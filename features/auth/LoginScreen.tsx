@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ADMIN_LOGIN_HINT } from '@/constants/auth';
 import { useAuth } from './auth-context';
 import { getFriendlyError } from '@/features/shared/get-friendly-error';
 import { openPrivacyPolicy, openTermsOfUse } from '@/features/legal/legal-documents';
@@ -26,7 +25,6 @@ export function LoginScreen() {
   const [loginSubmitting, setLoginSubmitting] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [fullName, setFullName] = useState('');
-  const [businessName, setBusinessName] = useState('');
   const [contact, setContact] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -35,7 +33,6 @@ export function LoginScreen() {
   const identifierInputRef = useRef<TextInput | null>(null);
   const passwordInputRef = useRef<TextInput | null>(null);
   const registerNameRef = useRef<TextInput | null>(null);
-  const registerBusinessRef = useRef<TextInput | null>(null);
   const registerContactRef = useRef<TextInput | null>(null);
   const registerPasswordRef = useRef<TextInput | null>(null);
   const registerConfirmRef = useRef<TextInput | null>(null);
@@ -110,11 +107,9 @@ export function LoginScreen() {
         fullName: fullName.trim() || null,
         emailOrPhone: trimmedContact,
         password: newPassword,
-        businessName: businessName.trim() || null,
       });
       setNewPassword('');
       setConfirmPassword('');
-      setBusinessName('');
     } catch (err) {
       setRegisterError(
         getFriendlyError(err, {
@@ -128,25 +123,26 @@ export function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'android' ? 40 : 0}
       style={styles.screen}
     >
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <AppHeader />
         <ScrollView
           contentContainerStyle={styles.container}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          automaticallyAdjustKeyboardInsets
-        >
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
+      >
           <Text style={styles.title}>
-            {isRegisterMode ? 'Create your driver account' : 'Sign in to continue'}
+            {isRegisterMode ? 'Create your account' : 'Sign in'}
           </Text>
           <Text style={styles.accessNote}>
-              {isRegisterMode
-                ? 'New signups can geocode 30 new stops every 24 hours until they join a workspace invite. Add your team name now and enter the invite code later to unlock unlimited usage.'
-                : 'Sign in with the email or phone number tied to your workspace.'}
-            </Text>
+            {isRegisterMode
+              ? 'Join your crew now; dispatch upgrades you to the company plan when they invite you.'
+              : 'Use the email or phone you registered with.'}
+          </Text>
           <View style={styles.modeSwitch}>
             <Pressable
               style={({ pressed }) => [
@@ -178,14 +174,9 @@ export function LoginScreen() {
             </Pressable>
           </View>
           <View style={styles.notice}>
-            <Text style={styles.noticeTitle}>Route privacy</Text>
             <Text style={styles.noticeBody}>
-              Only admins assign routes. You'll only see addresses shared with your account.
+              Your account is tied to your company. Admins invite and assign routes.
             </Text>
-          </View>
-          <View style={styles.notice}>
-            <Text style={styles.noticeTitle}>Admin access</Text>
-            <Text style={styles.noticeBody}>{ADMIN_LOGIN_HINT}</Text>
           </View>
           {isRegisterMode ? (
             <>
@@ -197,32 +188,15 @@ export function LoginScreen() {
                   onChangeText={setFullName}
                   autoCapitalize="words"
                   autoCorrect={false}
-                  textContentType="name"
-                  placeholder="Jane Smith"
-                  placeholderTextColor={placeholderColor}
-                  style={styles.input}
-                  editable={!registerSubmitting}
-                  returnKeyType="next"
-                  onSubmitEditing={() => registerBusinessRef.current?.focus()}
-                />
-              </View>
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Business or team name (optional)</Text>
-                <TextInput
-                  ref={registerBusinessRef}
-                  value={businessName}
-                  onChangeText={setBusinessName}
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                  textContentType="organizationName"
-                  placeholder="Northside Couriers"
-                  placeholderTextColor={placeholderColor}
-                  style={styles.input}
-                  editable={!registerSubmitting}
-                  returnKeyType="next"
-                  onSubmitEditing={() => registerContactRef.current?.focus()}
-                />
-              </View>
+                textContentType="name"
+                placeholder="Jane Smith"
+                placeholderTextColor={placeholderColor}
+                style={styles.input}
+                editable={!registerSubmitting}
+                returnKeyType="next"
+                onSubmitEditing={() => registerContactRef.current?.focus()}
+              />
+            </View>
               <View style={styles.fieldGroup}>
                 <Text style={styles.label}>Email or phone</Text>
                 <TextInput
@@ -377,10 +351,10 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingVertical: 64,
-    paddingBottom: 160,
+    paddingVertical: 32,
+    paddingBottom: 200,
     gap: 24,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
   title: {
     color: '#f8fafc',
@@ -420,18 +394,12 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   notice: {
-    backgroundColor: '#1e293b',
-    borderRadius: 12,
-    padding: 16,
-    gap: 8,
-  },
-  noticeTitle: {
-    color: '#cbd5f5',
-    fontWeight: '600',
+    paddingVertical: 8,
+    gap: 6,
   },
   noticeBody: {
     color: '#e2e8f0',
-    lineHeight: 20,
+    lineHeight: 18,
   },
   fieldGroup: {
     gap: 8,
