@@ -22,6 +22,7 @@ export type MapScreenProps = {
   onCompleteStop?: (stopId: string) => Promise<void> | void;
   onUndoStop?: (stopId: string) => Promise<void> | void;
   onAdjustPin?: (stopId: string) => void;
+  onAdjustPinDrag?: (stopId: string, coordinate: LatLng) => Promise<void> | void;
 };
 
 type UserLocation = {
@@ -38,6 +39,7 @@ export function MapScreen({
   onCompleteStop,
   onUndoStop,
   onAdjustPin,
+  // onAdjustPinDrag exists for feature parity with web; native map remains modal-driven for now.
 }: MapScreenProps) {
   // Expo Go does not bundle react-native-maps. Load at runtime so we can fall back gracefully.
   const mapModule = useMemo<MapModule>(() => {

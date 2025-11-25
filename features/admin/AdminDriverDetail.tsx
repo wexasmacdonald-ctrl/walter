@@ -449,8 +449,33 @@ export function AdminDriverDetail({
       setSuccess('Pin location updated.');
       setError(null);
       setPinEditor(null);
-      // Ensure the toast reflects the updated coordinates
-      setSelectedId(pinEditor.stop.id);
+      setActiveStopId(pinEditor.stop.id);
+    } catch (err) {
+      setError(
+        getFriendlyError(err, {
+          fallback: "We couldn't update that pin yet. Try again.",
+        })
+      );
+    } finally {
+      setUpdatingLocation(false);
+    }
+  };
+
+  const handleSavePinLocationDirect = async (
+    stopId: string,
+    coordinate: { latitude: number; longitude: number }
+  ) => {
+    if (!token) {
+      return;
+    }
+    try {
+      setUpdatingLocation(true);
+      const updated = await authApi.updateDriverStopLocation(token, stopId, coordinate);
+      setStops((prev) => prev.map((stop) => (stop.id === updated.id ? updated : stop)));
+      setSuccess('Pin location updated.');
+      setError(null);
+      setSelectedIds({});
+      setActiveStopId(stopId);
     } catch (err) {
       setError(
         getFriendlyError(err, {
@@ -1032,6 +1057,7 @@ export function AdminDriverDetail({
                 pins={mapPins}
                 loading={loadingStops}
                 onAdjustPin={handleRequestPinAdjust}
+                onAdjustPinDrag={handleSavePinLocationDirect}
               />
               <Text style={styles.mapNote}>
               </Text>

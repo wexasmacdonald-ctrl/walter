@@ -20,6 +20,10 @@ export type MapScreenProps = {
   onCompleteStop?: (stopId: string) => Promise<void> | void;
   onUndoStop?: (stopId: string) => Promise<void> | void;
   onAdjustPin?: (stopId: string) => void;
+  onAdjustPinDrag?: (
+    stopId: string,
+    coordinate: { latitude: number; longitude: number }
+  ) => Promise<void> | void;
 };
 
 type MapPin = {
@@ -40,6 +44,7 @@ export function MapScreen({
   onCompleteStop,
   onUndoStop,
   onAdjustPin,
+  onAdjustPinDrag,
 }: MapScreenProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -48,6 +53,10 @@ export function MapScreen({
   const [confirmed, setConfirmed] = useState<Record<string, number>>({});
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOrigin, setDragOrigin] = useState<google.maps.LatLngLiteral | null>(null);
+  const [pendingPosition, setPendingPosition] = useState<google.maps.LatLngLiteral | null>(null);
+  const [dragSaving, setDragSaving] = useState(false);
 
   const mapPins = useMemo<MapPin[]>(() => {
     return pins
@@ -107,9 +116,75 @@ export function MapScreen({
     }
   }, [selectedId, mapPins]);
 
+  useEffect(() => {
+    if (draggingId && (!pendingPosition || !mapPins.some((pin) => pin.id === draggingId))) {
+      setDraggingId(null);
+      setDragOrigin(null);
+      setPendingPosition(null);
+    }
+  }, [draggingId, mapPins, pendingPosition]);
 
   const handleSelect = (id: string) => {
     setSelectedId((prev) => (prev === id ? null : id));
+  };
+
+  const handleStartDrag = (marker: MapPin) => {
+    setDraggingId(marker.id);
+    setDragOrigin(marker.position);
+    setPendingPosition(marker.position);
+    setSelectedId(marker.id);
+  };
+
+  const handleMarkerClick = (marker: MapPin, event?: google.maps.MapMouseEvent) => {
+    const ctrlKey =
+      Boolean((event as any)?.domEvent?.ctrlKey) ||
+      Boolean((event as any)?.detail?.domEvent?.ctrlKey);
+    if (ctrlKey) {
+      handleStartDrag(marker);
+      return;
+    }
+    handleSelect(marker.id);
+  };
+
+  const handleMarkerDragEnd = (event: google.maps.MapMouseEvent) => {
+    const latLng = event?.detail?.latLng ?? event?.latLng;
+    if (!latLng) {
+      return;
+    }
+    const next =
+      typeof (latLng as google.maps.LatLng).lat === 'function'
+        ? { lat: (latLng as google.maps.LatLng).lat(), lng: (latLng as google.maps.LatLng).lng() }
+        : { lat: (latLng as google.maps.LatLngLiteral).lat, lng: (latLng as google.maps.LatLngLiteral).lng };
+    setPendingPosition(next);
+  };
+
+  const cancelDrag = () => {
+    setDraggingId(null);
+    setDragOrigin(null);
+    setPendingPosition(null);
+  };
+
+  const saveDrag = async () => {
+    if (!draggingId || !pendingPosition || !onAdjustPinDrag) {
+      cancelDrag();
+      return;
+    }
+    try {
+      setDragSaving(true);
+      await onAdjustPinDrag(draggingId, {
+        latitude: pendingPosition.lat,
+        longitude: pendingPosition.lng,
+      });
+      setSelectedId(draggingId);
+      cancelDrag();
+    } catch (error) {
+      console.warn('Failed to update pin location from map drag', error);
+      if (typeof window !== 'undefined') {
+        window.alert('Could not save that pin move yet. Try again.');
+      }
+    } finally {
+      setDragSaving(false);
+    }
   };
 
   const handleConfirm = async (id: string) => {
@@ -163,6 +238,8 @@ export function MapScreen({
 
   const renderMarkers = () =>
     mapPins.map((marker) => {
+      const isDragging = marker.id === draggingId;
+      const position = isDragging && pendingPosition ? pendingPosition : marker.position;
       const isSelected = marker.id === selectedId;
       const isConfirmed = marker.status === 'complete' || Boolean(confirmed[marker.id]);
       const fillColor = isSelected
@@ -177,17 +254,67 @@ export function MapScreen({
         <BadgeMarker
           key={marker.id}
           label={marker.label}
-          position={marker.position}
+          position={position}
           fill={fillColor}
           labelColor={badgeLabelColor}
           outlineColor={badgeOutlineColor}
           selected={isSelected}
-          onPress={() => handleSelect(marker.id)}
+          draggable={isDragging}
+          onPress={(event) => handleMarkerClick(marker, event as any)}
+          onDragEnd={handleMarkerDragEnd}
         />
       );
     });
 
   const canAdjustPin = typeof onAdjustPin === 'function';
+  const canSaveDrag = typeof onAdjustPinDrag === 'function';
+
+  const hasDragChanged =
+    draggingId &&
+    pendingPosition &&
+    (!dragOrigin ||
+      dragOrigin.lat !== pendingPosition.lat ||
+      dragOrigin.lng !== pendingPosition.lng);
+
+  const renderDragBanner = (variant: 'primary' | 'modal') => {
+    if (!draggingId || !pendingPosition || !canSaveDrag) {
+      return null;
+    }
+    const containerStyle = variant === 'primary' ? styles.dragBanner : styles.dragBannerFullScreen;
+    return (
+      <View pointerEvents="box-none" style={styles.dragBannerOverlay}>
+        <View style={containerStyle}>
+          <Text style={styles.dragBannerTitle}>Adjusting pin</Text>
+          <Text style={styles.dragBannerBody}>
+            Hold Ctrl and drag the marker to the new spot. Press Save to update this address.
+          </Text>
+          <View style={styles.dragBannerActions}>
+            <Pressable
+              style={({ pressed }) => [styles.toastButton, styles.toastButtonGhost, pressed && styles.toastButtonPressed]}
+              onPress={cancelDrag}
+              disabled={dragSaving}
+            >
+              <Text style={styles.toastButtonGhostText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.toastButton,
+                styles.toastButtonPrimary,
+                (!hasDragChanged || dragSaving) && styles.toastButtonDisabled,
+                pressed && hasDragChanged && !dragSaving && styles.toastButtonPressed,
+              ]}
+              onPress={saveDrag}
+              disabled={!hasDragChanged || dragSaving}
+            >
+              <Text style={styles.toastButtonPrimaryText}>
+                {dragSaving ? 'Saving...' : 'Save'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    );
+  };
 
   const renderToast = (variant: 'primary' | 'modal') => {
     if (!selectedMarker) {
@@ -361,6 +488,7 @@ export function MapScreen({
           </Map>
           {renderOverlay()}
           {renderToast('primary')}
+          {renderDragBanner('primary')}
         </View>
 
         <Modal visible={isFullScreen} animationType="slide" onRequestClose={() => setIsFullScreen(false)}>
@@ -391,6 +519,7 @@ export function MapScreen({
               </Map>
               {renderOverlay()}
               {renderToast('modal')}
+              {renderDragBanner('modal')}
             </View>
           </View>
         </Modal>
@@ -406,10 +535,22 @@ type BadgeMarkerProps = {
   labelColor: string;
   outlineColor: string;
   selected: boolean;
-  onPress: () => void;
+  draggable?: boolean;
+  onPress: (event?: google.maps.MapMouseEvent) => void;
+  onDragEnd?: (event: google.maps.MapMouseEvent) => void;
 };
 
-function BadgeMarker({ label, position, fill, labelColor, outlineColor, selected, onPress }: BadgeMarkerProps) {
+function BadgeMarker({
+  label,
+  position,
+  fill,
+  labelColor,
+  outlineColor,
+  selected,
+  draggable = false,
+  onPress,
+  onDragEnd,
+}: BadgeMarkerProps) {
   const [options, setOptions] = useState<google.maps.MarkerOptions | null>(null);
 
   useEffect(() => {
@@ -470,7 +611,15 @@ function BadgeMarker({ label, position, fill, labelColor, outlineColor, selected
     return null;
   }
 
-  return <Marker position={position} onClick={onPress} {...options} />;
+  return (
+    <Marker
+      position={position}
+      onClick={onPress}
+      onDragEnd={onDragEnd}
+      draggable={draggable}
+      options={options}
+    />
+  );
 }
 
 function BoundsController({ markers }: { markers: MapPin[] }) {
@@ -695,6 +844,12 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderRadius: 999,
       borderWidth: 1,
     },
+    toastButtonPressed: {
+      opacity: 0.85,
+    },
+    toastButtonDisabled: {
+      opacity: 0.6,
+    },
     toastButtonGhost: {
       borderColor: colors.border,
       backgroundColor: colors.surface,
@@ -755,6 +910,50 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderColor: colors.border,
       overflow: 'hidden',
       position: 'relative',
+    },
+    dragBannerOverlay: {
+      position: 'absolute',
+      inset: 0,
+      justifyContent: 'flex-end',
+      padding: 16,
+      pointerEvents: 'box-none',
+    },
+    dragBanner: {
+      borderRadius: 14,
+      padding: 14,
+      gap: 10,
+      backgroundColor: toastBackground,
+      borderWidth: 1,
+      borderColor: colors.border,
+      width: '100%',
+      maxWidth: 420,
+      alignSelf: 'flex-end',
+    },
+    dragBannerFullScreen: {
+      borderRadius: 14,
+      padding: 14,
+      gap: 10,
+      backgroundColor: toastBackground,
+      borderWidth: 1,
+      borderColor: colors.border,
+      width: '100%',
+      maxWidth: 420,
+      alignSelf: 'flex-end',
+      margin: 24,
+    },
+    dragBannerTitle: {
+      fontWeight: '700',
+      color: colors.text,
+    },
+    dragBannerBody: {
+      color: colors.mutedText,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    dragBannerActions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 10,
     },
   });
 }
