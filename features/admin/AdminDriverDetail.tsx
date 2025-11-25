@@ -73,6 +73,7 @@ export function AdminDriverDetail({
   const [activeStopId, setActiveStopId] = useState<string | null>(null);
   const [pinEditor, setPinEditor] = useState<PinEditorState | null>(null);
   const [updatingLocation, setUpdatingLocation] = useState(false);
+  const [pinSaveNotice, setPinSaveNotice] = useState<string | null>(null);
   const [forgettingCache, setForgettingCache] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -441,6 +442,7 @@ export function AdminDriverDetail({
     }
     try {
       setUpdatingLocation(true);
+      setPinSaveNotice(null);
       const updated = await authApi.updateDriverStopLocation(token, pinEditor.stop.id, {
         latitude: pinEditor.coordinate.latitude,
         longitude: pinEditor.coordinate.longitude,
@@ -448,8 +450,12 @@ export function AdminDriverDetail({
       setStops((prev) => prev.map((stop) => (stop.id === updated.id ? updated : stop)));
       setSuccess('Pin location updated.');
       setError(null);
-      setPinEditor(null);
       setActiveStopId(pinEditor.stop.id);
+      setPinSaveNotice('Saved');
+      setTimeout(() => {
+        setPinEditor(null);
+        setPinSaveNotice(null);
+      }, 700);
     } catch (err) {
       setError(
         getFriendlyError(err, {
@@ -1280,6 +1286,9 @@ export function AdminDriverDetail({
                     />
                   </View>
                   <View style={styles.pinModalActions}>
+                    {pinSaveNotice ? (
+                      <Text style={styles.pinModalStatus}>{pinSaveNotice}</Text>
+                    ) : null}
                     <Pressable
                       style={({ pressed }) => [styles.pinModalButton, pressed && styles.pinModalButtonPressed]}
                       onPress={() => {
@@ -1964,6 +1973,11 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       flexDirection: 'row',
       justifyContent: 'flex-end',
       gap: 12,
+    },
+    pinModalStatus: {
+      color: colors.success,
+      textAlign: 'right',
+      fontWeight: '600',
     },
     pinModalButton: {
       borderRadius: 999,
