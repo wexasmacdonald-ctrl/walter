@@ -38,28 +38,6 @@ const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 }
 const DEFAULT_ZOOM = 12;
 
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
-
-const SOFT_DARK_STYLE: google.maps.MapTypeStyle[] = [
-  { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
-  { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#616161' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#f5f5f5' }] },
-  { featureType: 'administrative.land_parcel', elementType: 'labels.text.fill', stylers: [{ color: '#bdbdbd' }] },
-  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#e5e5e5' }] },
-  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#757575' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#d0e6d4' }] },
-  { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#558b6e' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#d9d9d9' }] },
-  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#cfcfcf' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#c0c0c0' }] },
-  { featureType: 'road.highway.controlled_access', elementType: 'geometry', stylers: [{ color: '#b0b0b0' }] },
-  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#8a8a8a' }] },
-  { featureType: 'transit.line', elementType: 'geometry', stylers: [{ color: '#e0e0e0' }] },
-  { featureType: 'transit.station', elementType: 'geometry', stylers: [{ color: '#e0e0e0' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#c6d4e1' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#6b8096' }] },
-];
-
 export function MapScreen({
   pins,
   loading = false,
@@ -397,7 +375,6 @@ export function MapScreen({
             disableDefaultUI: true,
             clickableIcons: false,
             gestureHandling: 'greedy',
-            styles: mapType === 'standard' ? SOFT_DARK_STYLE : undefined,
           }}
           onClick={() => setSelectedId(null)}
         >
@@ -428,7 +405,6 @@ export function MapScreen({
                   disableDefaultUI: true,
                   clickableIcons: false,
                   gestureHandling: 'greedy',
-                  styles: mapType === 'standard' ? SOFT_DARK_STYLE : undefined,
                 }}
                 onClick={() => setSelectedId(null)}
               >
