@@ -414,11 +414,13 @@ export function AdminDriverDetail({
     const longitude =
       typeof stop.lng === 'number' ? stop.lng : DEFAULT_COORDINATE.longitude;
     setActiveStopId(stop.id);
-    setPinEditor({
-      stop,
-      coordinate: { latitude, longitude },
-    });
     setMapExpanded(true);
+    if (Platform.OS !== 'web') {
+      setPinEditor({
+        stop,
+        coordinate: { latitude, longitude },
+      });
+    }
   };
 
   const handleRequestPinAdjust = (stopId: string) => {
@@ -1050,13 +1052,13 @@ export function AdminDriverDetail({
               <Text style={styles.cardHeading}>Driver map</Text>
               <Text style={styles.cardHint}>
                 {mapPins.length
-                  ? `Showing ${mapPins.length} pinned stop${mapPins.length === 1 ? '' : 's'}.`
+                  ? 'Ctrl+click a pin, drag to the right spot, then press Save to update it.'
                   : 'Assign stops to see pins here.'}
               </Text>
               <MapScreen
                 pins={mapPins}
                 loading={loadingStops}
-                onAdjustPin={handleRequestPinAdjust}
+                onAdjustPin={Platform.OS !== 'web' ? handleRequestPinAdjust : undefined}
                 onAdjustPinDrag={handleSavePinLocationDirect}
               />
               <Text style={styles.mapNote}>
@@ -1206,7 +1208,9 @@ export function AdminDriverDetail({
                             onPress={() => handleStartLocationEdit(stop)}
                             disabled={saving || updatingLocation || forgettingCache}
                           >
-                            <Text style={styles.primaryChipText}>Adjust pin</Text>
+                            <Text style={styles.primaryChipText}>
+                              {Platform.OS === 'web' ? 'Select pin' : 'Adjust pin'}
+                            </Text>
                           </Pressable>
                           <Pressable
                             style={({ pressed }) => [styles.dangerChip, pressed && styles.dangerChipPressed]}
