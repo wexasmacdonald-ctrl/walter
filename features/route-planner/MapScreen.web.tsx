@@ -52,7 +52,6 @@ export function MapScreen({
   const [confirmed, setConfirmed] = useState<Record<string, number>>({});
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
-  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const mapPins = useMemo<MapPin[]>(() => {
     return pins
@@ -111,13 +110,6 @@ export function MapScreen({
       setSelectedId(null);
     }
   }, [selectedId, mapPins]);
-
-  useEffect(() => {
-    if (draggingId && (!pendingPosition || !mapPins.some((pin) => pin.id === draggingId))) {
-      setDraggingId(null);
-      setPendingPosition(null);
-    }
-  }, [draggingId, mapPins, pendingPosition]);
 
   const handleSelect = (id: string) => {
     setSelectedId((prev) => (prev === id ? null : id));
@@ -178,8 +170,6 @@ export function MapScreen({
 
   const renderMarkers = () =>
     mapPins.map((marker) => {
-      const isDragging = marker.id === draggingId;
-      const position = isDragging && pendingPosition ? pendingPosition : marker.position;
       const isSelected = marker.id === selectedId;
       const isConfirmed = marker.status === 'complete' || Boolean(confirmed[marker.id]);
       const fillColor = isSelected
@@ -194,7 +184,7 @@ export function MapScreen({
         <BadgeMarker
           key={marker.id}
           label={marker.label}
-          position={position}
+          position={marker.position}
           fill={fillColor}
           labelColor={badgeLabelColor}
           outlineColor={badgeOutlineColor}
