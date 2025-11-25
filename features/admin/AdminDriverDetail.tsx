@@ -415,12 +415,10 @@ export function AdminDriverDetail({
       typeof stop.lng === 'number' ? stop.lng : DEFAULT_COORDINATE.longitude;
     setActiveStopId(stop.id);
     setMapExpanded(true);
-    if (Platform.OS !== 'web') {
-      setPinEditor({
-        stop,
-        coordinate: { latitude, longitude },
-      });
-    }
+    setPinEditor({
+      stop,
+      coordinate: { latitude, longitude },
+    });
   };
 
   const handleRequestPinAdjust = (stopId: string) => {
@@ -1052,13 +1050,13 @@ export function AdminDriverDetail({
               <Text style={styles.cardHeading}>Driver map</Text>
               <Text style={styles.cardHint}>
                 {mapPins.length
-                  ? 'Hold Ctrl, drag a pin to the right spot, and release to save it in place.'
+                  ? 'Select a pin and choose Adjust pin to move it. Changes save after you press Save.'
                   : 'Assign stops to see pins here.'}
               </Text>
               <MapScreen
                 pins={mapPins}
                 loading={loadingStops}
-                onAdjustPin={Platform.OS !== 'web' ? handleRequestPinAdjust : undefined}
+                onAdjustPin={handleRequestPinAdjust}
                 onAdjustPinDrag={handleSavePinLocationDirect}
               />
               <Text style={styles.mapNote}>
