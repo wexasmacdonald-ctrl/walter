@@ -247,7 +247,7 @@ export function AdminDriverDetail({
     setError(null);
     setSuccess(null);
     try {
-      const updated = await authApi.saveDriverStops(token, driverId, sanitized);
+      const updated = await authApi.saveDriverStops(token, driverId, sanitized, workspaceId);
       setStops(updated);
       setSuccess(successMessage);
       setShowStopsList(true);
