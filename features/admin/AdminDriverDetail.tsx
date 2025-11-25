@@ -1052,7 +1052,7 @@ export function AdminDriverDetail({
               <Text style={styles.cardHeading}>Driver map</Text>
               <Text style={styles.cardHint}>
                 {mapPins.length
-                  ? 'Ctrl+click a pin, drag to the right spot, then press Save to update it.'
+                  ? 'Hold Ctrl, drag a pin to the right spot, and release to save it in place.'
                   : 'Assign stops to see pins here.'}
               </Text>
               <MapScreen

@@ -54,7 +54,6 @@ export function MapScreen({
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragOrigin, setDragOrigin] = useState<google.maps.LatLngLiteral | null>(null);
   const [pendingPosition, setPendingPosition] = useState<google.maps.LatLngLiteral | null>(null);
   const [dragSaving, setDragSaving] = useState(false);
 
@@ -119,7 +118,6 @@ export function MapScreen({
   useEffect(() => {
     if (draggingId && (!pendingPosition || !mapPins.some((pin) => pin.id === draggingId))) {
       setDraggingId(null);
-      setDragOrigin(null);
       setPendingPosition(null);
     }
   }, [draggingId, mapPins, pendingPosition]);
@@ -130,7 +128,6 @@ export function MapScreen({
 
   const handleStartDrag = (marker: MapPin) => {
     setDraggingId(marker.id);
-    setDragOrigin(marker.position);
     setPendingPosition(marker.position);
     setSelectedId(marker.id);
   };
@@ -156,24 +153,29 @@ export function MapScreen({
         ? { lat: (latLng as google.maps.LatLng).lat(), lng: (latLng as google.maps.LatLng).lng() }
         : { lat: (latLng as google.maps.LatLngLiteral).lat, lng: (latLng as google.maps.LatLngLiteral).lng };
     setPendingPosition(next);
+    void saveDrag(next);
   };
 
   const cancelDrag = () => {
     setDraggingId(null);
-    setDragOrigin(null);
     setPendingPosition(null);
   };
 
-  const saveDrag = async () => {
-    if (!draggingId || !pendingPosition || !onAdjustPinDrag) {
+  const saveDrag = async (coordinate?: google.maps.LatLngLiteral) => {
+    if (!draggingId || !onAdjustPinDrag) {
+      cancelDrag();
+      return;
+    }
+    const target = coordinate ?? pendingPosition;
+    if (!target) {
       cancelDrag();
       return;
     }
     try {
       setDragSaving(true);
       await onAdjustPinDrag(draggingId, {
-        latitude: pendingPosition.lat,
-        longitude: pendingPosition.lng,
+        latitude: target.lat,
+        longitude: target.lng,
       });
       setSelectedId(draggingId);
       cancelDrag();
@@ -267,55 +269,6 @@ export function MapScreen({
     });
 
   const canAdjustPin = typeof onAdjustPin === 'function';
-  const canSaveDrag = typeof onAdjustPinDrag === 'function';
-
-  const hasDragChanged =
-    draggingId &&
-    pendingPosition &&
-    (!dragOrigin ||
-      dragOrigin.lat !== pendingPosition.lat ||
-      dragOrigin.lng !== pendingPosition.lng);
-
-  const renderDragBanner = (variant: 'primary' | 'modal') => {
-    if (!draggingId || !pendingPosition || !canSaveDrag) {
-      return null;
-    }
-    const containerStyle = variant === 'primary' ? styles.dragBanner : styles.dragBannerFullScreen;
-    return (
-      <View pointerEvents="box-none" style={styles.dragBannerOverlay}>
-        <View style={containerStyle}>
-          <Text style={styles.dragBannerTitle}>Adjusting pin</Text>
-          <Text style={styles.dragBannerBody}>
-            Hold Ctrl and drag the marker to the new spot. Press Save to update this address.
-          </Text>
-          <View style={styles.dragBannerActions}>
-            <Pressable
-              style={({ pressed }) => [styles.toastButton, styles.toastButtonGhost, pressed && styles.toastButtonPressed]}
-              onPress={cancelDrag}
-              disabled={dragSaving}
-            >
-              <Text style={styles.toastButtonGhostText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [
-                styles.toastButton,
-                styles.toastButtonPrimary,
-                (!hasDragChanged || dragSaving) && styles.toastButtonDisabled,
-                pressed && hasDragChanged && !dragSaving && styles.toastButtonPressed,
-              ]}
-              onPress={saveDrag}
-              disabled={!hasDragChanged || dragSaving}
-            >
-              <Text style={styles.toastButtonPrimaryText}>
-                {dragSaving ? 'Saving...' : 'Save'}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    );
-  };
-
   const renderToast = (variant: 'primary' | 'modal') => {
     if (!selectedMarker) {
       return null;
@@ -482,14 +435,13 @@ export function MapScreen({
               gestureHandling: 'greedy',
             }}
             onClick={() => setSelectedId(null)}
-          >
-            <BoundsController markers={mapPins} />
-            {renderMarkers()}
-          </Map>
-          {renderOverlay()}
-          {renderToast('primary')}
-          {renderDragBanner('primary')}
-        </View>
+      >
+        <BoundsController markers={mapPins} />
+        {renderMarkers()}
+      </Map>
+      {renderOverlay()}
+      {renderToast('primary')}
+    </View>
 
         <Modal visible={isFullScreen} animationType="slide" onRequestClose={() => setIsFullScreen(false)}>
           <View style={styles.modalContent}>
@@ -519,7 +471,6 @@ export function MapScreen({
               </Map>
               {renderOverlay()}
               {renderToast('modal')}
-              {renderDragBanner('modal')}
             </View>
           </View>
         </Modal>
@@ -844,12 +795,6 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderRadius: 999,
       borderWidth: 1,
     },
-    toastButtonPressed: {
-      opacity: 0.85,
-    },
-    toastButtonDisabled: {
-      opacity: 0.6,
-    },
     toastButtonGhost: {
       borderColor: colors.border,
       backgroundColor: colors.surface,
@@ -910,50 +855,6 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderColor: colors.border,
       overflow: 'hidden',
       position: 'relative',
-    },
-    dragBannerOverlay: {
-      position: 'absolute',
-      inset: 0,
-      justifyContent: 'flex-end',
-      padding: 16,
-      pointerEvents: 'box-none',
-    },
-    dragBanner: {
-      borderRadius: 14,
-      padding: 14,
-      gap: 10,
-      backgroundColor: toastBackground,
-      borderWidth: 1,
-      borderColor: colors.border,
-      width: '100%',
-      maxWidth: 420,
-      alignSelf: 'flex-end',
-    },
-    dragBannerFullScreen: {
-      borderRadius: 14,
-      padding: 14,
-      gap: 10,
-      backgroundColor: toastBackground,
-      borderWidth: 1,
-      borderColor: colors.border,
-      width: '100%',
-      maxWidth: 420,
-      alignSelf: 'flex-end',
-      margin: 24,
-    },
-    dragBannerTitle: {
-      fontWeight: '700',
-      color: colors.text,
-    },
-    dragBannerBody: {
-      color: colors.mutedText,
-      fontSize: 13,
-      lineHeight: 18,
-    },
-    dragBannerActions: {
-      flexDirection: 'row',
-      justifyContent: 'flex-end',
-      gap: 10,
     },
   });
 }
