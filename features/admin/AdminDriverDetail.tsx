@@ -590,16 +590,19 @@ export function AdminDriverDetail({
     try {
       setDeletingAccount(true);
       await deleteUserAccount(driver.id);
-      Alert.alert('Account deleted', 'The account and any saved data were removed.');
+      Alert.alert(
+        'Driver removed',
+        'The driver was removed from this company and returned to the free tier.'
+      );
       if (onRefresh) {
         await Promise.resolve(onRefresh());
       }
       onClose();
     } catch (err) {
       const message = getFriendlyError(err, {
-        fallback: "We couldn't delete that account yet. Try again.",
+        fallback: "We couldn't remove that driver yet. Try again.",
       });
-      Alert.alert('Delete failed', message);
+      Alert.alert('Remove failed', message);
     } finally {
       setDeletingAccount(false);
     }
@@ -797,7 +800,7 @@ export function AdminDriverDetail({
             </Text>
           </Pressable>
           {accountExpanded ? (
-            <View style={styles.accountSection}>
+            <View style={[styles.card, styles.accountSection]}>
               <View style={styles.accountForm}>
                 <Text style={styles.accountLabel}>Full name</Text>
                   <TextInput
