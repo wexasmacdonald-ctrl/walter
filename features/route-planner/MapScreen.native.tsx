@@ -309,15 +309,18 @@ export function MapScreen({
             {isConfirmed ? (
               <Text style={styles.toastStatus}>Snow cleared. Tap undo to revert.</Text>
             ) : null}
-            <View style={styles.toastActions}>
-              {canAdjustPin ? (
-                <Pressable
-                  style={[styles.toastButton, styles.toastButtonSecondary]}
-                  onPress={() => onAdjustPin?.(selectedMarker.id)}
-                >
-                  <Text style={styles.toastButtonSecondaryText}>Adjust pin</Text>
-                </Pressable>
-              ) : null}
+          <View style={styles.toastActions}>
+            {canAdjustPin ? (
+              <Pressable
+                style={[styles.toastButton, styles.toastButtonSecondary]}
+                onPress={() => {
+                  setIsFullScreen(false);
+                  onAdjustPin?.(selectedMarker.id);
+                }}
+              >
+                <Text style={styles.toastButtonSecondaryText}>Adjust pin</Text>
+              </Pressable>
+            ) : null}
               <Pressable style={[styles.toastButton, styles.toastButtonGhost]} onPress={() => setSelectedId(null)}>
                 <Text style={styles.toastButtonGhostText}>Close</Text>
               </Pressable>

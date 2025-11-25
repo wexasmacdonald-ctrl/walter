@@ -1932,7 +1932,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       left: 0,
       right: 0,
       bottom: 0,
-      zIndex: 999,
+      zIndex: 2000,
     },
     pinModalCard: {
       width: '100%',

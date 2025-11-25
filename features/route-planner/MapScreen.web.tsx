@@ -119,6 +119,13 @@ export function MapScreen({
     handleSelect(marker.id);
   };
 
+  const handleAdjustPin = (id: string) => {
+    if (isFullScreen) {
+      setIsFullScreen(false);
+    }
+    onAdjustPin?.(id);
+  };
+
   const handleConfirm = async (id: string) => {
     if (actioningId) {
       return;
@@ -220,7 +227,7 @@ export function MapScreen({
               {canAdjustPin ? (
                 <Pressable
                   style={[styles.toastButton, styles.toastButtonSecondary]}
-                  onPress={() => onAdjustPin?.(selectedMarker.id)}
+                  onPress={() => handleAdjustPin(selectedMarker.id)}
                 >
                   <Text style={styles.toastButtonSecondaryText}>Adjust pin</Text>
                 </Pressable>
