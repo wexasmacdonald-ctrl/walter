@@ -311,6 +311,17 @@ export default {
       );
     }
 
+    const driverStopLocationMatch =
+      request.method === 'POST'
+        ? url.pathname.match(/^\/admin\/driver-stops\/([^/]+)\/location$/)
+        : null;
+    if (driverStopLocationMatch) {
+      const stopId = driverStopLocationMatch[1];
+      return requireAuth(routeContext, respond, ['admin'], () =>
+        handleAdminUpdateDriverStopLocation(request, env, respond, routeContext, stopId)
+      );
+    }
+
     if (request.method === 'POST' && url.pathname === '/admin/driver-stops') {
       return requireAuth(routeContext, respond, ['admin'], () =>
         handleAdminReplaceDriverStops(request, env, respond, routeContext)
@@ -1447,6 +1458,45 @@ async function handleAdminReplaceDriverStops(
   } catch (error) {
     console.error('Failed to replace driver stops', error);
     return respond({ error: 'DRIVER_STOPS_UPDATE_FAILED' }, 500);
+  }
+}
+
+async function handleAdminUpdateDriverStopLocation(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext,
+  stopId: string
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
+    return respond({ error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' }, 500);
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const lat = typeof body?.lat === 'number' ? body.lat : Number(body?.latitude);
+  const lng = typeof body?.lng === 'number' ? body.lng : Number(body?.longitude);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return respond({ error: 'INVALID_INPUT', message: 'lat and lng are required numbers.' }, 400);
+  }
+
+  const workspaceId = resolveWorkspaceId(context, request);
+
+  try {
+    const updated = await updateDriverStopLocation(env, stopId, { lat, lng }, workspaceId);
+    if (!updated) {
+      return respond({ error: 'NOT_FOUND' }, 404);
+    }
+    return respond({ stop: updated });
+  } catch (error) {
+    console.error('Failed to update driver stop location', error);
+    return respond({ error: 'DRIVER_STOP_UPDATE_FAILED' }, 500);
   }
 }
 
@@ -3321,6 +3371,43 @@ async function updateDriverStopStatus(
       Prefer: 'return=representation',
     },
     body: JSON.stringify({ status }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase update failed (${response.status}): ${errorBody}`);
+  }
+
+  const rows = (await response.json()) as DriverStopRow[];
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return normalizeDriverStop(rows[0]);
+}
+
+async function updateDriverStopLocation(
+  env: Env,
+  stopId: string,
+  coordinates: { lat: number; lng: number },
+  workspaceId?: string | null
+): Promise<DriverStopView | null> {
+  const url = new URL('/rest/v1/driver_stops', normalizeSupabaseUrl(env.SUPABASE_URL!));
+  url.searchParams.set('id', `eq.${stopId}`);
+  if (workspaceId) {
+    url.searchParams.set('workspace_id', `eq.${workspaceId}`);
+  }
+
+  const response = await fetch(url.toString(), {
+    method: 'PATCH',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify({
+      lat: coordinates.lat,
+      lng: coordinates.lng,
+    }),
   });
 
   if (!response.ok) {
