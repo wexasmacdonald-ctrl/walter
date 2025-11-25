@@ -1615,11 +1615,11 @@ async function handleAdminReplaceDriverStops(
   respond: (data: unknown, status?: number) => Response,
   context: RouteContext
 ): Promise<Response> {
-  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE) || !env.MAPBOX_ACCESS_TOKEN) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
     return respond(
       {
         error: 'CONFIG_ERROR',
-        message: 'Supabase or Mapbox configuration is incomplete.',
+        message: 'Supabase configuration is incomplete.',
       },
       500
     );
@@ -1667,13 +1667,55 @@ async function handleAdminReplaceDriverStops(
     return respond({ error: 'FORBIDDEN' }, 403);
   }
 
-  const geocodeResult = await geocodeAddresses(addresses, env.MAPBOX_ACCESS_TOKEN);
-  if (geocodeResult.type === 'error') {
-    return geocodeResult.response;
-  }
-
   try {
-    await replaceDriverStops(env, driverId, geocodeResult.stops, driver.workspace_id ?? null);
+    const currentStops = await fetchDriverStops(env, driverId, driver.workspace_id ?? null);
+    const knownByAddress = new Map(
+      currentStops.map((stop) => [stop.address.trim().toLowerCase(), stop])
+    );
+
+    const needsGeocode: string[] = [];
+    const stopsPayload: GeocodeSuccess[] = addresses.map((address, index) => {
+      const key = address.trim().toLowerCase();
+      const existing = knownByAddress.get(key);
+      if (existing && typeof existing.lat === 'number' && typeof existing.lng === 'number') {
+        return {
+          address,
+          lat: existing.lat,
+          lng: existing.lng,
+        };
+      }
+      needsGeocode.push(address);
+      return {
+        address,
+        lat: DEFAULT_COORDINATE.latitude,
+        lng: DEFAULT_COORDINATE.longitude,
+      };
+    });
+
+    if (needsGeocode.length > 0) {
+      if (!env.MAPBOX_ACCESS_TOKEN) {
+        return respond(
+          { error: 'CONFIG_ERROR', message: 'Mapbox token is required to geocode new addresses.' },
+          500
+        );
+      }
+      const geocodeResult = await geocodeAddresses(needsGeocode, env.MAPBOX_ACCESS_TOKEN);
+      if (geocodeResult.type === 'error') {
+        return geocodeResult.response;
+      }
+      const geoByAddress = new Map(
+        geocodeResult.stops.map((stop) => [stop.address.trim().toLowerCase(), stop])
+      );
+      const merged: GeocodeSuccess[] = [];
+      for (const stop of stopsPayload) {
+        const geo = geoByAddress.get(stop.address.trim().toLowerCase());
+        merged.push(geo ?? stop);
+      }
+      await replaceDriverStops(env, driverId, merged, driver.workspace_id ?? null);
+    } else {
+      await replaceDriverStops(env, driverId, stopsPayload, driver.workspace_id ?? null);
+    }
+
     const stops = await fetchDriverStops(env, driverId, driver.workspace_id ?? null);
     return respond({ stops });
   } catch (error) {
