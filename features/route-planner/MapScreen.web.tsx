@@ -274,6 +274,69 @@ export function MapScreen({
     );
   };
 
+  const renderSelectedCard = (variant: 'primary' | 'modal') => {
+    if (!selectedMarker) {
+      return null;
+    }
+    const isConfirmed = Boolean(confirmed[selectedMarker.id]);
+    const containerStyle =
+      variant === 'primary' ? styles.selectedCardContainer : styles.selectedCardContainerFull;
+
+    return (
+      <View pointerEvents="box-none" style={styles.selectedCardOverlay}>
+        <View style={containerStyle}>
+          <Text style={styles.selectedCardLabel}>{selectedMarker.label}</Text>
+          <Text style={styles.selectedCardTitle} numberOfLines={2}>
+            {selectedMarker.address || 'Address unavailable'}
+          </Text>
+          {isConfirmed ? (
+            <Text style={styles.selectedCardStatus}>Snow cleared. Tap undo to revert.</Text>
+          ) : null}
+          <View style={styles.selectedCardActions}>
+            {canAdjustPin ? (
+              <Pressable
+                style={[styles.toastButton, styles.toastButtonSecondary]}
+                onPress={() => {
+                  setIsFullScreen(false);
+                  onAdjustPin?.(selectedMarker.id);
+                }}
+              >
+                <Text style={styles.toastButtonSecondaryText}>Adjust pin</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              style={[styles.toastButton, styles.toastButtonGhost]}
+              onPress={() => setSelectedId(null)}
+            >
+              <Text style={styles.toastButtonGhostText}>Close</Text>
+            </Pressable>
+            {isConfirmed ? (
+              <Pressable
+                style={[styles.toastButton, styles.toastButtonDanger]}
+                onPress={() => handleUndo(selectedMarker.id)}
+                disabled={actioningId === selectedMarker.id}
+              >
+                <Text style={styles.toastButtonDangerText}>
+                  {actioningId === selectedMarker.id ? 'Updating…' : 'Undo'}
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={[styles.toastButton, styles.toastButtonPrimary]}
+                onPress={() => handleConfirm(selectedMarker.id)}
+                disabled={actioningId === selectedMarker.id}
+              >
+                <Text style={styles.toastButtonPrimaryText}>
+                  {actioningId === selectedMarker.id ? 'Updating…' : 'Snow cleared'}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   const renderOverlay = () => {
     if (loading) {
       return (
@@ -382,6 +445,7 @@ export function MapScreen({
       </Map>
       {renderOverlay()}
       {renderToast('primary')}
+      {renderSelectedCard('primary')}
     </View>
 
         <Modal visible={isFullScreen} animationType="slide" onRequestClose={() => setIsFullScreen(false)}>
@@ -412,6 +476,7 @@ export function MapScreen({
               </Map>
               {renderOverlay()}
               {renderToast('modal')}
+              {renderSelectedCard('modal')}
             </View>
           </View>
         </Modal>
@@ -796,6 +861,59 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderColor: colors.border,
       overflow: 'hidden',
       position: 'relative',
+    },
+    selectedCardOverlay: {
+      position: 'absolute',
+      inset: 0,
+      justifyContent: 'flex-end',
+      alignItems: 'flex-end',
+      pointerEvents: 'box-none',
+    },
+    selectedCardContainer: {
+      margin: 12,
+      padding: 14,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      gap: 8,
+      maxWidth: 360,
+      shadowColor: colors.text,
+      shadowOpacity: 0.12,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 4,
+    },
+    selectedCardContainerFull: {
+      margin: 20,
+      padding: 14,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      gap: 8,
+      maxWidth: 360,
+    },
+    selectedCardLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.primary,
+      letterSpacing: 0.4,
+    },
+    selectedCardTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    selectedCardStatus: {
+      fontSize: 13,
+      color: colors.mutedText,
+    },
+    selectedCardActions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      flexWrap: 'wrap',
+      gap: 10,
     },
   });
 }
