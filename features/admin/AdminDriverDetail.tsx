@@ -452,7 +452,7 @@ export function AdminDriverDetail({
       const updated = await authApi.updateDriverStopLocation(token, pinEditor.stop.id, {
         latitude: pinEditor.coordinate.latitude,
         longitude: pinEditor.coordinate.longitude,
-      });
+      }, workspaceId);
       setStops((prev) => prev.map((stop) => (stop.id === updated.id ? updated : stop)));
       setSuccess('Pin location updated.');
       setError(null);
@@ -488,7 +488,7 @@ export function AdminDriverDetail({
     }
     try {
       setUpdatingLocation(true);
-      const updated = await authApi.updateDriverStopLocation(token, stopId, coordinate);
+      const updated = await authApi.updateDriverStopLocation(token, stopId, coordinate, workspaceId);
       setStops((prev) => prev.map((stop) => (stop.id === updated.id ? updated : stop)));
       setSuccess('Pin location updated.');
       setError(null);
