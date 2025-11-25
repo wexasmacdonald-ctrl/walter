@@ -300,46 +300,54 @@ export function AdminDriverDetail({
     if (saving || stops.length === 0) {
       return;
     }
-    Alert.alert(
-      'Delete all stops?',
-      'This will remove every address for this driver.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              await persistStops([], 'Removed all stops.');
-              setShowStopsList(false);
-            })();
-          },
+    if (Platform.OS === 'web') {
+      const ok = typeof window !== 'undefined' && window.confirm('Delete all stops?\n\nThis will remove every address for this driver.');
+      if (ok) {
+        void (async () => {
+          await persistStops([], 'Removed all stops.');
+          setShowStopsList(false);
+        })();
+      }
+      return;
+    }
+    Alert.alert('Delete all stops?', 'This will remove every address for this driver.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            await persistStops([], 'Removed all stops.');
+            setShowStopsList(false);
+          })();
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const handleDeleteStop = (stopId: string) => {
     if (saving) {
       return;
     }
-    Alert.alert(
-      'Remove stop?',
-      'This address will be removed from the driver list.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            const nextAddresses = stops
-              .filter((stop) => stop.id !== stopId)
-              .map((stop) => stop.address);
-            void persistStops(nextAddresses, 'Stop removed.');
-          },
-        },
-      ]
-    );
+    const execute = () => {
+      const nextAddresses = stops
+        .filter((stop) => stop.id !== stopId)
+        .map((stop) => stop.address);
+      void persistStops(nextAddresses, 'Stop removed.');
+    };
+    if (Platform.OS === 'web') {
+      const ok =
+        typeof window !== 'undefined' &&
+        window.confirm('Remove stop?\n\nThis address will be removed from the driver list.');
+      if (ok) {
+        execute();
+      }
+      return;
+    }
+    Alert.alert('Remove stop?', 'This address will be removed from the driver list.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: execute },
+    ]);
   };
 
   const handleToggleSelect = (stopId: string) => {
@@ -362,21 +370,27 @@ export function AdminDriverDetail({
     if (ids.length === 0) {
       return;
     }
+    const execute = () => {
+      const nextAddresses = stops
+        .filter((stop) => !ids.includes(stop.id))
+        .map((stop) => stop.address);
+      void persistStops(nextAddresses, 'Selected stops deleted.');
+    };
+    if (Platform.OS === 'web') {
+      const ok =
+        typeof window !== 'undefined' &&
+        window.confirm(`Delete selected stops?\n\nThis removes ${ids.length} stop${ids.length === 1 ? '' : 's'}.`);
+      if (ok) {
+        execute();
+      }
+      return;
+    }
     Alert.alert(
       'Delete selected stops?',
       `This removes ${ids.length} stop${ids.length === 1 ? '' : 's'}.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            const nextAddresses = stops
-              .filter((stop) => !ids.includes(stop.id))
-              .map((stop) => stop.address);
-            void persistStops(nextAddresses, 'Selected stops deleted.');
-          },
-        },
+        { text: 'Delete', style: 'destructive', onPress: execute },
       ]
     );
   };
