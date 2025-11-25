@@ -23,11 +23,9 @@ import * as authApi from '@/features/auth/api';
 import { AdminDriverManager } from '@/features/admin/AdminDriverManager';
 import { AdminDriverDetail } from '@/features/admin/AdminDriverDetail';
 import { AdminTeamList } from '@/features/admin/AdminTeamList';
-import { AdminInviteAdminCard } from '@/features/admin/AdminInviteAdminCard';
 import { DevWorkspaceDirectory } from '@/features/admin/DevWorkspaceDirectory';
 import { DevImpersonationPanel } from '@/features/admin/DevImpersonationPanel';
 import { DevDriverAssignmentPanel } from '@/features/admin/DevDriverAssignmentPanel';
-import { WorkspaceInviteShareCard } from '@/features/admin/WorkspaceInviteShareCard';
 import { DriverStopsPanel } from '@/features/driver/DriverStopsPanel';
 import type { BusinessTier, UserRole, WorkspaceSummary } from '@/features/auth/types';
 import { SettingsMenu } from '@/components/SettingsMenu';
@@ -967,48 +965,20 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
 
   const sections = [
     {
-      key: 'workspaceAccess' as const,
-      title: 'Workspace access',
-      description: 'Share secure access links or invites with your team.',
-      visible: true,
-      content: (
-        <View style={styles.sectionStack}>
-          {hasWorkspaceContext ? (
-            <>
-              <WorkspaceInviteShareCard />
-              <Text style={[styles.sectionNote, { color: colors.mutedText }]}>
-                Codes above belong to {workspaceDisplayName ?? 'this workspace'}. Switch companies in
-                the developer directory to share a different set of invites.
-              </Text>
-            </>
-          ) : (
-            <InfoBanner
-              title="Pick a company"
-              message="Select or create a workspace in the developer tools to generate invite codes."
-              tone="warning"
-            />
-          )}
-        </View>
-      ),
-    },
-    {
       key: 'teamAccess' as const,
       title: 'Team roster & access',
-      description: 'Admins onboard via the login page - manage access here.',
+      description: 'Promote trusted drivers to admin and review who can manage the workspace.',
       visible: true,
       content: (
         <View style={styles.sectionStack}>
           <InfoBanner
-            title="Self-serve onboarding"
-            message="Admins and drivers create accounts from the public login screen. Use this roster to audit access or remove old teammates."
+            title="Manage admin access"
+            message="Promote drivers from the driver directory. Use this roster to audit admins or remove old teammates."
           />
           {hasWorkspaceContext ? (
-            <>
-              <AdminInviteAdminCard onCreated={handleAdminCreated} />
-              <View style={styles.sectionSpacer}>
-                <AdminTeamList refreshSignal={refreshSignal} />
-              </View>
-            </>
+            <View style={styles.sectionSpacer}>
+              <AdminTeamList refreshSignal={refreshSignal} />
+            </View>
           ) : (
             <InfoBanner
               title="Workspace required"
@@ -1350,7 +1320,7 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
           />
           <InfoBanner
             title="Stay in sync"
-            message="Routes, invites, and safety documents update instantly across every device."
+            message="Routes and safety documents update instantly across every device."
           />
           <QuickActionGrid actions={driverQuickActions} />
         </View>
@@ -1370,7 +1340,7 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
         <View style={[styles.summary, { borderColor: colors.border }]}>
           <Text style={[styles.summaryText, { color: colors.text }]}>
             Use the menu in the top right corner to update your profile, reset your password,
-            join a workspace with an invite code, or switch between dark and light mode.
+            join a workspace, or switch between dark and light mode.
           </Text>
           <Text style={[styles.summaryHint, { color: colors.mutedText }]}>
             Need help? The same menu links to legal policies and our support contacts.
