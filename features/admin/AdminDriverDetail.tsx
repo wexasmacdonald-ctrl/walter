@@ -73,7 +73,8 @@ export function AdminDriverDetail({
   const [activeStopId, setActiveStopId] = useState<string | null>(null);
   const [pinEditor, setPinEditor] = useState<PinEditorState | null>(null);
   const [updatingLocation, setUpdatingLocation] = useState(false);
-  const [pinSaveNotice, setPinSaveNotice] = useState<string | null>(null);
+  const [pinSaveMessage, setPinSaveMessage] = useState<string | null>(null);
+  const [pinSaveTone, setPinSaveTone] = useState<'success' | 'error' | null>(null);
   const [forgettingCache, setForgettingCache] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -415,6 +416,8 @@ export function AdminDriverDetail({
     const longitude =
       typeof stop.lng === 'number' ? stop.lng : DEFAULT_COORDINATE.longitude;
     setActiveStopId(stop.id);
+    setPinSaveMessage(null);
+    setPinSaveTone(null);
     setMapExpanded(true);
     setPinEditor({
       stop,
@@ -442,7 +445,8 @@ export function AdminDriverDetail({
     }
     try {
       setUpdatingLocation(true);
-      setPinSaveNotice(null);
+      setPinSaveMessage(null);
+      setPinSaveTone(null);
       const updated = await authApi.updateDriverStopLocation(token, pinEditor.stop.id, {
         latitude: pinEditor.coordinate.latitude,
         longitude: pinEditor.coordinate.longitude,
@@ -451,12 +455,18 @@ export function AdminDriverDetail({
       setSuccess('Pin location updated.');
       setError(null);
       setActiveStopId(pinEditor.stop.id);
-      setPinSaveNotice('Saved');
+      setPinSaveMessage('Saved');
+      setPinSaveTone('success');
       setTimeout(() => {
         setPinEditor(null);
-        setPinSaveNotice(null);
-      }, 700);
+        setPinSaveMessage(null);
+        setPinSaveTone(null);
+      }, 900);
     } catch (err) {
+      setPinSaveMessage(
+        getFriendlyError(err, { fallback: 'Could not save that pin yet. Try again.' })
+      );
+      setPinSaveTone('error');
       setError(
         getFriendlyError(err, {
           fallback: "We couldn't update that pin yet. Try again.",
@@ -1286,8 +1296,15 @@ export function AdminDriverDetail({
                     />
                   </View>
                   <View style={styles.pinModalActions}>
-                    {pinSaveNotice ? (
-                      <Text style={styles.pinModalStatus}>{pinSaveNotice}</Text>
+                    {pinSaveMessage ? (
+                      <Text
+                        style={[
+                          styles.pinModalStatus,
+                          pinSaveTone === 'success' ? styles.pinModalStatusSuccess : styles.pinModalStatusError,
+                        ]}
+                      >
+                        {pinSaveMessage}
+                      </Text>
                     ) : null}
                     <Pressable
                       style={({ pressed }) => [styles.pinModalButton, pressed && styles.pinModalButtonPressed]}
@@ -1304,6 +1321,7 @@ export function AdminDriverDetail({
                       style={({ pressed }) => [
                         styles.pinModalPrimaryButton,
                         pressed && styles.pinModalPrimaryPressed,
+                        updatingLocation && styles.buttonDisabled,
                       ]}
                       onPress={handleSavePinLocation}
                       disabled={updatingLocation}
