@@ -1,4 +1,4 @@
-import bcrypt from 'bcryptjs';
+﻿import bcrypt from 'bcryptjs';
 
 type UserRole = 'admin' | 'driver' | 'dev';
 type BusinessTier = 'free' | 'business';
@@ -311,6 +311,17 @@ export default {
       );
     }
 
+    const driverStopLocationMatch =
+      request.method === 'POST'
+        ? url.pathname.match(/^\/admin\/driver-stops\/([^/]+)\/location$/)
+        : null;
+    if (driverStopLocationMatch) {
+      const stopId = driverStopLocationMatch[1];
+      return requireAuth(routeContext, respond, ['admin'], () =>
+        handleAdminUpdateDriverStopLocation(request, env, respond, routeContext, stopId)
+      );
+    }
+
     if (request.method === 'POST' && url.pathname === '/admin/driver-stops') {
       return requireAuth(routeContext, respond, ['admin'], () =>
         handleAdminReplaceDriverStops(request, env, respond, routeContext)
@@ -344,6 +355,12 @@ export default {
     if (request.method === 'DELETE' && url.pathname === '/admin/users') {
       return requireAuth(routeContext, respond, ['admin'], () =>
         handleAdminDeleteUser(request, env, respond, routeContext)
+      );
+    }
+
+    if (request.method === 'POST' && url.pathname === '/admin/users/kick') {
+      return requireAuth(routeContext, respond, ['admin'], () =>
+        handleAdminKickUser(request, env, respond, routeContext)
       );
     }
 
@@ -384,15 +401,11 @@ export default {
     }
 
     if (request.method === 'GET' && url.pathname === '/workspace/invites') {
-      return requireAuth(routeContext, respond, ['admin'], () =>
-        handleWorkspaceListInvites(request, env, respond, routeContext)
-      );
+      return respond({ error: 'INVITES_DISABLED' }, 410);
     }
 
     if (request.method === 'POST' && url.pathname === '/workspace/invites') {
-      return requireAuth(routeContext, respond, ['admin'], () =>
-        handleWorkspaceCreateInvite(request, env, respond, routeContext)
-      );
+      return respond({ error: 'INVITES_DISABLED' }, 410);
     }
 
     if (request.method === 'DELETE' && url.pathname === '/admin/workspaces') {
@@ -438,9 +451,7 @@ export default {
     }
 
     if (request.method === 'POST' && url.pathname === '/account/team-access-code') {
-      return requireAuth(routeContext, respond, ['admin', 'driver'], () =>
-        handleAccountJoinWorkspace(request, env, respond, routeContext)
-      );
+      return respond({ error: 'INVITES_DISABLED' }, 410);
     }
 
     if (request.method === 'GET' && url.pathname === '/driver/stops') {
@@ -999,6 +1010,73 @@ async function handleAdminDeleteUser(
     return respond({ status: 'ok', mode: 'soft-removed' });
   } catch (error) {
     console.error('Failed to soft-remove user', error);
+    return respond({ error: 'USER_DELETE_FAILED' }, 500);
+  }
+}
+
+async function handleAdminKickUser(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const userId = typeof body?.user_id === 'string' ? body.user_id.trim() : '';
+  if (!userId) {
+    return respond(
+      { error: 'INVALID_USER_ID', message: 'user_id is required.' },
+      400
+    );
+  }
+
+  let user: SupabaseUserRow | null = null;
+  try {
+    user = await fetchUserById(env, userId);
+  } catch (error) {
+    console.error('Failed to fetch user for kick', error);
+    return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
+  }
+
+  if (!user) {
+    return respond({ error: 'USER_NOT_FOUND' }, 404);
+  }
+
+  if (!canAccessWorkspace(context, user.workspace_id ?? null)) {
+    return respond({ error: 'FORBIDDEN' }, 403);
+  }
+
+  try {
+    await updateUserProfile(env, user.id, {
+      role: 'driver',
+      status: STATUS_ACTIVE,
+      workspace_id: null,
+      business_tier: 'free',
+      business_name: null,
+    });
+    try {
+      await deleteDriverStopsRecords(env, user.id);
+    } catch (stopError) {
+      console.error('Failed to clear driver stops during kick', stopError);
+    }
+    return respond({ status: 'ok', mode: 'kicked' });
+  } catch (error) {
+    console.error('Failed to kick user', error);
     return respond({ error: 'USER_DELETE_FAILED' }, 500);
   }
 }
@@ -1604,7 +1682,46 @@ async function handleAdminReplaceDriverStops(
   }
 }
 
-async function handleWorkspaceListInvites(
+async function handleAdminUpdateDriverStopLocation(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext,
+  stopId: string
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
+    return respond({ error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' }, 500);
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const lat = typeof body?.lat === 'number' ? body.lat : Number(body?.latitude);
+  const lng = typeof body?.lng === 'number' ? body.lng : Number(body?.longitude);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return respond({ error: 'INVALID_INPUT', message: 'lat and lng are required numbers.' }, 400);
+  }
+
+  const workspaceId = resolveWorkspaceId(context, request);
+
+  try {
+    const updated = await updateDriverStopLocation(env, stopId, { lat, lng }, workspaceId);
+    if (!updated) {
+      return respond({ error: 'NOT_FOUND' }, 404);
+    }
+    return respond({ stop: updated });
+  } catch (error) {
+    console.error('Failed to update driver stop location', error);
+    return respond({ error: 'DRIVER_STOP_UPDATE_FAILED' }, 500);
+  }
+}
+
+async function /* invites disabled */ handleWorkspaceListInvites(
   request: Request,
   env: Env,
   respond: (data: unknown, status?: number) => Response,
@@ -1631,7 +1748,7 @@ async function handleWorkspaceListInvites(
   }
 }
 
-async function handleWorkspaceCreateInvite(
+async function /* invites disabled */ handleWorkspaceCreateInvite(
   request: Request,
   env: Env,
   respond: (data: unknown, status?: number) => Response,
@@ -2809,7 +2926,7 @@ function createBodySnippet(source: string | null | undefined, maxLength = 400): 
   if (!source) {
     return undefined;
   }
-  return source.length > maxLength ? `${source.slice(0, maxLength)}…` : source;
+  return source.length > maxLength ? `${source.slice(0, maxLength)}â€¦` : source;
 }
 
 function extractCoordinates(node: any): { lat: number; lng: number } | null {
@@ -3490,6 +3607,43 @@ async function updateDriverStopStatus(
   return normalizeDriverStop(rows[0]);
 }
 
+async function updateDriverStopLocation(
+  env: Env,
+  stopId: string,
+  coordinates: { lat: number; lng: number },
+  workspaceId?: string | null
+): Promise<DriverStopView | null> {
+  const url = new URL('/rest/v1/driver_stops', normalizeSupabaseUrl(env.SUPABASE_URL!));
+  url.searchParams.set('id', `eq.${stopId}`);
+  if (workspaceId) {
+    url.searchParams.set('workspace_id', `eq.${workspaceId}`);
+  }
+
+  const response = await fetch(url.toString(), {
+    method: 'PATCH',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify({
+      lat: coordinates.lat,
+      lng: coordinates.lng,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase update failed (${response.status}): ${errorBody}`);
+  }
+
+  const rows = (await response.json()) as DriverStopRow[];
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return normalizeDriverStop(rows[0]);
+}
+
 async function deleteDriverStopsRecords(env: Env, driverId: string): Promise<void> {
   const base = normalizeSupabaseUrl(env.SUPABASE_URL!);
   const deleteUrl = new URL(`/rest/v1/driver_stops`, base);
@@ -3881,3 +4035,4 @@ function base64UrlDecode(input: string): Uint8Array {
 function normalizeBusinessTier(value: string | null | undefined): BusinessTier {
   return value?.toLowerCase() === 'business' ? 'business' : 'free';
 }
+
