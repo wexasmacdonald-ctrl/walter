@@ -3392,35 +3392,47 @@ async function updateDriverStopLocation(
   coordinates: { lat: number; lng: number },
   workspaceId?: string | null
 ): Promise<DriverStopView | null> {
-  const url = new URL('/rest/v1/driver_stops', normalizeSupabaseUrl(env.SUPABASE_URL!));
-  url.searchParams.set('id', `eq.${stopId}`);
+  const attemptUpdate = async (workspaceFilter: string | null) => {
+    const url = new URL('/rest/v1/driver_stops', normalizeSupabaseUrl(env.SUPABASE_URL!));
+    url.searchParams.set('id', `eq.${stopId}`);
+    if (workspaceFilter) {
+      url.searchParams.set('workspace_id', `eq.${workspaceFilter}`);
+    }
+
+    const response = await fetch(url.toString(), {
+      method: 'PATCH',
+      headers: {
+        ...supabaseHeaders(env),
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify({
+        lat: coordinates.lat,
+        lng: coordinates.lng,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Supabase update failed (${response.status}): ${errorBody}`);
+    }
+
+    const rows = (await response.json()) as DriverStopRow[];
+    if (rows.length === 0) {
+      return null;
+    }
+
+    return normalizeDriverStop(rows[0]);
+  };
+
+  const primary = await attemptUpdate(workspaceId ?? null);
+  if (primary) {
+    return primary;
+  }
   if (workspaceId) {
-    url.searchParams.set('workspace_id', `eq.${workspaceId}`);
+    // Retry without workspace filter in case the stop has no workspace set.
+    return attemptUpdate(null);
   }
-
-  const response = await fetch(url.toString(), {
-    method: 'PATCH',
-    headers: {
-      ...supabaseHeaders(env),
-      Prefer: 'return=representation',
-    },
-    body: JSON.stringify({
-      lat: coordinates.lat,
-      lng: coordinates.lng,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Supabase update failed (${response.status}): ${errorBody}`);
-  }
-
-  const rows = (await response.json()) as DriverStopRow[];
-  if (rows.length === 0) {
-    return null;
-  }
-
-  return normalizeDriverStop(rows[0]);
+  return null;
 }
 
 async function deleteDriverStopsRecords(env: Env, driverId: string): Promise<void> {
