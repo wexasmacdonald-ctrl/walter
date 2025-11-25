@@ -53,6 +53,7 @@ export function MapScreen({
   const [confirmed, setConfirmed] = useState<Record<string, number>>({});
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
+  const [ctrlActive, setCtrlActive] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [pendingPosition, setPendingPosition] = useState<google.maps.LatLngLiteral | null>(null);
   const [dragSaving, setDragSaving] = useState(false);
@@ -122,28 +123,45 @@ export function MapScreen({
     }
   }, [draggingId, mapPins, pendingPosition]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Control') {
+        setCtrlActive(true);
+      }
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Control') {
+        setCtrlActive(false);
+        setDraggingId(null);
+        setPendingPosition(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
   const handleSelect = (id: string) => {
     setSelectedId((prev) => (prev === id ? null : id));
   };
 
-  const handleStartDrag = (marker: MapPin) => {
+  const handleMarkerClick = (marker: MapPin) => {
+    handleSelect(marker.id);
+  };
+
+  const handleMarkerDragStart = (marker: MapPin) => {
+    if (!ctrlActive) {
+      return;
+    }
     setDraggingId(marker.id);
     setPendingPosition(marker.position);
     setSelectedId(marker.id);
   };
 
-  const handleMarkerClick = (marker: MapPin, event?: google.maps.MapMouseEvent) => {
-    const ctrlKey =
-      Boolean((event as any)?.domEvent?.ctrlKey) ||
-      Boolean((event as any)?.detail?.domEvent?.ctrlKey);
-    if (ctrlKey) {
-      handleStartDrag(marker);
-      return;
-    }
-    handleSelect(marker.id);
-  };
-
-  const handleMarkerDragEnd = (event: google.maps.MapMouseEvent) => {
+  const handleMarkerDragEnd = (marker: MapPin, event: google.maps.MapMouseEvent) => {
     const latLng = event?.detail?.latLng ?? event?.latLng;
     if (!latLng) {
       return;
@@ -153,7 +171,7 @@ export function MapScreen({
         ? { lat: (latLng as google.maps.LatLng).lat(), lng: (latLng as google.maps.LatLng).lng() }
         : { lat: (latLng as google.maps.LatLngLiteral).lat, lng: (latLng as google.maps.LatLngLiteral).lng };
     setPendingPosition(next);
-    void saveDrag(next);
+    void saveDrag(next, marker.id);
   };
 
   const cancelDrag = () => {
@@ -161,8 +179,9 @@ export function MapScreen({
     setPendingPosition(null);
   };
 
-  const saveDrag = async (coordinate?: google.maps.LatLngLiteral) => {
-    if (!draggingId || !onAdjustPinDrag) {
+  const saveDrag = async (coordinate?: google.maps.LatLngLiteral, markerId?: string) => {
+    const targetId = markerId ?? draggingId;
+    if (!targetId || !onAdjustPinDrag) {
       cancelDrag();
       return;
     }
@@ -173,11 +192,11 @@ export function MapScreen({
     }
     try {
       setDragSaving(true);
-      await onAdjustPinDrag(draggingId, {
+      await onAdjustPinDrag(targetId, {
         latitude: target.lat,
         longitude: target.lng,
       });
-      setSelectedId(draggingId);
+      setSelectedId(targetId);
       cancelDrag();
     } catch (error) {
       console.warn('Failed to update pin location from map drag', error);
@@ -261,9 +280,10 @@ export function MapScreen({
           labelColor={badgeLabelColor}
           outlineColor={badgeOutlineColor}
           selected={isSelected}
-          draggable={isDragging}
-          onPress={(event) => handleMarkerClick(marker, event as any)}
-          onDragEnd={handleMarkerDragEnd}
+          draggable={ctrlActive}
+          onPress={() => handleMarkerClick(marker)}
+          onDragStart={() => handleMarkerDragStart(marker)}
+          onDragEnd={(event) => handleMarkerDragEnd(marker, event as any)}
         />
       );
     });
