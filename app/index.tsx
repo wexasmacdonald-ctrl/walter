@@ -1104,6 +1104,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
                 void handleEnterWorkspace();
                 focusSection('devOps');
               }}
+              onBack={() => setActiveDriverId(null)}
             />
           </View>
         </View>
