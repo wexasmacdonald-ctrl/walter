@@ -1111,25 +1111,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
     }
     return (
       <View style={styles.plannerContent} pointerEvents={pointerEvents}>
-        {workspaceDisplayName ? (
-          <View style={styles.workspaceHeading}>
-            <View style={styles.workspaceHeadingLeft}>
-              <Text style={[styles.workspaceHeadingLabel, { color: colors.mutedText }]}>Company</Text>
-              <Text style={[styles.workspaceHeadingValue, { color: colors.text }]}>{workspaceDisplayName}</Text>
-            </View>
-            {isDevUser && IS_WEB ? (
-              <Pressable
-                style={({ pressed }) => [styles.backLink, pressed && styles.backLinkPressed]}
-                onPress={() => {
-                  setActiveDriverId(null);
-                  navigateToMode('home', { resetHistory: true });
-                }}
-              >
-                <Text style={styles.backLinkText}>Back to company accounts</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
+        {/* Workspace heading removed for cleaner view */}
         {activeDriverId ? (
           <AdminDriverDetail
             driverId={activeDriverId}
