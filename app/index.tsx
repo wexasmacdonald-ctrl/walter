@@ -1382,17 +1382,17 @@ const styles = StyleSheet.create({
   },
   backLink: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#e2e8f0',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: colors.surface,
+    backgroundColor: '#f8fafc',
   },
   backLinkPressed: {
     opacity: 0.85,
   },
   backLinkText: {
-    color: colors.primary,
+    color: '#2563eb',
     fontWeight: '600',
   },
   experienceStage: {
