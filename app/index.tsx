@@ -221,7 +221,7 @@ type AdminSectionKey =
 
 type AdminExperienceMode = 'home' | 'workspace' | 'directory';
 
-type DriverSectionKey = 'driverOverview' | 'driverPlan' | 'driverAccount';
+type DriverSectionKey = 'driverPlan';
 
 type SectionCardProps = {
   title: string;
@@ -1258,17 +1258,11 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
   } = useAuth();
   const { colors } = useTheme();
   const [openSections, setOpenSections] = useState<Record<DriverSectionKey, boolean>>({
-    driverOverview: false,
     driverPlan: false,
-    driverAccount: false,
   });
 
   const toggleSection = useCallback((key: DriverSectionKey) => {
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
-  }, []);
-
-  const focusDriverSection = useCallback((key: DriverSectionKey) => {
-    setOpenSections((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
   }, []);
 
   const menuTrigger = (
@@ -1287,66 +1281,12 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
     />
   );
 
-  const driverQuickActions: QuickAction[] = [
-    {
-      key: 'account',
-      title: 'Update account',
-      description: 'Profile, password, theme, and team codes.',
-      icon: 'settings',
-      onPress: () => focusDriverSection('driverAccount'),
-    },
-    {
-      key: 'support',
-      title: 'Contact support',
-      description: 'Find help inside the account menu.',
-      icon: 'life-buoy',
-      onPress: () => focusDriverSection('driverAccount'),
-    },
-  ];
-
   const sections = [
-    {
-      key: 'driverOverview' as const,
-      title: 'Overview',
-      description: 'Your account and workspace summary.',
-      badge: user?.businessTier === 'business' ? 'Business tier' : 'Free tier',
-      content: (
-        <View style={styles.sectionStack}>
-          <PlannerHero
-            name={user?.fullName}
-            role={user?.role}
-            tier={user?.businessTier ?? null}
-            businessName={user?.businessName ?? undefined}
-          />
-          <InfoBanner
-            title="Stay in sync"
-            message="Routes and safety documents update instantly across every device."
-          />
-          <QuickActionGrid actions={driverQuickActions} />
-        </View>
-      ),
-    },
     {
       key: 'driverPlan' as const,
       title: 'Assignments & stops',
       description: "Review today's manifest. Dispatch manages edits for you.",
       content: <DriverStopsPanel refreshSignal={refreshSignal} />,
-    },
-    {
-      key: 'driverAccount' as const,
-      title: 'Account & support',
-      description: 'Profile updates, passwords, team access, and theme.',
-      content: (
-        <View style={[styles.summary, { borderColor: colors.border }]}>
-          <Text style={[styles.summaryText, { color: colors.text }]}>
-            Use the menu in the top right corner to update your profile, reset your password,
-            join a workspace, or switch between dark and light mode.
-          </Text>
-          <Text style={[styles.summaryHint, { color: colors.mutedText }]}>
-            Need help? The same menu links to legal policies and our support contacts.
-          </Text>
-        </View>
-      ),
     },
   ];
 
