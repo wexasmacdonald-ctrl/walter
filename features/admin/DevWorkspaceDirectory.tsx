@@ -19,12 +19,11 @@ import { getFriendlyError } from '@/features/shared/get-friendly-error';
 
 type DevWorkspaceDirectoryProps = {
   onOpenWorkspace?: () => void;
-  onBack?: () => void;
 };
 
 type DirectoryView = 'menu' | 'workspace' | 'free-tier';
 
-export function DevWorkspaceDirectory({ onOpenWorkspace, onBack }: DevWorkspaceDirectoryProps) {
+export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectoryProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { token, workspaceId, selectWorkspace, adminUpdateUserProfile } = useAuth();
@@ -458,14 +457,6 @@ export function DevWorkspaceDirectory({ onOpenWorkspace, onBack }: DevWorkspaceD
       style={[styles.screen, { backgroundColor: colors.background }]}
       contentContainerStyle={[styles.container, { backgroundColor: colors.background }]}
     >
-      {Platform.OS === 'web' && onBack ? (
-        <Pressable
-          style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
-          onPress={onBack}
-        >
-          <Text style={styles.backButtonText}>← Back to company accounts</Text>
-        </Pressable>
-      ) : null}
       <View style={styles.heroCard}>
         <Text style={styles.heroTitle}>Workspace directory</Text>
           <Text style={styles.heroBody}>

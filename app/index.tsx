@@ -1104,7 +1104,6 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
                 void handleEnterWorkspace();
                 focusSection('devOps');
               }}
-              onBack={() => setActiveDriverId(null)}
             />
           </View>
         </View>
@@ -1123,7 +1122,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
                 style={({ pressed }) => [styles.backLink, pressed && styles.backLinkPressed]}
                 onPress={() => {
                   setActiveDriverId(null);
-                  navigateToMode('directory', { resetHistory: true });
+                  navigateToMode('home', { resetHistory: true });
                 }}
               >
                 <Text style={styles.backLinkText}>Back to company accounts</Text>
