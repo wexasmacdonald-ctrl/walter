@@ -1114,8 +1114,21 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
       <View style={styles.plannerContent} pointerEvents={pointerEvents}>
         {workspaceDisplayName ? (
           <View style={styles.workspaceHeading}>
-            <Text style={[styles.workspaceHeadingLabel, { color: colors.mutedText }]}>Company</Text>
-            <Text style={[styles.workspaceHeadingValue, { color: colors.text }]}>{workspaceDisplayName}</Text>
+            <View style={styles.workspaceHeadingLeft}>
+              <Text style={[styles.workspaceHeadingLabel, { color: colors.mutedText }]}>Company</Text>
+              <Text style={[styles.workspaceHeadingValue, { color: colors.text }]}>{workspaceDisplayName}</Text>
+            </View>
+            {isDevUser && IS_WEB ? (
+              <Pressable
+                style={({ pressed }) => [styles.backLink, pressed && styles.backLinkPressed]}
+                onPress={() => {
+                  setActiveDriverId(null);
+                  navigateToMode('directory', { resetHistory: true });
+                }}
+              >
+                <Text style={styles.backLinkText}>Back to company accounts</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
         {activeDriverId ? (
@@ -1349,6 +1362,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 12,
     gap: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 12,
+  },
+  workspaceHeadingLeft: {
+    flex: 1,
+    gap: 2,
   },
   workspaceHeadingLabel: {
     fontSize: 12,
@@ -1358,6 +1379,21 @@ const styles = StyleSheet.create({
   workspaceHeadingValue: {
     fontSize: 18,
     fontWeight: '700',
+  },
+  backLink: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: colors.surface,
+  },
+  backLinkPressed: {
+    opacity: 0.85,
+  },
+  backLinkText: {
+    color: colors.primary,
+    fontWeight: '600',
   },
   experienceStage: {
     flex: 1,
