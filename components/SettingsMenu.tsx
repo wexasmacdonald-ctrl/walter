@@ -22,6 +22,10 @@ import { openPrivacyPolicy, openTermsOfUse } from '@/features/legal/legal-docume
 import type { AuthUser, BusinessTier } from '@/features/auth/types';
 import type { OrgBillingStatus, SyncDriverSeatResult } from '@/features/auth/api';
 
+const isIOS = Platform.OS === 'ios';
+const EXISTING_CUSTOMER_NOTICE =
+  'This mobile app is for existing customers. Ask your administrator to manage billing on the web dashboard.';
+
 type SettingsMenuProps = {
   userName: string | null | undefined;
   userRole: string;
@@ -482,6 +486,10 @@ export function SettingsMenu({
 
   const handleStartCheckout = useCallback(
     async (seatCountOverride?: number) => {
+      if (isIOS) {
+        setDriverSeatMessage(EXISTING_CUSTOMER_NOTICE);
+        return;
+      }
       if (checkoutLoading) {
         return;
       }
@@ -554,8 +562,12 @@ export function SettingsMenu({
     try {
       const result = await onSyncDriverSeats();
       if (result.action === 'checkout') {
-        setDriverSeatMessage('Redirecting to billing checkout for updated seats.');
-        await handleStartCheckout(result.numberOfDrivers);
+        if (isIOS) {
+          setDriverSeatMessage(EXISTING_CUSTOMER_NOTICE);
+        } else {
+          setDriverSeatMessage('Redirecting to billing checkout for updated seats.');
+          await handleStartCheckout(result.numberOfDrivers);
+        }
       } else {
         const message =
           result.action === 'updated'
@@ -662,22 +674,27 @@ export function SettingsMenu({
                     <Text style={styles.driverSeatButtonText}>Sync with members</Text>
                   )}
                 </Pressable>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.driverSeatSecondaryButton,
-                    pressed && styles.driverSeatButtonPressed,
-                    checkoutLoading && styles.driverSeatButtonDisabled,
-                  ]}
-                  disabled={checkoutLoading}
-                  onPress={() => handleStartCheckout()}
-                >
-                  {checkoutLoading ? (
-                    <ActivityIndicator color={colors.text} />
-                  ) : (
-                    <Text style={styles.driverSeatSecondaryText}>Review billing in Stripe</Text>
-                  )}
-                </Pressable>
+                {!isIOS ? (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.driverSeatSecondaryButton,
+                      pressed && styles.driverSeatButtonPressed,
+                      checkoutLoading && styles.driverSeatButtonDisabled,
+                    ]}
+                    disabled={checkoutLoading}
+                    onPress={() => handleStartCheckout()}
+                  >
+                    {checkoutLoading ? (
+                      <ActivityIndicator color={colors.text} />
+                    ) : (
+                      <Text style={styles.driverSeatSecondaryText}>Review billing in Stripe</Text>
+                    )}
+                  </Pressable>
+                ) : null}
               </View>
+              {isIOS ? (
+                <Text style={styles.driverSeatHint}>{EXISTING_CUSTOMER_NOTICE}</Text>
+              ) : null}
             </View>
           ) : null}
           {showTeamCodeForm ? (

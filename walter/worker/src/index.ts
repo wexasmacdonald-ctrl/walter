@@ -747,6 +747,11 @@ async function handleGeocode(
     );
   }
 
+  const authUser = context.authUser;
+  if (!authUser) {
+    return respond({ error: 'UNAUTHORIZED' }, 401);
+  }
+
   const unlimitedStops = authUser.businessTier === 'business' || authUser.role === 'dev';
   if (!unlimitedStops && addresses.length > MAX_ADDRESSES) {
     return respond(
@@ -766,11 +771,6 @@ async function handleGeocode(
       },
       400
     );
-  }
-
-  const authUser = context.authUser;
-  if (!authUser) {
-    return respond({ error: 'UNAUTHORIZED' }, 401);
   }
 
   if (authUser.businessTier !== 'business') {
@@ -2984,7 +2984,9 @@ async function handleAdminReplaceDriverStops(
     return respond({ error: 'INVALID_INPUT', message: 'addresses payload is required.' }, 400);
   }
 
-  if (addresses.length > MAX_ADDRESSES) {
+  const unlimitedStops =
+    context.authUser?.businessTier === 'business' || context.authUser?.role === 'dev';
+  if (!unlimitedStops && addresses.length > MAX_ADDRESSES) {
     return respond(
       {
         error: 'TOO_MANY_ADDRESSES',
