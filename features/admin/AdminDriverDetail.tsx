@@ -50,8 +50,10 @@ export function AdminDriverDetail({
   const {
     token,
     workspaceId,
+    user: authUser,
     resetUserPassword,
     removeUserFromWorkspace,
+    deleteUserAccount,
     adminUpdateUserProfile,
     adminUpdateUserPassword,
   } = useAuth();
@@ -78,6 +80,7 @@ export function AdminDriverDetail({
   const [forgettingCache, setForgettingCache] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [permanentDeleting, setPermanentDeleting] = useState(false);
   const [accountName, setAccountName] = useState('');
   const [accountContact, setAccountContact] = useState('');
   const [accountError, setAccountError] = useState<string | null>(null);
@@ -92,12 +95,31 @@ export function AdminDriverDetail({
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [deleteConfirmMode, setDeleteConfirmMode] = useState<'remove' | 'delete'>('remove');
   const accountNameInputRef = useRef<TextInput | null>(null);
   const accountContactInputRef = useRef<TextInput | null>(null);
   const driverPasswordInputRef = useRef<TextInput | null>(null);
   const driverPasswordConfirmInputRef = useRef<TextInput | null>(null);
 
   const workspaceScope = workspaceId ?? undefined;
+  const canDeleteAccount = authUser?.role === 'dev';
+  const deleteModalTitle =
+    deleteConfirmMode === 'delete'
+      ? 'Delete account permanently?'
+      : 'Remove driver from workspace?';
+  const deleteModalBody =
+    deleteConfirmMode === 'delete'
+      ? 'This permanently deletes the user account and anonymizes any remaining data. This action cannot be undone.'
+      : 'The driver will be removed from this workspace and returned to the free tier.';
+  const deleteModalBusy =
+    deleteConfirmMode === 'delete' ? permanentDeleting : deletingAccount;
+  const deleteModalActionLabel = deleteModalBusy
+    ? deleteConfirmMode === 'delete'
+      ? 'Deleting…'
+      : 'Removing…'
+    : deleteConfirmMode === 'delete'
+      ? 'Delete account'
+      : 'Remove driver';
 
   useEffect(() => {
     async function loadDriver() {
@@ -679,6 +701,7 @@ export function AdminDriverDetail({
       return;
     }
     if (Platform.OS === 'web') {
+      setDeleteConfirmMode('remove');
       setDeleteConfirmVisible(true);
       return;
     }
@@ -698,13 +721,64 @@ export function AdminDriverDetail({
       );
   };
 
+  const performDeleteDriverAccount = async () => {
+    if (!driver) {
+      return;
+    }
+    try {
+      setPermanentDeleting(true);
+      await deleteUserAccount(driver.id);
+      Alert.alert('Account deleted', 'This user account has been permanently deleted.');
+      if (onRefresh) {
+        await Promise.resolve(onRefresh());
+      }
+      onClose();
+    } catch (err) {
+      const message = getFriendlyError(err, {
+        fallback: "We couldn't delete that account yet. Try again.",
+      });
+      Alert.alert('Delete failed', message);
+    } finally {
+      setPermanentDeleting(false);
+    }
+  };
+
+  const confirmDeleteDriverAccount = () => {
+    if (!driver || permanentDeleting) {
+      return;
+    }
+    if (Platform.OS === 'web') {
+      setDeleteConfirmMode('delete');
+      setDeleteConfirmVisible(true);
+      return;
+    }
+    Alert.alert(
+      'Delete account?',
+      'This permanently deletes the user account and anonymizes any remaining data. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete account',
+          style: 'destructive',
+          onPress: () => {
+            void performDeleteDriverAccount();
+          },
+        },
+      ]
+    );
+  };
+
   const handleCancelDeleteDialog = () => {
     setDeleteConfirmVisible(false);
   };
 
   const handleConfirmDeleteDialog = () => {
     setDeleteConfirmVisible(false);
-    void performRemoveDriver();
+    if (deleteConfirmMode === 'delete') {
+      void performDeleteDriverAccount();
+    } else {
+      void performRemoveDriver();
+    }
   };
 
   const handleSaveAccountDetails = async () => {
@@ -984,7 +1058,28 @@ export function AdminDriverDetail({
                       <Text style={styles.accountButtonDangerLabel}>Remove from workspace</Text>
                     )}
                   </Pressable>
-              </View>
+                  {canDeleteAccount ? (
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.accountButton,
+                        styles.accountButtonDanger,
+                        pressed &&
+                          !permanentDeleting &&
+                          !resettingPassword &&
+                          styles.accountButtonPressed,
+                        (permanentDeleting || resettingPassword) && styles.buttonDisabled,
+                      ]}
+                      onPress={confirmDeleteDriverAccount}
+                      disabled={permanentDeleting || resettingPassword}
+                    >
+                      {permanentDeleting ? (
+                        <ActivityIndicator color={colors.danger} />
+                      ) : (
+                        <Text style={styles.accountButtonDangerLabel}>Delete account (dev)</Text>
+                      )}
+                    </Pressable>
+                  ) : null}
+                </View>
               <Pressable
                 style={({ pressed }) => [
                   styles.promoteButton,
@@ -1420,10 +1515,8 @@ export function AdminDriverDetail({
         >
           <View style={styles.deleteModalOverlay}>
             <View style={styles.deleteModalCard}>
-                <Text style={styles.deleteModalTitle}>Remove driver from workspace?</Text>
-                <Text style={styles.deleteModalBody}>
-                  The driver will be removed from this workspace and returned to their free-tier account.
-                </Text>
+                <Text style={styles.deleteModalTitle}>{deleteModalTitle}</Text>
+                <Text style={styles.deleteModalBody}>{deleteModalBody}</Text>
               <View style={styles.deleteModalActions}>
                 <Pressable
                   style={({ pressed }) => [
@@ -1431,7 +1524,7 @@ export function AdminDriverDetail({
                     pressed && styles.deleteModalButtonPressed,
                   ]}
                   onPress={handleCancelDeleteDialog}
-                  disabled={deletingAccount}
+                  disabled={deleteModalBusy}
                 >
                   <Text style={styles.deleteModalButtonText}>Cancel</Text>
                 </Pressable>
@@ -1441,11 +1534,9 @@ export function AdminDriverDetail({
                     pressed && styles.deleteModalDangerButtonPressed,
                   ]}
                   onPress={handleConfirmDeleteDialog}
-                  disabled={deletingAccount}
+                  disabled={deleteModalBusy}
                 >
-                  <Text style={styles.deleteModalDangerButtonText}>
-                    {deletingAccount ? 'Removing…' : 'Remove'}
-                  </Text>
+                  <Text style={styles.deleteModalDangerButtonText}>{deleteModalActionLabel}</Text>
                 </Pressable>
               </View>
             </View>

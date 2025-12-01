@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/features/auth/auth-context';
 import * as authApi from '@/features/auth/api';
@@ -12,12 +12,13 @@ type AdminTeamListProps = {
 };
 
 export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
-  const { token, workspaceId, user } = useAuth();
+  const { token, workspaceId, user, deleteUserAccount } = useAuth();
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [admins, setAdmins] = useState<AdminSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token || !workspaceId) {
@@ -69,6 +70,38 @@ export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
     }, []);
   }, [admins, user]);
 
+  const canDeleteAccounts = user?.role === 'dev';
+
+  const handleDeleteAccount = async (admin: AdminSummary) => {
+    setDeletingId(admin.id);
+    try {
+      await deleteUserAccount(admin.id);
+      setAdmins((prev) => prev.filter((entry) => entry.id !== admin.id));
+    } catch (err) {
+      Alert.alert(
+        'Delete failed',
+        getFriendlyError(err, { fallback: "We couldn't delete that account. Try again." })
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const confirmDeleteAccount = (admin: AdminSummary) => {
+    Alert.alert(
+      'Delete account?',
+      `This permanently deletes ${admin.fullName || admin.emailOrPhone}. This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete account',
+          style: 'destructive',
+          onPress: () => void handleDeleteAccount(admin),
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.card}>
       <Text style={styles.heading}>Admin roster</Text>
@@ -94,6 +127,20 @@ export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
               <Text style={styles.name}>{admin.fullName || admin.emailOrPhone}</Text>
               <Text style={styles.muted}>{admin.emailOrPhone}</Text>
             </View>
+            {canDeleteAccounts ? (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.deleteButton,
+                  pressed && styles.deleteButtonPressed,
+                ]}
+                onPress={() => confirmDeleteAccount(admin)}
+                disabled={deletingId === admin.id}
+              >
+                <Text style={styles.deleteButtonText}>
+                  {deletingId === admin.id ? 'Deleting…' : 'Delete account'}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         ))
       )}
@@ -168,6 +215,21 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     error: {
       color: colors.danger,
+    },
+    deleteButton: {
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.danger,
+    },
+    deleteButtonPressed: {
+      backgroundColor: colors.dangerMuted,
+    },
+    deleteButtonText: {
+      color: colors.danger,
+      fontWeight: '600',
+      fontSize: 12,
     },
   });
 }

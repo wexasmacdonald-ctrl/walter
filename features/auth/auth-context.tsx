@@ -54,6 +54,7 @@ type AuthContextValue = {
   refreshSession: () => Promise<void>;
   resetUserPassword: (userId: string) => Promise<ResetUserPasswordResponse>;
   removeUserFromWorkspace: (userId: string) => Promise<void>;
+  deleteUserAccount: (userId: string) => Promise<void>;
   adminUpdateUserProfile: (
     userId: string,
     updates: { fullName?: string | null; emailOrPhone?: string; workspaceId?: string | null; role?: UserRole }
@@ -371,6 +372,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [token, workspaceScope]
   );
 
+  const deleteUserAccount = useCallback(
+    async (userId: string) => {
+      if (!token) {
+        throw new Error('UNAUTHORIZED: Missing token');
+      }
+      if (user?.role !== 'dev') {
+        throw new Error('FORBIDDEN: Developer permissions required.');
+      }
+      await authApi.deleteUserAccount(token, userId);
+    },
+    [token, user?.role]
+  );
+
   const adminUpdateUserProfile = useCallback(
     async (
       userId: string,
@@ -608,6 +622,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       syncDriverSeatLimit,
       resetUserPassword,
       removeUserFromWorkspace,
+      deleteUserAccount,
       adminUpdateUserProfile,
       adminUpdateUserPassword,
       verifyPassword,
@@ -639,6 +654,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       syncDriverSeatLimit,
       resetUserPassword,
       removeUserFromWorkspace,
+      deleteUserAccount,
       adminUpdateUserProfile,
       adminUpdateUserPassword,
       verifyPassword,

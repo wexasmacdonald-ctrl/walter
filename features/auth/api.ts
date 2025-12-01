@@ -356,6 +356,13 @@ export async function removeUserFromWorkspace(
   });
 }
 
+export async function deleteUserAccount(token: string, userId: string): Promise<void> {
+  await request('/dev/users/delete', {
+    token,
+    body: { user_id: userId },
+  });
+}
+
 export async function adminUpdateUserProfile(
   token: string,
   userId: string,

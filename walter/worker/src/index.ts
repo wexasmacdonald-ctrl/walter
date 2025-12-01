@@ -654,6 +654,12 @@ export default {
       );
     }
 
+    if (request.method === 'POST' && url.pathname === '/dev/users/delete') {
+      return requireAuth(routeContext, respond, ['dev'], () =>
+        handleDevDeleteUser(request, env, respond, routeContext)
+      );
+    }
+
     if (request.method === 'GET' && url.pathname === '/billing/status') {
       return requireAuth(routeContext, respond, ['admin', 'driver', 'dev'], () =>
         handleBillingGetStatus(request, env, respond, routeContext)
@@ -741,7 +747,8 @@ async function handleGeocode(
     );
   }
 
-  if (addresses.length > MAX_ADDRESSES) {
+  const unlimitedStops = authUser.businessTier === 'business' || authUser.role === 'dev';
+  if (!unlimitedStops && addresses.length > MAX_ADDRESSES) {
     return respond(
       {
         error: 'TOO_MANY_ADDRESSES',
@@ -3447,6 +3454,63 @@ async function handleDevListUsers(
   } catch (error) {
     console.error('Failed to list users for dev', error);
     return respond({ error: 'USER_LIST_FAILED' }, 500);
+  }
+}
+
+async function handleDevDeleteUser(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
+    return respond(
+      { error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' },
+      500
+    );
+  }
+
+  const authUser = context.authUser;
+  if (!authUser || authUser.role !== 'dev') {
+    return respond({ error: 'FORBIDDEN' }, 403);
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const userId = typeof body?.user_id === 'string' ? body.user_id.trim() : '';
+  if (!userId) {
+    return respond({ error: 'INVALID_USER_ID', message: 'user_id is required.' }, 400);
+  }
+
+  let target: SupabaseUserRow | null = null;
+  try {
+    target = await fetchUserById(env, userId);
+  } catch (error) {
+    console.error('Failed to load user for dev delete', error);
+    return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
+  }
+
+  if (!target) {
+    return respond({ error: 'USER_NOT_FOUND' }, 404);
+  }
+
+  try {
+    await deleteAccountRecords(env, target.id, deriveUserRole(target));
+    return respond({ status: 'deleted' });
+  } catch (error) {
+    console.error('Failed to delete user via dev endpoint', error);
+    try {
+      await anonymizeUser(env, target.id);
+      return respond({ status: 'anonymized' });
+    } catch (anonymizeError) {
+      console.error('Failed to anonymize user as fallback', anonymizeError);
+      return respond({ error: 'USER_DELETE_FAILED' }, 500);
+    }
   }
 }
 
