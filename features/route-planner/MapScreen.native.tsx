@@ -17,6 +17,89 @@ import type MapView from 'react-native-maps';
 import type { LatLng, MapPressEvent } from 'react-native-maps';
 import type { Stop } from './types';
 
+const GOOGLE_LIGHT_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
+  { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#616161' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#f5f5f5' }] },
+  {
+    featureType: 'poi',
+    elementType: 'geometry',
+    stylers: [{ color: '#eeeeee' }],
+  },
+  {
+    featureType: 'poi',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#757575' }],
+  },
+  {
+    featureType: 'poi.park',
+    elementType: 'geometry',
+    stylers: [{ color: '#e5e5e5' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffffff' }],
+  },
+  {
+    featureType: 'road.arterial',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#757575' }],
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#dadada' }],
+  },
+  {
+    featureType: 'transit',
+    elementType: 'geometry',
+    stylers: [{ color: '#e5e5e5' }],
+  },
+];
+
+const GOOGLE_DARK_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#1f2933' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#cbd5f5' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#0f172a' }] },
+  {
+    featureType: 'administrative',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#2a3646' }],
+  },
+  {
+    featureType: 'poi',
+    elementType: 'geometry',
+    stylers: [{ color: '#243040' }],
+  },
+  {
+    featureType: 'poi.park',
+    elementType: 'geometry',
+    stylers: [{ color: '#1b2a3c' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#1f2933' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#111827' }],
+  },
+  {
+    featureType: 'transit',
+    elementType: 'geometry',
+    stylers: [{ color: '#1f2933' }],
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#0f172a' }],
+  },
+];
+
 export type MapScreenProps = {
   pins: Stop[];
   loading?: boolean;
@@ -87,6 +170,14 @@ export function MapScreen({
     () => (mapModule && supportsGoogleMapsProvider(mapModule) ? mapModule.PROVIDER_GOOGLE : undefined),
     [mapModule]
   );
+
+  const resolvedMapType = mapType === 'satellite' ? 'satellite' : isDark ? 'mutedStandard' : 'standard';
+  const mapCustomStyle = useMemo(() => {
+    if (!mapProvider || mapType !== 'standard') {
+      return undefined;
+    }
+    return isDark ? GOOGLE_DARK_MAP_STYLE : GOOGLE_LIGHT_MAP_STYLE;
+  }, [isDark, mapProvider, mapType]);
 
   useEffect(() => {
     let mounted = true;
@@ -471,10 +562,12 @@ export function MapScreen({
           ref={mapRef}
           provider={mapProvider}
           style={styles.map}
-          mapType={mapType}
+          mapType={resolvedMapType}
           showsUserLocation
           showsCompass
           showsMyLocationButton
+          customMapStyle={mapCustomStyle}
+          userInterfaceStyle={isDark ? 'dark' : 'light'}
           onPress={(event: MapPressEvent) => {
             if (event.nativeEvent.action !== 'marker-press') {
               setSelectedId(null);
@@ -502,10 +595,12 @@ export function MapScreen({
               ref={modalMapRef}
               provider={mapProvider}
               style={styles.map}
-              mapType={mapType}
+              mapType={resolvedMapType}
               showsUserLocation
               showsCompass
               showsMyLocationButton
+              customMapStyle={mapCustomStyle}
+              userInterfaceStyle={isDark ? 'dark' : 'light'}
               onPress={(event: MapPressEvent) => {
                 if (event.nativeEvent.action !== 'marker-press') {
                   setSelectedId(null);
