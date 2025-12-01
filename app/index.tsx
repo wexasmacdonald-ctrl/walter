@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -31,7 +31,7 @@ import { DevWorkspaceDirectory } from '@/features/admin/DevWorkspaceDirectory';
 import { DevImpersonationPanel } from '@/features/admin/DevImpersonationPanel';
 import { DevDriverAssignmentPanel } from '@/features/admin/DevDriverAssignmentPanel';
 import { DriverStopsPanel } from '@/features/driver/DriverStopsPanel';
-import type { BusinessTier, UserRole, WorkspaceSummary } from '@/features/auth/types';
+import type { UserRole, WorkspaceSummary } from '@/features/auth/types';
 import { SettingsMenu } from '@/components/SettingsMenu';
 import { useTheme } from '@/features/theme/theme-context';
 import { AppHeader } from '@/components/AppHeader';
@@ -287,42 +287,6 @@ function SectionCard({
   );
 }
 
-type PlannerHeroProps = {
-  name?: string | null;
-  role?: string | null;
-  tier?: BusinessTier | null;
-  businessName?: string | null;
-};
-
-function PlannerHero({ name, role, tier, businessName }: PlannerHeroProps) {
-  const { colors } = useTheme();
-  const showTier = tier && role !== 'dev';
-  return (
-    <View style={styles.headerInfo}>
-      <Text style={[styles.headerGreeting, { color: colors.text }]}>
-        {name ? `Welcome, ${name}` : 'Welcome back'}
-      </Text>
-      {businessName ? (
-        <Text style={[styles.headerRole, { color: colors.mutedText }]}>{businessName}</Text>
-      ) : null}
-      {role ? (
-        <Text style={[styles.headerRole, { color: colors.mutedText }]}>
-          Signed in as{' '}
-          <Text style={[styles.headerRoleHighlight, { color: colors.primary }]}>{role}</Text>
-        </Text>
-      ) : null}
-      {showTier ? (
-        <Text style={[styles.headerRole, { color: colors.mutedText }]}>
-          Plan{' '}
-          <Text style={[styles.headerRoleHighlight, { color: colors.primary }]}>
-            {tier === 'business' ? 'business tier' : 'free tier'}
-          </Text>
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
 type CompanyShowcaseProps = {
   companies: WorkspaceSummary[];
   loading: boolean;
@@ -494,63 +458,6 @@ function CompanyShowcase({
   );
 }
 
-type FeatherName = ComponentProps<typeof Feather>['name'];
-
-type QuickAction = {
-  key: string;
-  title: string;
-  description: string;
-  icon: FeatherName;
-  onPress: () => void;
-  disabled?: boolean;
-};
-
-type QuickActionGridProps = {
-  actions: QuickAction[];
-};
-
-function QuickActionGrid({ actions }: QuickActionGridProps) {
-  const { colors } = useTheme();
-  if (!actions.length) {
-    return null;
-  }
-  return (
-    <View style={styles.quickActionGrid}>
-      {actions.map((action) => (
-        <Pressable
-          key={action.key}
-          accessibilityRole="button"
-          onPress={action.onPress}
-          disabled={action.disabled}
-          style={({ pressed }) => [
-            styles.quickActionCard,
-            {
-              borderColor: colors.border,
-              backgroundColor: colors.surface,
-              shadowColor: colors.overlay,
-            },
-            action.disabled && styles.quickActionCardDisabled,
-            pressed && !action.disabled && styles.quickActionCardPressed,
-          ]}
-        >
-          <View
-            style={[
-              styles.quickActionIconWrap,
-              { backgroundColor: colors.primaryMuted },
-            ]}
-          >
-            <Feather name={action.icon} size={18} color={colors.primary} />
-          </View>
-          <Text style={[styles.quickActionTitle, { color: colors.text }]}>{action.title}</Text>
-          <Text style={[styles.quickActionDescription, { color: colors.mutedText }]}>
-            {action.description}
-          </Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
 type InfoBannerProps = {
   title: string;
   message: string;
@@ -716,18 +623,13 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
   }, [token, workspaceId]);
 
   useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
+    void (async () => {
       try {
         await loadBillingStatus();
       } catch {
         // handled in loadBillingStatus
       }
-    };
-    run();
-    return () => {
-      cancelled = true;
-    };
+    })();
   }, [loadBillingStatus]);
 
   useEffect(() => {
@@ -817,9 +719,6 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
   );
 
   const handleCloseDriverEditor = useCallback(() => setActiveDriverId(null), []);
-  const handleAdminCreated = useCallback(() => {
-    onRefreshSignal?.();
-  }, [onRefreshSignal]);
 
   const navigateToMode = useCallback(
     (nextMode: AdminExperienceMode, options?: { resetHistory?: boolean }) => {
@@ -1002,14 +901,14 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
   );
   const panHandlers = isDevUser ? panResponder.panHandlers : {};
 
-  const sections: Array<{
+  const sections: {
     key: AdminSectionKey;
     title: string;
     description?: string;
     badge?: string | null;
     visible: boolean;
     content: ReactNode;
-  }> = [
+  }[] = [
     {
       key: 'teamAccess' as const,
       title: 'Team roster & access',
@@ -1157,18 +1056,19 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
       );
     }
     return (
-      <View style={styles.plannerContent} pointerEvents={pointerEvents}>
-        {activeDriverId ? (
-          <AdminDriverDetail
-            driverId={activeDriverId}
-            onClose={handleCloseDriverEditor}
-            refreshSignal={refreshSignal}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-          />
-        ) : (
-          <ScrollView
-            ref={options?.preview ? undefined : scrollRef}
+        <View style={styles.plannerContent} pointerEvents={pointerEvents}>
+          {activeDriverId ? (
+            <AdminDriverDetail
+              driverId={activeDriverId}
+              onClose={handleCloseDriverEditor}
+              refreshSignal={refreshSignal}
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              hasPaidWorkspace={billingActive}
+            />
+          ) : (
+            <ScrollView
+              ref={options?.preview ? undefined : scrollRef}
             style={[styles.screen, { backgroundColor: colors.background }]}
             contentContainerStyle={[
               styles.container,
@@ -1179,11 +1079,18 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
             keyboardDismissMode="interactive"
             contentInsetAdjustmentBehavior="automatic"
             automaticallyAdjustKeyboardInsets
-            refreshControl={createRefreshControl(refreshing, onRefresh)}
-          >
-            {sections
-              .filter((section) => section.visible)
-              .map((section) => (
+              refreshControl={createRefreshControl(refreshing, onRefresh)}
+            >
+              {billingError ? (
+                <InfoBanner
+                  title="Billing status unavailable"
+                  message={billingError}
+                  tone="warning"
+                />
+              ) : null}
+              {sections
+                .filter((section) => section.visible)
+                .map((section) => (
                 <SectionCard
                   key={section.key}
                   title={section.title}
@@ -1247,6 +1154,9 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
           <Text style={[styles.loadingText, { marginTop: 8 }]}>
             Activate billing to create routes and manage drivers.
           </Text>
+          {billingError ? (
+            <Text style={[styles.loadingText, { color: colors.danger }]}>{billingError}</Text>
+          ) : null}
           <Pressable
             style={({ pressed }) => [
               styles.linkButton,
@@ -1416,14 +1326,14 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
     }
   }, [createWorkspace, creatingWorkspace, workspaceDriverSeats, workspaceNameInput]);
 
-  const sections: Array<{
+  const sections: {
     key: DriverSectionKey;
     title: string;
     description?: string;
     badge?: string | null;
     visible: boolean;
     content: ReactNode;
-  }> = [
+  }[] = [
     {
       key: 'driverPlan' as const,
       title: 'Assignments & stops',

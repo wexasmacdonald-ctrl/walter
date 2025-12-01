@@ -751,8 +751,8 @@ async function handleGeocode(
   if (!authUser) {
     return respond({ error: 'UNAUTHORIZED' }, 401);
   }
-
-  const unlimitedStops = authUser.businessTier === 'business' || authUser.role === 'dev';
+  const workspaceScope = resolveWorkspaceId(context, request);
+  const unlimitedStops = await hasUnlimitedAddressAllowance(env, authUser, workspaceScope);
   if (!unlimitedStops && addresses.length > MAX_ADDRESSES) {
     return respond(
       {
@@ -773,7 +773,7 @@ async function handleGeocode(
     );
   }
 
-  if (authUser.businessTier !== 'business') {
+  if (!unlimitedStops) {
     const limitCheck = await enforceFreeTierLimit(env, authUser.id, addresses.length);
     if (!limitCheck.allowed) {
       return respond(
@@ -2984,16 +2984,9 @@ async function handleAdminReplaceDriverStops(
     return respond({ error: 'INVALID_INPUT', message: 'addresses payload is required.' }, 400);
   }
 
-  const unlimitedStops =
-    context.authUser?.businessTier === 'business' || context.authUser?.role === 'dev';
-  if (!unlimitedStops && addresses.length > MAX_ADDRESSES) {
-    return respond(
-      {
-        error: 'TOO_MANY_ADDRESSES',
-        message: `Limit is ${MAX_ADDRESSES} addresses per request.`,
-      },
-      400
-    );
+  const actor = context.authUser;
+  if (!actor) {
+    return respond({ error: 'UNAUTHORIZED' }, 401);
   }
 
   let driver: SupabaseUserRow | null = null;
@@ -3007,12 +3000,25 @@ async function handleAdminReplaceDriverStops(
     return respond({ error: 'DRIVER_NOT_FOUND' }, 404);
   }
 
-  if (!canAccessWorkspace(context, driver.workspace_id ?? null)) {
+  const driverWorkspaceId = driver.workspace_id ?? null;
+
+  if (!canAccessWorkspace(context, driverWorkspaceId)) {
     return respond({ error: 'FORBIDDEN' }, 403);
   }
 
+  const unlimitedStops = await hasUnlimitedAddressAllowance(env, actor, driverWorkspaceId);
+  if (!unlimitedStops && addresses.length > MAX_ADDRESSES) {
+    return respond(
+      {
+        error: 'TOO_MANY_ADDRESSES',
+        message: `Limit is ${MAX_ADDRESSES} addresses per request.`,
+      },
+      400
+    );
+  }
+
   try {
-    const currentStops = await fetchDriverStops(env, driverId, driver.workspace_id ?? null);
+    const currentStops = await fetchDriverStops(env, driverId, driverWorkspaceId);
     const knownByAddress = new Map(
       currentStops.map((stop) => [stop.address.trim().toLowerCase(), stop])
     );
@@ -5181,6 +5187,26 @@ async function checkDriverSeatCapacity(env: Env, workspaceId: string): Promise<D
     return { allowed: false, current, limit };
   }
   return { allowed: true, current, limit };
+}
+
+async function hasUnlimitedAddressAllowance(
+  env: Env,
+  user: AuthenticatedUser,
+  workspaceId: string | null
+): Promise<boolean> {
+  if (user.role === 'dev' || user.businessTier === 'business') {
+    return true;
+  }
+  if (!workspaceId) {
+    return false;
+  }
+  try {
+    const billingRow = await fetchOrgBillingRow(env, workspaceId);
+    return Boolean(billingRow && billingRow.billing_status === 'active');
+  } catch (error) {
+    console.error('Failed to load billing row for address allowance', error);
+    return false;
+  }
 }
 
 async function updateOrgBillingDetails(

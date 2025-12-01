@@ -5,7 +5,7 @@ This project turns newline-delimited addresses into map pins so drivers can see 
 It contains two pieces:
 
 1. **Expo front end** - login screen, admin tools (create users + driver assignments), and the planner UI for admins and drivers (Expo native + web).
-2. **Cloudflare Worker** (walter/worker/src/index.ts) - handles auth, driver management, and Mapbox geocoding for up to 150 addresses per request.
+2. **Cloudflare Worker** (walter/worker/src/index.ts) - handles auth, driver management, and Mapbox geocoding (free tier batches limited to 150 addresses; paid workspaces can upload more).
 
 ---
 
@@ -101,7 +101,7 @@ If Mapbox returns a non-200 or omits coordinates, the worker responds with MAPBO
 ### Limits
 
 - Rejects empty input (INVALID_INPUT).
-- Caps at 150 addresses per request (TOO_MANY_ADDRESSES).
+- Free-tier requests cap at 150 addresses per batch (TOO_MANY_ADDRESSES) while business-tier workspaces can upload larger manifests.
 - Enforces Mapbox's batch limit of 1,000 (TOO_MANY_ADDRESSES_FOR_BATCH).
 
 Returned payload:
@@ -174,7 +174,7 @@ curl -X POST https://blow-api.wexasmacdonald.workers.dev/admin/driver-stops \
 - **HTTP 404** - Request path was not a known endpoint.
 - **INVALID_INPUT** - No usable addresses after trimming.
 - **MAPBOX_GEOCODE_FAILED** - Mapbox rejected or could not locate one or more addresses; see failed array in the response.
-- **TOO_MANY_ADDRESSES** - More than 150 addresses were submitted.
+- **TOO_MANY_ADDRESSES** - Free-tier limit of 150 addresses per batch was exceeded.
 
 ---
 

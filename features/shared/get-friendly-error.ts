@@ -41,7 +41,7 @@ export function getFriendlyError(error: unknown, options: FriendlyErrorOptions):
   }
 
   if (normalized.includes('too many addresses') || normalized.includes('mapbox limit')) {
-    return 'Too many addresses at once. Try fewer than 150 and try again.';
+    return 'Too many addresses at once. Free plan batches top out at 150 addresses.';
   }
 
   if (looksFriendly(raw)) {

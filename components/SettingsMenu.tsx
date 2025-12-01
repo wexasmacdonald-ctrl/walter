@@ -151,7 +151,6 @@ export function SettingsMenu({
   const [driverSeatSaving, setDriverSeatSaving] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const seatLimit = billingStatus?.numberOfDrivers ?? null;
-  const billingActive = billingStatus?.billingStatus === 'active';
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   const resetState = useCallback(() => {

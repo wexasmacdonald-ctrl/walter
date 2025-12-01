@@ -24,7 +24,7 @@ import { StopLocationEditor } from '@/features/admin/components/StopLocationEdit
 import { useTheme } from '@/features/theme/theme-context';
 import { getFriendlyError } from '@/features/shared/get-friendly-error';
 
-const MAX_ADDRESSES = 150;
+const FREE_TIER_MAX_ADDRESSES = 150;
 const DEFAULT_COORDINATE = { latitude: 44.9778, longitude: -93.265 };
 
 type PinEditorState = {
@@ -38,6 +38,7 @@ type AdminDriverDetailProps = {
   refreshSignal?: number;
   refreshing?: boolean;
   onRefresh?: () => void | Promise<void>;
+  hasPaidWorkspace?: boolean;
 };
 
 export function AdminDriverDetail({
@@ -46,6 +47,7 @@ export function AdminDriverDetail({
   refreshSignal,
   refreshing = false,
   onRefresh,
+  hasPaidWorkspace = false,
 }: AdminDriverDetailProps) {
   const {
     token,
@@ -101,6 +103,8 @@ export function AdminDriverDetail({
   const driverPasswordInputRef = useRef<TextInput | null>(null);
   const driverPasswordConfirmInputRef = useRef<TextInput | null>(null);
 
+  const hasUnlimitedStops =
+    hasPaidWorkspace || authUser?.businessTier === 'business' || authUser?.role === 'dev';
   const workspaceScope = workspaceId ?? undefined;
   const canDeleteAccount = authUser?.role === 'dev';
   const deleteModalTitle =
@@ -264,8 +268,8 @@ export function AdminDriverDetail({
     const sanitized = nextAddresses
       .map((address) => (address ?? '').trim())
       .filter((address) => address.length > 0);
-    if (sanitized.length > MAX_ADDRESSES) {
-      setError(`You can load up to ${MAX_ADDRESSES} addresses at once.`);
+    if (!hasUnlimitedStops && sanitized.length > FREE_TIER_MAX_ADDRESSES) {
+      setError(`Free tier batches max out at ${FREE_TIER_MAX_ADDRESSES} addresses.`);
       setSuccess(null);
       return;
     }
@@ -308,8 +312,8 @@ export function AdminDriverDetail({
       setSuccess(null);
       return;
     }
-    if (stops.length + trimmed.length > MAX_ADDRESSES) {
-      setError(`You can load up to ${MAX_ADDRESSES} addresses at once.`);
+    if (!hasUnlimitedStops && stops.length + trimmed.length > FREE_TIER_MAX_ADDRESSES) {
+      setError(`Free tier batches max out at ${FREE_TIER_MAX_ADDRESSES} addresses.`);
       setSuccess(null);
       return;
     }
