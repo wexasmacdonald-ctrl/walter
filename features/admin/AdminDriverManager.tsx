@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useAuth } from '@/features/auth/auth-context';
@@ -16,7 +16,9 @@ export function AdminDriverManager({
   onSelectDriver,
   refreshSignal,
 }: AdminDriverManagerProps) {
-  const { token, workspaceId, workspaceName } = useAuth();
+  const { token, workspaceId, workspaceName, user } = useAuth();
+  const isDevUser = user?.role === 'dev';
+  const showDriverSearch = isDevUser;
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [drivers, setDrivers] = useState<DriverSummary[]>([]);
@@ -26,6 +28,8 @@ export function AdminDriverManager({
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [lookupResult, setLookupResult] = useState<DriverLookupResult | null>(null);
+  const [suggestions, setSuggestions] = useState<DriverLookupResult[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [reassigning, setReassigning] = useState(false);
   const [promoting, setPromoting] = useState(false);
   const [showDriverEditor, setShowDriverEditor] = useState(false);
@@ -38,7 +42,7 @@ export function AdminDriverManager({
       try {
         setLoadingDrivers(true);
         setError(null);
-        setDrivers(await authApi.fetchDrivers(token, workspaceId));
+        setDrivers(await authApi.fetchDrivers(token, workspaceId ?? undefined));
       } catch (err) {
         setError(
           getFriendlyError(err, {
@@ -56,11 +60,55 @@ export function AdminDriverManager({
     void loadDrivers();
   }, [loadDrivers, refreshSignal, workspaceId]);
 
+  const fetchSuggestions = useCallback(
+    async (query: string) => {
+      if (!isDevUser) {
+        setSuggestions([]);
+        setSuggestionsLoading(false);
+        return;
+      }
+      if (!token) {
+        return;
+      }
+      const trimmed = query.trim();
+      if (trimmed.length < 2) {
+        setSuggestions([]);
+        return;
+      }
+      setSuggestionsLoading(true);
+      try {
+        const results = await authApi.searchDrivers(token, trimmed, workspaceId ?? undefined);
+        setSuggestions(results);
+      } catch (err) {
+        console.warn('Driver suggestion search failed', err);
+        setSuggestions([]);
+      } finally {
+        setSuggestionsLoading(false);
+      }
+    },
+    [isDevUser, token, workspaceId]
+  );
+
   const handleSearch = async (identifier?: string) => {
-    const trimmed = (identifier ?? searchValue).trim();
+    if (!isDevUser) {
+      setSearchError('Driver search is limited to developer accounts.');
+      return;
+    }
+    const input =
+      typeof identifier === 'string'
+        ? identifier
+        : typeof (identifier as any)?.nativeEvent?.text === 'string'
+        ? (identifier as any).nativeEvent.text
+        : searchValue;
+    const trimmed = input?.trim?.() ?? '';
     if (!trimmed || !token) {
       setSearchError('Enter an email or phone number.');
       return;
+    }
+    if (isDevUser) {
+      void fetchSuggestions(trimmed);
+    } else {
+      setSuggestions([]);
     }
     setSearching(true);
     setSearchError(null);
@@ -70,11 +118,19 @@ export function AdminDriverManager({
       setLookupResult(result);
     } catch (err) {
       setLookupResult(null);
-      setSearchError(
-        getFriendlyError(err, {
-          fallback: 'No driver found with that contact.',
-        })
-      );
+      const rawMessage =
+        (err as { message?: unknown })?.message && typeof (err as { message?: unknown }).message === 'string'
+          ? (err as { message: string }).message
+          : '';
+      if (rawMessage.includes('USER_NOT_FOUND')) {
+        setSearchError('No driver found with that contact.');
+      } else {
+        setSearchError(
+          getFriendlyError(err, {
+            fallback: 'No driver found with that contact.',
+          })
+        );
+      }
     } finally {
       setSearching(false);
     }
@@ -87,20 +143,6 @@ export function AdminDriverManager({
     setSearchError(null);
     void handleSearch(identifier);
   };
-
-  const suggestedDrivers = useMemo(() => {
-    const query = searchValue.trim().toLowerCase();
-    if (!query) {
-      return [];
-    }
-    return drivers
-      .filter((driver) => {
-        const contact = driver.emailOrPhone.toLowerCase();
-        const name = (driver.fullName ?? '').toLowerCase();
-        return contact.includes(query) || name.includes(query);
-      })
-      .slice(0, 5);
-  }, [drivers, searchValue]);
 
   const refreshAfterChange = async (next: DriverLookupResult | null) => {
     setLookupResult(next);
@@ -318,83 +360,90 @@ export function AdminDriverManager({
     <View style={styles.container}>
       <Text style={styles.heading}>Driver roster</Text>
       <Text style={styles.description}>
-        Find drivers by email or phone, attach them to your company, and manage their stop lists in one place.
+        Manage drivers in your workspace. Driver search is limited to developer accounts.
       </Text>
-      <View style={styles.searchCard}>
-        <Text style={styles.columnHeading}>Find a driver</Text>
-        <Text style={styles.searchHint}>
-          Search by email or phone. Add them to your workspace or remove them if they already belong.
-        </Text>
-        <View style={styles.searchRow}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="driver@example.com"
-            placeholderTextColor={colors.mutedText}
-            value={searchValue}
-            onChangeText={(text) => {
-              setSearchValue(text);
-              setSearchError(null);
-            }}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            onSubmitEditing={handleSearch}
-          />
-          <Pressable
-            style={({ pressed }) => [
-              styles.primaryButton,
-              pressed && styles.primaryPressed,
-              searching && styles.primaryDisabled,
-            ]}
-            onPress={handleSearch}
-            disabled={searching}
-          >
-            {searching ? (
-              <ActivityIndicator color={colors.surface} />
-            ) : (
-              <Text style={styles.primaryLabel}>Search</Text>
-            )}
-          </Pressable>
+      {showDriverSearch ? (
+        <View style={styles.searchCard}>
+          <Text style={styles.columnHeading}>Find a driver</Text>
+          <Text style={styles.searchHint}>
+            Search by email or phone. Add them to your workspace or remove them if they already belong.
+          </Text>
+          <View style={styles.searchRow}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="driver@example.com"
+              placeholderTextColor={colors.mutedText}
+              value={searchValue}
+              onChangeText={(text) => {
+                setSearchValue(text);
+                setSearchError(null);
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              onSubmitEditing={({ nativeEvent }) => void handleSearch(nativeEvent.text)}
+            />
+            <Pressable
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && styles.primaryPressed,
+                searching && styles.primaryDisabled,
+              ]}
+              onPress={() => void handleSearch()}
+              disabled={searching}
+            >
+              {searching ? (
+                <ActivityIndicator color={colors.surface} />
+              ) : (
+                <Text style={styles.primaryLabel}>Search</Text>
+              )}
+            </Pressable>
+          </View>
+          {searchError ? <Text style={styles.error}>{searchError}</Text> : null}
+          {suggestionsLoading ? (
+            <View style={styles.suggestions}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : null}
+          {suggestions.length > 0 && isDevUser ? (
+            <View style={styles.suggestions}>
+              <Text style={styles.suggestionHeading}>Suggestions</Text>
+              {suggestions.map((driver) => (
+                <Pressable
+                  key={driver.id}
+                  style={({ pressed }) => [
+                    styles.suggestionItem,
+                    pressed && styles.suggestionItemPressed,
+                  ]}
+                  onPress={() => handleSuggestionSelect(driver)}
+                >
+                  <View style={styles.suggestionText}>
+                    <Text style={styles.suggestionName} numberOfLines={1}>
+                      {driver.fullName || 'Driver'}
+                    </Text>
+                    <Text style={styles.suggestionContact} numberOfLines={1}>
+                      {driver.emailOrPhone}
+                    </Text>
+                  </View>
+                  <Text style={styles.suggestionAction}>Fill</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+          {lookupResult ? (
+            <View style={styles.lookupResult}>
+              <Text style={styles.lookupName}>{lookupResult.fullName || lookupResult.emailOrPhone}</Text>
+              <Text style={styles.lookupSub}>{lookupResult.emailOrPhone}</Text>
+              <Text style={styles.lookupHint}>
+                {lookupResult.workspaceId
+                  ? `Assigned to ${lookupResult.workspaceName || 'a workspace'}`
+                  : 'Not assigned to any workspace.'}
+              </Text>
+              <View style={styles.lookupActions}>{renderLookupActions()}</View>
+            </View>
+          ) : null}
         </View>
-        {searchError ? <Text style={styles.error}>{searchError}</Text> : null}
-        {suggestedDrivers.length > 0 ? (
-          <View style={styles.suggestions}>
-            <Text style={styles.suggestionHeading}>Suggestions</Text>
-            {suggestedDrivers.map((driver) => (
-              <Pressable
-                key={driver.id}
-                style={({ pressed }) => [
-                  styles.suggestionItem,
-                  pressed && styles.suggestionItemPressed,
-                ]}
-                onPress={() => handleSuggestionSelect(driver)}
-              >
-                <View style={styles.suggestionText}>
-                  <Text style={styles.suggestionName} numberOfLines={1}>
-                    {driver.fullName || 'Driver'}
-                  </Text>
-                  <Text style={styles.suggestionContact} numberOfLines={1}>
-                    {driver.emailOrPhone}
-                  </Text>
-                </View>
-                <Text style={styles.suggestionAction}>Fill</Text>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-        {lookupResult ? (
-          <View style={styles.lookupResult}>
-            <Text style={styles.lookupName}>{lookupResult.fullName || lookupResult.emailOrPhone}</Text>
-            <Text style={styles.lookupSub}>{lookupResult.emailOrPhone}</Text>
-            <Text style={styles.lookupHint}>
-              {lookupResult.workspaceId
-                ? `Assigned to ${lookupResult.workspaceName || 'a workspace'}`
-                : 'Not assigned to any workspace.'}
-            </Text>
-            <View style={styles.lookupActions}>{renderLookupActions()}</View>
-          </View>
-        ) : null}
-      </View>
+      ) : null}
       <View style={styles.driverColumn}>
         <Text style={styles.columnHeading}>Drivers</Text>
         {loadingDrivers ? (
@@ -673,4 +722,5 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
   });
 }
+
 

@@ -106,7 +106,7 @@ export function DevDriverAssignmentPanel({
         <View style={{ flex: 1, gap: 4 }}>
           <Text style={styles.title}>Assign company</Text>
           <Text style={styles.subtitle}>
-            Every driver starts on the free tier. Tap a name, pick a company, and the invite happens
+            Every driver starts on the free tier. Tap a name, pick a company, and the assignment happens
             automatically.
           </Text>
         </View>

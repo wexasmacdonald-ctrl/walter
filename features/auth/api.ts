@@ -4,6 +4,7 @@ import type {
   AdminSummary,
   AdminUserProfileUpdateResponse,
   AuthUser,
+  AccessRequest,
   BusinessTier,
   CreateUserInput,
   CreateUserResponse,
@@ -50,7 +51,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   });
 
   const text = await response.text();
-  const payload = text ? (JSON.parse(text) as T & JsonError) : {};
+  const payload = (text ? (JSON.parse(text) as T & JsonError) : {}) as Partial<T> & JsonError;
 
   if (!response.ok) {
     const code = typeof payload?.error === 'string' ? payload.error : `HTTP_${response.status}`;
@@ -197,6 +198,25 @@ export async function fetchDrivers(
   return response.drivers ?? [];
 }
 
+export async function searchDrivers(
+  token: string,
+  query: string,
+  workspaceId?: string | null
+): Promise<DriverLookupResult[]> {
+  if (!token) {
+    return [];
+  }
+  const response = await request<{ drivers: DriverLookupResult[] }>(
+    `/admin/driver-search?query=${encodeURIComponent(query)}`,
+    {
+      token,
+      method: 'GET',
+      workspaceId,
+    }
+  );
+  return response.drivers ?? [];
+}
+
 export async function findDriverByIdentifier(
   token: string,
   identifier: string,
@@ -323,14 +343,14 @@ export async function resetUserPassword(
   });
 }
 
-export async function deleteUserAccount(
+export async function removeUserFromWorkspace(
   token: string,
   userId: string,
   workspaceId?: string | null
 ): Promise<void> {
-  await request('/admin/users', {
+  await request('/admin/users/kick', {
     token,
-    method: 'DELETE',
+    method: 'POST',
     body: { user_id: userId },
     workspaceId,
   });
@@ -391,26 +411,54 @@ export async function applyTeamAccessCode(
   token: string,
   code: string
 ): Promise<LoginResponse> {
-  const payload = await request<LoginResponse>('/account/team-access-code', {
-    token,
-    body: { team_code: code },
-  });
+  throw new Error('INVITES_DISABLED');
+}
+
+export async function createWorkspaceForAccount(
+  token: string,
+  input: { name: string; numberOfDrivers?: number }
+): Promise<LoginResponse & { workspace: WorkspaceSummary }> {
+  const payload = await request<LoginResponse & { workspace: WorkspaceRowPayload }>(
+    '/account/workspaces',
+    {
+      token,
+      body: {
+        name: input.name,
+        numberOfDrivers: input.numberOfDrivers,
+      },
+    }
+  );
   return {
     token: payload.token,
     user: normalizeUser(payload.user),
+    workspace: normalizeWorkspaceSummary(payload.workspace),
   };
+}
+
+export type SyncDriverSeatResult = {
+  action: 'updated' | 'no_change' | 'checkout';
+  numberOfDrivers: number;
+  driverCount: number;
+  tier: string | null;
+  currentLimit: number | null;
+  billingStatus: string | null;
+};
+
+export async function syncDriverSeatLimit(
+  token: string,
+  workspaceId?: string | null
+): Promise<SyncDriverSeatResult> {
+  return request<SyncDriverSeatResult>('/billing/sync-driver-cap', {
+    token,
+    workspaceId: workspaceId ?? undefined,
+  });
 }
 
 export async function getWorkspaceInvites(
   token: string,
   workspaceId: string
 ): Promise<WorkspaceInvite[]> {
-  const response = await request<{ invites: WorkspaceInvitePayload[] }>('/workspace/invites', {
-    token,
-    method: 'GET',
-    workspaceId,
-  });
-  return (response.invites ?? []).map(normalizeWorkspaceInvite);
+  throw new Error('INVITES_DISABLED');
 }
 
 export async function createWorkspaceInviteCode(
@@ -418,16 +466,7 @@ export async function createWorkspaceInviteCode(
   workspaceId: string,
   input: { label?: string | null; maxUses?: number | null; expiresAt?: string | null }
 ): Promise<WorkspaceInvite> {
-  const payload = await request<{ invite: WorkspaceInvitePayload }>('/workspace/invites', {
-    token,
-    body: {
-      label: input.label ?? null,
-      max_uses: input.maxUses ?? null,
-      expires_at: input.expiresAt ?? null,
-    },
-    workspaceId,
-  });
-  return normalizeWorkspaceInvite(payload.invite);
+  throw new Error('INVITES_DISABLED');
 }
 
 export async function fetchDevWorkspaces(token: string): Promise<WorkspaceSummary[]> {
@@ -442,23 +481,30 @@ export async function createDevWorkspace(
   token: string,
   input: { name: string; inviteLabel?: string | null }
 ): Promise<{ workspace: WorkspaceSummary; invite: WorkspaceInvite }> {
-  const payload = await request<{
-    workspace: WorkspaceRowPayload;
-    invite: WorkspaceInvitePayload;
-  }>('/dev/workspaces', {
+  const payload = await request<{ workspace: WorkspaceRowPayload }>('/dev/workspaces', {
     token,
-    body: { name: input.name, invite_label: input.inviteLabel ?? null },
+    body: { name: input.name, invite_label: null },
   });
   return {
     workspace: normalizeWorkspaceSummary(payload.workspace),
-    invite: normalizeWorkspaceInvite(payload.invite),
+    invite: {
+      id: '',
+      workspaceId: payload.workspace.id,
+      code: '',
+      label: null,
+      maxUses: null,
+      uses: 0,
+      expiresAt: null,
+      createdAt: '',
+    },
   };
 }
 
-export async function deleteDevWorkspace(token: string, workspaceId: string): Promise<void> {
-  await request(`/dev/workspaces/${encodeURIComponent(workspaceId)}`, {
+export async function deleteWorkspace(token: string, workspaceId: string): Promise<void> {
+  await request('/admin/workspaces', {
     token,
     method: 'DELETE',
+    body: { workspace_id: workspaceId },
   });
 }
 
@@ -507,6 +553,166 @@ export async function forgetCachedAddresses(
   });
 }
 
+export type WorkspaceAccessRequestResponse =
+  | {
+      status: 'pending';
+      requestId?: string;
+      workspaceId?: string;
+      workspaceName?: string | null;
+    }
+  | {
+      status: 'already_member';
+      workspaceId?: string;
+      workspaceName?: string | null;
+    };
+
+export async function requestWorkspaceAccess(
+  token: string,
+  adminIdentifier: string
+): Promise<WorkspaceAccessRequestResponse> {
+  const response = await request<WorkspaceAccessRequestResponse>('/account/request-access', {
+    token,
+    body: { admin_identifier: adminIdentifier },
+  });
+  return response;
+}
+
+export async function listAccessRequests(
+  token: string,
+  workspaceId?: string | null
+): Promise<AccessRequest[]> {
+  const payload = await request<{ requests: AccessRequest[] }>('/admin/access-requests', {
+    token,
+    method: 'GET',
+    workspaceId: workspaceId ?? undefined,
+  });
+  return payload.requests;
+}
+
+export async function resolveAccessRequest(
+  token: string,
+  requestId: string,
+  resolution: 'approve' | 'decline',
+  workspaceId?: string | null
+): Promise<void> {
+  const path =
+    resolution === 'approve'
+      ? `/admin/access-requests/${encodeURIComponent(requestId)}/approve`
+      : `/admin/access-requests/${encodeURIComponent(requestId)}/decline`;
+  await request(path, {
+    token,
+    workspaceId: workspaceId ?? undefined,
+  });
+}
+
+export type OrgBillingStatus = {
+  orgId: string;
+  billingStatus: string | null;
+  planTier: string | null;
+  numberOfDrivers: number | null;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  lastCheckoutSessionId: string | null;
+};
+
+export type OrganizationSummary = {
+  id: string;
+  planTier: string | null;
+  numberOfDrivers: number | null;
+};
+
+export async function fetchOrgBillingStatus(
+  token: string,
+  workspaceId?: string | null
+): Promise<OrgBillingStatus> {
+  return request<OrgBillingStatus>('/billing/status', {
+    token,
+    method: 'GET',
+    workspaceId: workspaceId ?? undefined,
+  });
+}
+
+export type BootstrapWorkspaceInput = {
+  name: string;
+  planTier?: string | null;
+  planId?: string | null;
+  numberOfDrivers?: number;
+  billingStatus?: string | null;
+  adminUserId?: string;
+  adminIdentifier?: string;
+};
+
+export type BootstrapWorkspaceResult = {
+  workspace: WorkspaceSummary;
+  organization: OrganizationSummary | null;
+  billing: OrgBillingStatus | null;
+  session: LoginResponse;
+};
+
+export async function bootstrapWorkspace(
+  token: string,
+  input: BootstrapWorkspaceInput
+): Promise<BootstrapWorkspaceResult> {
+  const payload = await request<{
+    workspace: WorkspaceRowPayload;
+    organization?: OrganizationPayload | null;
+    billing?: OrgBillingStatus | null;
+    session: LoginResponse;
+  }>('/dev/bootstrap-workspace', {
+    token,
+    body: input,
+  });
+
+  return {
+    workspace: normalizeWorkspaceSummary(payload.workspace),
+    organization: normalizeOrganizationSummary(payload.organization ?? null),
+    billing: payload.billing ?? null,
+    session: {
+      token: payload.session.token,
+      user: normalizeUser(payload.session.user),
+    },
+  };
+}
+
+export type AttachWorkspaceInput = {
+  workspaceId: string;
+  userId?: string;
+  identifier?: string;
+  numberOfDrivers?: number;
+  planTier?: string | null;
+  planId?: string | null;
+  billingStatus?: string | null;
+};
+
+export type AttachWorkspaceResult = {
+  workspace: WorkspaceSummary;
+  billing: OrgBillingStatus | null;
+  session: LoginResponse;
+};
+
+export async function attachWorkspace(
+  token: string,
+  input: AttachWorkspaceInput
+): Promise<AttachWorkspaceResult> {
+  const payload = await request<{
+    workspace: WorkspaceRowPayload;
+    billing?: OrgBillingStatus | null;
+    session: LoginResponse;
+  }>('/dev/attach-workspace', {
+    token,
+    body: input,
+  });
+
+  return {
+    workspace: normalizeWorkspaceSummary(payload.workspace),
+    billing: payload.billing ?? null,
+    session: {
+      token: payload.session.token,
+      user: normalizeUser(payload.session.user),
+    },
+  };
+}
+
 type WorkspaceInvitePayload = {
   id: string;
   workspace_id: string;
@@ -523,6 +729,12 @@ type WorkspaceRowPayload = {
   name: string;
   created_by?: string | null;
   created_at?: string | null;
+};
+
+type OrganizationPayload = {
+  id: string;
+  plan_tier?: string | null;
+  number_of_drivers?: number | null;
 };
 
 function normalizeUser(user: AuthUser): AuthUser {
@@ -594,5 +806,16 @@ function normalizeWorkspaceSummary(row: WorkspaceRowPayload): WorkspaceSummary {
     name: row.name,
     createdBy: row.created_by ?? null,
     createdAt: row.created_at ?? null,
+  };
+}
+
+function normalizeOrganizationSummary(row: OrganizationPayload | null): OrganizationSummary | null {
+  if (!row) {
+    return null;
+  }
+  return {
+    id: row.id,
+    planTier: row.plan_tier ?? null,
+    numberOfDrivers: row.number_of_drivers ?? null,
   };
 }

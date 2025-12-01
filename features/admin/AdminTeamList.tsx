@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/features/auth/auth-context';
 import * as authApi from '@/features/auth/api';
@@ -12,24 +12,26 @@ type AdminTeamListProps = {
 };
 
 export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
-  const { token, user, deleteUserAccount, workspaceId } = useAuth();
+  const { token, workspaceId, user } = useAuth();
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [admins, setAdmins] = useState<AdminSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token || !workspaceId) {
+      setAdmins([]);
       return;
     }
+    const authToken = token;
+    const workspaceScope = workspaceId;
     let cancelled = false;
     async function loadAdmins() {
       try {
         setLoading(true);
         setError(null);
-        const result = await authApi.fetchAdmins(token, workspaceId);
+        const result = await authApi.fetchAdmins(authToken, workspaceScope);
         if (!cancelled) {
           setAdmins(result);
         }
@@ -53,42 +55,19 @@ export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
     };
   }, [token, workspaceId, refreshSignal]);
 
-  const otherAdmins = useMemo(
-    () => admins.filter((admin) => admin.id !== user?.id),
-    [admins, user?.id]
-  );
-
-  const handleDeleteAdmin = async (admin: AdminSummary) => {
-    setDeletingId(admin.id);
-    try {
-      await deleteUserAccount(admin.id);
-      setAdmins((prev) => prev.filter((entry) => entry.id !== admin.id));
-    } catch (err) {
-      Alert.alert(
-        'Delete failed',
-        getFriendlyError(err, { fallback: "We couldn't delete that admin. Try again." })
-      );
-    } finally {
-      setDeletingId(null);
+  const formattedAdmins = useMemo(() => {
+    if (!user) {
+      return admins;
     }
-  };
-
-  const confirmDeleteAdmin = (admin: AdminSummary) => {
-    Alert.alert(
-      'Remove admin?',
-      `This will permanently remove ${admin.fullName || admin.emailOrPhone} from the workspace.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete admin',
-          style: 'destructive',
-          onPress: () => void handleDeleteAdmin(admin),
-        },
-      ]
-    );
-  };
-
-  const canDeleteAdmins = user?.role === 'dev' || user?.role === 'admin';
+    return admins.reduce<AdminSummary[]>((acc, admin) => {
+      if (admin.id === user.id) {
+        acc.unshift(admin);
+      } else {
+        acc.push(admin);
+      }
+      return acc;
+    }, []);
+  }, [admins, user]);
 
   return (
     <View style={styles.card}>
@@ -96,96 +75,48 @@ export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
       <Text style={styles.description}>
         Everyone who can manage drivers, routes, and user accounts.
       </Text>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>You</Text>
-        <View style={styles.adminRow}>
-          <View style={styles.initialBadge}>
-            <Text style={styles.initialText}>
-              {getInitials({
-                id: user?.id ?? 'me',
-                fullName: user?.fullName ?? null,
-                emailOrPhone: user?.emailOrPhone ?? 'you',
-              })}
-            </Text>
-          </View>
-          <View style={styles.adminInfo}>
-            <Text style={styles.name}>
-              {user?.fullName || user?.emailOrPhone || 'Current admin'}
-            </Text>
-            <Text style={styles.sub}>
-              {user?.emailOrPhone || 'No contact info on file'}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={[styles.section, styles.sectionHeader]}>
-        <Text style={styles.sectionLabel}>Other admins</Text>
-        <View style={styles.countBadge}>
-          <Text style={styles.countText}>{otherAdmins.length}</Text>
-        </View>
-      </View>
-
       {loading ? (
-        <View style={styles.loadingRow}>
+        <View style={styles.row}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.loadingText}>Updating roster…</Text>
+          <Text style={styles.muted}>Refreshing roster…</Text>
         </View>
-      ) : otherAdmins.length === 0 ? (
-        <Text style={styles.emptyText}>
-          {admins.length <= 1
-            ? "You're the only admin right now."
-            : 'No other admins to show.'}
-        </Text>
+      ) : error ? (
+        <Text style={styles.error}>{error}</Text>
+      ) : formattedAdmins.length === 0 ? (
+        <Text style={styles.muted}>No admins to display.</Text>
       ) : (
-        otherAdmins.map((admin) => (
+        formattedAdmins.map((admin) => (
           <View key={admin.id} style={styles.adminRow}>
-            <View style={styles.initialBadge}>
-              <Text style={styles.initialText}>{getInitials(admin)}</Text>
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{getInitials(admin)}</Text>
             </View>
-            <View style={styles.adminInfo}>
+            <View style={styles.info}>
               <Text style={styles.name}>{admin.fullName || admin.emailOrPhone}</Text>
-              <Text style={styles.sub}>{admin.emailOrPhone}</Text>
+              <Text style={styles.muted}>{admin.emailOrPhone}</Text>
             </View>
-            {canDeleteAdmins ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => confirmDeleteAdmin(admin)}
-                style={({ pressed }) => [
-                  styles.removeButton,
-                  (pressed || deletingId === admin.id) && styles.removeButtonPressed,
-                ]}
-                disabled={deletingId === admin.id}
-              >
-                <Text style={styles.removeButtonText}>
-                  {deletingId === admin.id ? 'Removing…' : 'Remove'}
-                </Text>
-              </Pressable>
-            ) : null}
           </View>
         ))
       )}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );
 }
 
-function getInitials(admin: AdminSummary): string {
-  const source = admin.fullName || admin.emailOrPhone || '';
-  const initials = source
-    .split(/[\s@.]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('');
-  return initials || 'A';
+function getInitials(entry: { fullName: string | null; emailOrPhone: string }): string {
+  if (entry.fullName && entry.fullName.trim().length > 0) {
+    return entry.fullName
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('');
+  }
+  return entry.emailOrPhone?.[0]?.toUpperCase() ?? 'A';
 }
 
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
   return StyleSheet.create({
     card: {
-      borderRadius: 12,
+      borderRadius: 16,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
@@ -193,7 +124,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       gap: 16,
     },
     heading: {
-      fontSize: 20,
+      fontSize: 18,
       fontWeight: '600',
       color: colors.text,
     },
@@ -201,20 +132,10 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.mutedText,
       lineHeight: 20,
     },
-    section: {
-      gap: 8,
-    },
-    sectionHeader: {
+    row: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    sectionLabel: {
-      fontWeight: '600',
-      color: colors.text,
-      textTransform: 'uppercase',
-      fontSize: 12,
-      letterSpacing: 0.6,
+      gap: 8,
     },
     adminRow: {
       flexDirection: 'row',
@@ -222,67 +143,28 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       gap: 12,
       paddingVertical: 8,
     },
-    adminInfo: {
-      flex: 1,
-    },
-    name: {
-      color: colors.text,
-      fontWeight: '600',
-    },
-    sub: {
-      color: colors.mutedText,
-      fontSize: 12,
-    },
-    initialBadge: {
+    badge: {
       width: 40,
       height: 40,
       borderRadius: 20,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: isDark ? '#1e293b' : '#e0f2fe',
+      backgroundColor: isDark ? '#0f172a' : '#eff6ff',
     },
-    initialText: {
-      color: isDark ? colors.primary : '#0f172a',
+    badgeText: {
+      color: colors.primary,
+      fontWeight: '700',
+    },
+    info: {
+      flex: 1,
+    },
+    name: {
       fontWeight: '600',
+      color: colors.text,
     },
-    countBadge: {
-      minWidth: 28,
-      paddingHorizontal: 10,
-      paddingVertical: 2,
-      borderRadius: 999,
-      backgroundColor: colors.primary,
-      alignItems: 'center',
-    },
-    countText: {
-      color: isDark ? colors.background : colors.surface,
-      fontWeight: '600',
-    },
-    removeButton: {
-      paddingVertical: 6,
-      paddingHorizontal: 12,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.danger,
-    },
-    removeButtonPressed: {
-      backgroundColor: colors.dangerMuted,
-    },
-    removeButtonText: {
-      color: colors.danger,
-      fontWeight: '600',
+    muted: {
+      color: colors.mutedText,
       fontSize: 12,
-    },
-    loadingRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    loadingText: {
-      color: colors.mutedText,
-    },
-    emptyText: {
-      color: colors.mutedText,
-      fontStyle: 'italic',
     },
     error: {
       color: colors.danger,

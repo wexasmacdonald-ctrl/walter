@@ -2,12 +2,7 @@ import { APIProvider, Map, Marker } from '@vis.gl/react-google-maps';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { getGoogleMapsApiKey } from '@/features/route-planner/getGoogleMapsApiKey';
-
-export type StopLocationEditorProps = {
-  coordinate: { latitude: number; longitude: number };
-  onChange: (coordinate: { latitude: number; longitude: number }) => void;
-  mapType?: 'standard' | 'satellite';
-};
+import type { StopLocationEditorProps } from './StopLocationEditor.types';
 
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
 

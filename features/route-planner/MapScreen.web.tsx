@@ -366,24 +366,22 @@ export function MapScreen({
         </View>
 
         <View style={styles.mapWrapper}>
-        <Map
-          style={styles.mapCanvas}
-          defaultCenter={initialCenter}
-          defaultZoom={DEFAULT_ZOOM}
-          mapTypeId={mapTypeId}
-          options={{
-            disableDefaultUI: true,
-            clickableIcons: false,
-            gestureHandling: 'greedy',
-          }}
-          onClick={() => setSelectedId(null)}
-        >
-          <BoundsController markers={mapPins} />
-          {renderMarkers()}
-      </Map>
-      {renderOverlay()}
-      {renderToast('primary')}
-    </View>
+          <Map
+            style={styles.mapCanvas}
+            defaultCenter={initialCenter}
+            defaultZoom={DEFAULT_ZOOM}
+            mapTypeId={mapTypeId}
+            disableDefaultUI
+            clickableIcons={false}
+            gestureHandling="greedy"
+            onClick={() => setSelectedId(null)}
+          >
+            <BoundsController markers={mapPins} />
+            {renderMarkers()}
+          </Map>
+          {renderOverlay()}
+          {renderToast('primary')}
+        </View>
 
         <Modal visible={isFullScreen} animationType="slide" onRequestClose={() => setIsFullScreen(false)}>
           <View style={styles.modalContent}>
@@ -401,11 +399,9 @@ export function MapScreen({
                 defaultCenter={initialCenter}
                 defaultZoom={DEFAULT_ZOOM}
                 mapTypeId={mapTypeId}
-                options={{
-                  disableDefaultUI: true,
-                  clickableIcons: false,
-                  gestureHandling: 'greedy',
-                }}
+                disableDefaultUI
+                clickableIcons={false}
+                gestureHandling="greedy"
                 onClick={() => setSelectedId(null)}
               >
                 <BoundsController markers={mapPins} />
@@ -433,6 +429,11 @@ type BadgeMarkerProps = {
   onDragEnd?: (event: google.maps.MapMouseEvent) => void;
 };
 
+type MarkerVisual = {
+  icon: google.maps.Icon;
+  zIndex: number;
+};
+
 function BadgeMarker({
   label,
   position,
@@ -444,7 +445,7 @@ function BadgeMarker({
   onPress,
   onDragEnd,
 }: BadgeMarkerProps) {
-  const [options, setOptions] = useState<google.maps.MarkerOptions | null>(null);
+  const [visual, setVisual] = useState<MarkerVisual | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -478,17 +479,17 @@ function BadgeMarker({
           ),
         scaledSize: new maps.Size(scaledSize, Math.round(scaledSize * (46 / 90))),
         anchor: new maps.Point(scaledSize / 2, Math.round(scaledSize * (40 / 90))),
+        };
+
+        if (cancelled) {
+          return;
+        }
+
+        setVisual({
+          icon,
+          zIndex: selected ? 2 : 1,
+        });
       };
-
-      if (cancelled) {
-        return;
-      }
-
-      setOptions({
-        icon,
-        zIndex: selected ? 2 : 1,
-      });
-    };
 
     configure();
 
@@ -500,7 +501,7 @@ function BadgeMarker({
     };
   }, [fill, label, labelColor, outlineColor, selected]);
 
-  if (!options) {
+  if (!visual) {
     return null;
   }
 
@@ -510,7 +511,8 @@ function BadgeMarker({
       onClick={onPress}
       onDragEnd={onDragEnd}
       draggable={draggable}
-      options={options}
+      icon={visual.icon}
+      zIndex={visual.zIndex}
     />
   );
 }

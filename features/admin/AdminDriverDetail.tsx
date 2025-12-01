@@ -51,7 +51,7 @@ export function AdminDriverDetail({
     token,
     workspaceId,
     resetUserPassword,
-    deleteUserAccount,
+    removeUserFromWorkspace,
     adminUpdateUserProfile,
     adminUpdateUserPassword,
   } = useAuth();
@@ -97,14 +97,17 @@ export function AdminDriverDetail({
   const driverPasswordInputRef = useRef<TextInput | null>(null);
   const driverPasswordConfirmInputRef = useRef<TextInput | null>(null);
 
+  const workspaceScope = workspaceId ?? undefined;
+
   useEffect(() => {
-    if (!token || !workspaceId) {
-      return;
-    }
     async function loadDriver() {
+      if (!token || !workspaceId) {
+        return;
+      }
+      const activeWorkspaceId = workspaceId!;
       try {
         setLoadingDriver(true);
-        const drivers = await authApi.fetchDrivers(token, workspaceId);
+        const drivers = await authApi.fetchDrivers(token, activeWorkspaceId);
         setDriver(drivers.find((entry) => entry.id === driverId) ?? null);
     } catch (err) {
       setError(
@@ -116,8 +119,8 @@ export function AdminDriverDetail({
       setLoadingDriver(false);
     }
     }
-    loadDriver();
-  }, [token, workspaceId, driverId, refreshSignal]);
+    void loadDriver();
+  }, [token, workspaceScope, workspaceId, driverId, refreshSignal]);
 
   useEffect(() => {
     setShowStopsList(false);
@@ -147,13 +150,14 @@ export function AdminDriverDetail({
   }, [driver?.id]);
 
   useEffect(() => {
-    if (!token || !workspaceId) {
-      return;
-    }
     async function loadStops() {
+      if (!token || !workspaceId) {
+        return;
+      }
+      const activeWorkspaceId = workspaceId!;
       try {
         setLoadingStops(true);
-        const result = await authApi.fetchDriverStops(token, driverId, workspaceId);
+        const result = await authApi.fetchDriverStops(token, driverId, activeWorkspaceId);
         setStops(result);
     } catch (err) {
       setError(
@@ -165,8 +169,8 @@ export function AdminDriverDetail({
       setLoadingStops(false);
     }
     }
-    loadStops();
-  }, [token, workspaceId, driverId, refreshSignal]);
+    void loadStops();
+  }, [token, workspaceScope, workspaceId, driverId, refreshSignal]);
 
   useEffect(() => {
     setSelectedIds((prev) => {
@@ -247,7 +251,7 @@ export function AdminDriverDetail({
     setError(null);
     setSuccess(null);
     try {
-      const updated = await authApi.saveDriverStops(token, driverId, sanitized, workspaceId);
+      const updated = await authApi.saveDriverStops(token, driverId, sanitized, workspaceScope);
       setStops(updated);
       setSuccess(successMessage);
       setShowStopsList(true);
@@ -463,10 +467,15 @@ export function AdminDriverDetail({
       setUpdatingLocation(true);
       setPinSaveMessage(null);
       setPinSaveTone(null);
-      const updated = await authApi.updateDriverStopLocation(token, pinEditor.stop.id, {
-        latitude: pinEditor.coordinate.latitude,
-        longitude: pinEditor.coordinate.longitude,
-      }, workspaceId);
+      const updated = await authApi.updateDriverStopLocation(
+        token,
+        pinEditor.stop.id,
+        {
+          latitude: pinEditor.coordinate.latitude,
+          longitude: pinEditor.coordinate.longitude,
+        },
+        workspaceScope
+      );
       setStops((prev) => prev.map((stop) => (stop.id === updated.id ? updated : stop)));
       setSuccess('Pin location updated.');
       setError(null);
@@ -502,7 +511,7 @@ export function AdminDriverDetail({
     }
     try {
       setUpdatingLocation(true);
-      const updated = await authApi.updateDriverStopLocation(token, stopId, coordinate, workspaceId);
+      const updated = await authApi.updateDriverStopLocation(token, stopId, coordinate, workspaceScope);
       setStops((prev) => prev.map((stop) => (stop.id === updated.id ? updated : stop)));
       setSuccess('Pin location updated.');
       setError(null);
@@ -640,13 +649,13 @@ export function AdminDriverDetail({
     );
   };
 
-  const performDeleteDriverAccount = async () => {
+  const performRemoveDriver = async () => {
     if (!driver) {
       return;
     }
     try {
       setDeletingAccount(true);
-      await deleteUserAccount(driver.id);
+      await removeUserFromWorkspace(driver.id);
       Alert.alert(
         'Driver removed',
         'The driver was removed from this company and returned to the free tier.'
@@ -665,7 +674,7 @@ export function AdminDriverDetail({
     }
   };
 
-  const confirmDeleteDriverAccount = () => {
+  const confirmRemoveDriver = () => {
     if (!driver || deletingAccount) {
       return;
     }
@@ -674,15 +683,15 @@ export function AdminDriverDetail({
       return;
     }
     Alert.alert(
-      'Delete account?',
-      'This removes the account and anonymizes any remaining data. This action cannot be undone.',
+      'Remove from workspace?',
+      'This removes the driver from this workspace and returns them to the free tier.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Remove driver',
           style: 'destructive',
           onPress: () => {
-            void performDeleteDriverAccount();
+            void performRemoveDriver();
           },
         },
       ]
@@ -695,7 +704,7 @@ export function AdminDriverDetail({
 
   const handleConfirmDeleteDialog = () => {
     setDeleteConfirmVisible(false);
-    void performDeleteDriverAccount();
+    void performRemoveDriver();
   };
 
   const handleSaveAccountDetails = async () => {
@@ -755,12 +764,7 @@ export function AdminDriverDetail({
         fullName: driver.fullName ?? (accountName.trim() || null),
         emailOrPhone: currentEmailOrPhone,
       };
-      try {
-        await adminUpdateUserProfile(driver.id, payload, workspaceId ?? undefined);
-      } catch (error) {
-        // Retry without workspace scoping in case the API requires a global context.
-        await adminUpdateUserProfile(driver.id, payload, undefined);
-      }
+      await adminUpdateUserProfile(driver.id, payload);
       Alert.alert('Role updated', 'This user is now an admin.');
       onRefresh?.();
       onClose();
@@ -971,13 +975,13 @@ export function AdminDriverDetail({
                       pressed && !deletingAccount && !resettingPassword && styles.accountButtonPressed,
                       (deletingAccount || resettingPassword) && styles.buttonDisabled,
                     ]}
-                    onPress={confirmDeleteDriverAccount}
+                    onPress={confirmRemoveDriver}
                     disabled={deletingAccount || resettingPassword}
                   >
                     {deletingAccount ? (
                       <ActivityIndicator color={colors.danger} />
                     ) : (
-                      <Text style={styles.accountButtonDangerLabel}>Delete account</Text>
+                      <Text style={styles.accountButtonDangerLabel}>Remove from workspace</Text>
                     )}
                   </Pressable>
               </View>
@@ -1416,10 +1420,10 @@ export function AdminDriverDetail({
         >
           <View style={styles.deleteModalOverlay}>
             <View style={styles.deleteModalCard}>
-              <Text style={styles.deleteModalTitle}>Delete account?</Text>
-              <Text style={styles.deleteModalBody}>
-                This removes the account and anonymizes any remaining data. This action cannot be undone.
-              </Text>
+                <Text style={styles.deleteModalTitle}>Remove driver from workspace?</Text>
+                <Text style={styles.deleteModalBody}>
+                  The driver will be removed from this workspace and returned to their free-tier account.
+                </Text>
               <View style={styles.deleteModalActions}>
                 <Pressable
                   style={({ pressed }) => [
@@ -1440,7 +1444,7 @@ export function AdminDriverDetail({
                   disabled={deletingAccount}
                 >
                   <Text style={styles.deleteModalDangerButtonText}>
-                    {deletingAccount ? 'Deleting…' : 'Delete'}
+                    {deletingAccount ? 'Removing…' : 'Remove'}
                   </Text>
                 </Pressable>
               </View>
@@ -2011,6 +2015,16 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     pinModalStatus: {
       color: colors.success,
+      textAlign: 'right',
+      fontWeight: '600',
+    },
+    pinModalStatusSuccess: {
+      color: colors.success,
+      textAlign: 'right',
+      fontWeight: '600',
+    },
+    pinModalStatusError: {
+      color: colors.danger,
       textAlign: 'right',
       fontWeight: '600',
     },

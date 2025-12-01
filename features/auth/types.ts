@@ -118,3 +118,14 @@ export type WorkspaceSummary = {
   createdBy?: string | null;
   createdAt?: string | null;
 };
+
+export type AccessRequest = {
+  id: string;
+  status: 'pending' | 'approved' | 'declined';
+  requesterId: string;
+  requesterName: string | null;
+  requesterContact: string | null;
+  createdAt: string | null;
+  workspaceId: string;
+  workspaceName?: string | null;
+};

@@ -301,12 +301,11 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
     setDeletingWorkspaceId(workspace.id);
     setTransferMessage(null);
     try {
-      await authApi.deleteDevWorkspace(token, workspace.id);
+      await authApi.deleteWorkspace(token, workspace.id);
       setWorkspaces((prev) => prev.filter((entry) => entry.id !== workspace.id));
       if (workspace.id === activeWorkspaceId) {
         setActiveWorkspaceId(null);
         setWorkspaceDrivers([]);
-        setInvites([]);
         setView('menu');
         setTransferMessage('Workspace deleted. Drivers moved to the free tier.');
       }
@@ -388,7 +387,6 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
   };
 
   const renderWorkspaceButton = (workspace: WorkspaceSummary) => {
-    const deleting = deletingWorkspaceId === workspace.id;
     const isActive = workspace.id === activeWorkspaceId;
     return (
       <View
@@ -428,24 +426,6 @@ export function DevWorkspaceDirectory({ onOpenWorkspace }: DevWorkspaceDirectory
             onPress={() => void handleOpenWorkspace(workspace)}
           >
             <Text style={styles.secondaryButtonText}>Preview console</Text>
-          </Pressable>
-        </View>
-        <View style={styles.directoryFooter}>
-          <Pressable
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.linkButton,
-              pressed && styles.linkButtonPressed,
-              deleting && styles.linkButtonDisabled,
-            ]}
-            onPress={() => confirmDeleteWorkspace(workspace)}
-            disabled={deleting}
-          >
-            {deleting ? (
-              <ActivityIndicator size="small" color={colors.danger} />
-            ) : (
-              <Text style={[styles.linkButtonText, styles.dangerLink]}>Delete workspace</Text>
-            )}
           </Pressable>
         </View>
       </View>

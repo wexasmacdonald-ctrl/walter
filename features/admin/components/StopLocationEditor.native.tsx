@@ -1,12 +1,8 @@
 import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import type { LatLng, MapPressEvent, MarkerDragEndEvent } from 'react-native-maps';
+import type { LatLng, MapPressEvent, MarkerDragStartEndEvent } from 'react-native-maps';
 
-export type StopLocationEditorProps = {
-  coordinate: LatLng;
-  onChange: (coordinate: LatLng) => void;
-  mapType?: 'standard' | 'satellite';
-};
+import type { StopLocationEditorProps } from './StopLocationEditor.types';
 
 export function StopLocationEditor({
   coordinate,
@@ -37,11 +33,13 @@ export function StopLocationEditor({
   );
 
   const handlePress = (event: MapPressEvent) => {
-    onChange(event.nativeEvent.coordinate);
+    const next = event.nativeEvent.coordinate;
+    onChange({ latitude: next.latitude, longitude: next.longitude });
   };
 
-  const handleDragEnd = (event: MarkerDragEndEvent) => {
-    onChange(event.nativeEvent.coordinate);
+  const handleDragEnd = (event: MarkerDragStartEndEvent) => {
+    const next = event.nativeEvent.coordinate;
+    onChange({ latitude: next.latitude, longitude: next.longitude });
   };
 
   if (!MapView || !Marker) {
@@ -59,6 +57,14 @@ export function StopLocationEditor({
     );
   }
 
+  const markerCoordinate = useMemo<LatLng>(
+    () => ({
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
+    }),
+    [coordinate.latitude, coordinate.longitude]
+  );
+
   return (
     <View style={styles.container}>
       <MapView
@@ -68,7 +74,7 @@ export function StopLocationEditor({
         onPress={handlePress}
       >
         <Marker
-          coordinate={coordinate}
+          coordinate={markerCoordinate}
           draggable
           onDragEnd={handleDragEnd}
         />

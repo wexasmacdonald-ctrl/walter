@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
+  AppStateStatus,
   Modal,
   Platform,
   Pressable,
@@ -10,18 +12,27 @@ import {
   Text,
   TextInput,
   View,
+  Linking,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/features/theme/theme-context';
+import { useAuth } from '@/features/auth/auth-context';
 import { openPrivacyPolicy, openTermsOfUse } from '@/features/legal/legal-documents';
 import type { AuthUser, BusinessTier } from '@/features/auth/types';
+import type { OrgBillingStatus, SyncDriverSeatResult } from '@/features/auth/api';
 
 type SettingsMenuProps = {
   userName: string | null | undefined;
   userRole: string;
   businessTier: BusinessTier;
   businessName?: string | null;
+  billingStatus?: OrgBillingStatus | null;
+  billingLoading?: boolean;
+  workspaceId?: string | null;
+  onBootstrapWorkspace?: (input: { name: string }) => Promise<unknown>;
+  onAttachWorkspace?: (input: { workspaceId: string }) => Promise<unknown>;
+  onRefreshBillingStatus?: () => Promise<void>;
   onDeleteAccount: () => Promise<void>;
   onSignOut: () => Promise<void>;
   onChangePassword: (currentPassword: string, newPassword: string) => Promise<void>;
@@ -44,6 +55,7 @@ type SettingsMenuProps = {
   onVerifyPassword: (password: string) => Promise<void>;
   onAfterDeleteAccount?: () => void | Promise<void>;
   onApplyTeamAccessCode: (code: string) => Promise<AuthUser>;
+  onSyncDriverSeats?: () => Promise<SyncDriverSeatResult>;
 };
 
 type ProcessingAction = null | 'account' | 'profile' | 'password';
@@ -54,6 +66,12 @@ export function SettingsMenu({
   userRole,
   businessTier,
   businessName,
+  billingStatus,
+  billingLoading,
+  workspaceId,
+  onBootstrapWorkspace,
+  onAttachWorkspace,
+  onRefreshBillingStatus,
   onDeleteAccount,
   onSignOut,
   onChangePassword,
@@ -62,8 +80,10 @@ export function SettingsMenu({
   onVerifyPassword,
   onAfterDeleteAccount,
   onApplyTeamAccessCode,
+  onSyncDriverSeats,
 }: SettingsMenuProps) {
   const { colors, isDark, toggleTheme } = useTheme();
+  const { token } = useAuth();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const insets = useSafeAreaInsets();
   const [visible, setVisible] = useState(false);
@@ -72,6 +92,7 @@ export function SettingsMenu({
 
   const [profileName, setProfileName] = useState('');
   const [profileContact, setProfileContact] = useState('');
+  const [profileBusinessName, setProfileBusinessName] = useState('');
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
 
@@ -89,11 +110,52 @@ export function SettingsMenu({
   const [teamCodeStatus, setTeamCodeStatus] = useState<'idle' | 'loading' | 'success'>('idle');
   const [teamCodeError, setTeamCodeError] = useState<string | null>(null);
   const [teamCodeMessage, setTeamCodeMessage] = useState<string | null>(null);
-  const showTeamCodeForm = userRole !== 'dev' && businessTier !== 'business';
+  const showTeamCodeForm = false; // invite codes removed; drivers now request access via admins
+  const currentWorkspaceId = billingStatus?.orgId ?? workspaceId ?? null;
+  const showDevTools = userRole === 'dev' && (!!onBootstrapWorkspace || !!onAttachWorkspace);
+  const normalizedPlanTier =
+    billingStatus?.planTier ??
+    (billingStatus?.numberOfDrivers
+      ? billingStatus.numberOfDrivers <= 10
+        ? 'small'
+        : billingStatus.numberOfDrivers <= 25
+          ? 'medium'
+          : 'large'
+      : null);
+  const planBadgeLabel = normalizedPlanTier
+    ? `Business · ${normalizedPlanTier.charAt(0).toUpperCase()}${normalizedPlanTier.slice(1)} plan`
+    : businessTier === 'business'
+      ? 'Business tier'
+      : 'Free tier';
+  const planLimitLabel = normalizedPlanTier
+    ? normalizedPlanTier === 'small'
+      ? 'Up to 10 drivers'
+      : normalizedPlanTier === 'medium'
+        ? 'Up to 25 drivers'
+        : billingStatus?.numberOfDrivers
+          ? `Up to ${billingStatus.numberOfDrivers} drivers`
+          : 'Custom driver cap'
+    : '30 stops / 24 hrs';
+  const [devWorkspaceName, setDevWorkspaceName] = useState('');
+  const [devBootstrapStatus, setDevBootstrapStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [devBootstrapMessage, setDevBootstrapMessage] = useState<string | null>(null);
+  const [devAttachWorkspaceId, setDevAttachWorkspaceId] = useState('');
+  const [devAttachStatus, setDevAttachStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [devAttachMessage, setDevAttachMessage] = useState<string | null>(null);
+  const [driverSeatError, setDriverSeatError] = useState<string | null>(null);
+  const [driverSeatMessage, setDriverSeatMessage] = useState<string | null>(null);
+  const [driverSeatSaving, setDriverSeatSaving] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const seatLimit = billingStatus?.numberOfDrivers ?? null;
+  const billingActive = billingStatus?.billingStatus === 'active';
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   const resetState = useCallback(() => {
     setView('main');
     setProcessing(null);
+    setProfileName('');
+    setProfileContact('');
+    setProfileBusinessName('');
     setProfileError(null);
     setPasswordError(null);
     setCurrentPassword('');
@@ -106,6 +168,16 @@ export function SettingsMenu({
     setTeamCodeError(null);
     setTeamCodeStatus('idle');
     setTeamCodeMessage(null);
+    setDevWorkspaceName('');
+    setDevBootstrapStatus('idle');
+    setDevBootstrapMessage(null);
+    setDevAttachWorkspaceId('');
+    setDevAttachStatus('idle');
+    setDevAttachMessage(null);
+    setDriverSeatError(null);
+    setDriverSeatMessage(null);
+    setDriverSeatSaving(false);
+    setCheckoutLoading(false);
   }, []);
 
   useEffect(() => {
@@ -113,6 +185,34 @@ export function SettingsMenu({
       resetState();
     }
   }, [visible, resetState]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      return undefined;
+    }
+    const handler = (event: MessageEvent) => {
+      if (event?.data && typeof event.data === 'object' && event.data.type === 'billingUpdated') {
+        onRefreshBillingStatus?.();
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => {
+      window.removeEventListener('message', handler);
+    };
+  }, [onRefreshBillingStatus]);
+
+  useEffect(() => {
+    const handleAppStateChange = (next: AppStateStatus) => {
+      if (appStateRef.current.match(/inactive|background/) && next === 'active') {
+        onRefreshBillingStatus?.();
+      }
+      appStateRef.current = next;
+    };
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      subscription.remove();
+    };
+  }, [onRefreshBillingStatus]);
 
   const handleOpenMenu = () => {
     setVisible(true);
@@ -203,6 +303,7 @@ export function SettingsMenu({
       const profile = await onGetProfile();
       setProfileName(profile.fullName ?? '');
       setProfileContact(profile.emailOrPhone ?? '');
+      setProfileBusinessName(profile.businessName ?? '');
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Failed to load account profile.';
@@ -233,13 +334,17 @@ export function SettingsMenu({
     const payload: {
       fullName?: string | null;
       emailOrPhone?: string;
+      businessName?: string | null;
     } = {};
     payload.fullName = profileName.trim() === '' ? null : profileName.trim();
     payload.emailOrPhone = contact;
+    payload.businessName =
+      profileBusinessName.trim() === '' ? null : profileBusinessName.trim();
 
     const updated = await onUpdateProfile(payload);
     setProfileName(updated.fullName ?? '');
     setProfileContact(updated.emailOrPhone ?? '');
+    setProfileBusinessName(updated.businessName ?? '');
       Alert.alert('Profile updated', 'Account details saved.');
       setView('main');
     } catch (error) {
@@ -324,94 +429,391 @@ export function SettingsMenu({
     }
   };
 
+  const handleBootstrapWorkspace = useCallback(async () => {
+    if (!onBootstrapWorkspace) {
+      setDevBootstrapStatus('error');
+      setDevBootstrapMessage('Bootstrap endpoint unavailable.');
+      return;
+    }
+    const trimmed = devWorkspaceName.trim();
+    setDevBootstrapStatus('loading');
+    setDevBootstrapMessage(null);
+    try {
+      await onBootstrapWorkspace({ name: trimmed || `Workspace ${new Date().toISOString()}` });
+      setDevBootstrapStatus('success');
+      setDevBootstrapMessage('Workspace created and attached.');
+      setDevWorkspaceName('');
+      await onRefreshBillingStatus?.();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to bootstrap workspace.';
+      setDevBootstrapStatus('error');
+      setDevBootstrapMessage(message);
+    }
+  }, [devWorkspaceName, onBootstrapWorkspace, onRefreshBillingStatus]);
+
+  const handleAttachWorkspace = useCallback(async () => {
+    if (!onAttachWorkspace) {
+      setDevAttachStatus('error');
+      setDevAttachMessage('Attach endpoint unavailable.');
+      return;
+    }
+    const trimmed = devAttachWorkspaceId.trim();
+    if (!trimmed) {
+      setDevAttachStatus('error');
+      setDevAttachMessage('Enter a workspace ID.');
+      return;
+    }
+    setDevAttachStatus('loading');
+    setDevAttachMessage(null);
+    try {
+      await onAttachWorkspace({ workspaceId: trimmed });
+      setDevAttachStatus('success');
+      setDevAttachMessage('Workspace attached to your account.');
+      setDevAttachWorkspaceId('');
+      await onRefreshBillingStatus?.();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to attach workspace.';
+      setDevAttachStatus('error');
+      setDevAttachMessage(message);
+    }
+  }, [devAttachWorkspaceId, onAttachWorkspace, onRefreshBillingStatus]);
+
+  const handleStartCheckout = useCallback(
+    async (seatCountOverride?: number) => {
+      if (checkoutLoading) {
+        return;
+      }
+      if (!currentWorkspaceId || !token) {
+        Alert.alert('Workspace required', 'Join or create a workspace before updating billing.');
+        return;
+      }
+      const seatCount =
+        seatCountOverride && seatCountOverride > 0
+          ? seatCountOverride
+          : seatLimit && seatLimit > 0
+            ? seatLimit
+            : 1;
+      setCheckoutLoading(true);
+      try {
+        const resp = await fetch('https://blow-api.wexasmacdonald.workers.dev/billing/checkout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            'x-workspace-id': currentWorkspaceId,
+          },
+          body: JSON.stringify({
+            numberOfDrivers: seatCount,
+          }),
+        });
+
+        const text = await resp.text();
+        let data: any = null;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          // ignore non-JSON bodies
+        }
+
+        if (!resp.ok || !data?.checkoutUrl) {
+          console.error('Billing error', resp.status, data ?? text);
+          const message =
+            data?.message ??
+            (resp.status === 400 ? 'Workspace not ready for billing.' : 'Could not start checkout.');
+          Alert.alert('Billing error', message);
+          return;
+        }
+
+        const url = String(data.checkoutUrl);
+        const supported = await Linking.canOpenURL(url);
+        if (!supported) {
+          Alert.alert('Error', 'Cannot open Stripe checkout URL.');
+          return;
+        }
+
+        await Linking.openURL(url);
+      } catch (error) {
+        console.error('Checkout request failed', error);
+        Alert.alert('Error', 'Network error talking to billing.');
+      } finally {
+        setCheckoutLoading(false);
+      }
+    },
+    [checkoutLoading, currentWorkspaceId, token, seatLimit]
+  );
+
+  const handleSyncDriverSeats = useCallback(async () => {
+    if (!onSyncDriverSeats || driverSeatSaving) {
+      return;
+    }
+    setDriverSeatSaving(true);
+    setDriverSeatError(null);
+    setDriverSeatMessage(null);
+    try {
+      const result = await onSyncDriverSeats();
+      if (result.action === 'checkout') {
+        setDriverSeatMessage('Redirecting to billing checkout for updated seats.');
+        await handleStartCheckout(result.numberOfDrivers);
+      } else {
+        const message =
+          result.action === 'updated'
+            ? `Seat limit aligned to ${result.numberOfDrivers} driver${result.numberOfDrivers === 1 ? '' : 's'}.`
+            : 'Driver seats already match your member count.';
+        setDriverSeatMessage(message);
+        await onRefreshBillingStatus?.();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync driver seats.';
+      setDriverSeatError(message);
+    } finally {
+      setDriverSeatSaving(false);
+    }
+  }, [driverSeatSaving, onSyncDriverSeats, handleStartCheckout, onRefreshBillingStatus]);
+
   const renderMainView = () => (
     <>
-      <View style={styles.profileCard}>
-        <Text style={styles.profileName}>{userName ? userName : 'Signed user'}</Text>
-        <Text style={styles.profileRole}>{userRole}</Text>
-        <Text style={styles.profilePlan}>
-          {businessTier === 'business'
-            ? 'Business tier · unlimited addresses'
-            : 'Free tier · 30 new stops every 24 hours'}
+    <View style={styles.profileCard}>
+      <Text style={styles.profileName}>{userName ? userName : 'Signed user'}</Text>
+      <Text style={styles.profileRole}>{userRole}</Text>
+      <Text style={styles.profilePlan}>
+        {businessTier === 'business'
+            ? `Workspace: ${businessName?.trim() || 'Business workspace'}`
+            : businessName?.trim()
+            ? `Workspace: ${businessName} (free tier)`
+            : 'No workspace selected'}
         </Text>
-        {businessName ? (
-          <Text style={styles.profileTeamName}>Team: {businessName}</Text>
-        ) : null}
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Plan & team</Text>
-        <View style={styles.planCard}>
-          <View style={styles.planHeaderRow}>
-            <Text style={styles.planBadge}>
-              {businessTier === 'business' ? 'Business tier' : 'Free tier'}
-            </Text>
-            <Text style={styles.planLimit}>
-              {businessTier === 'business' ? 'Unlimited stops' : '30 stops / 24 hrs'}
-            </Text>
-          </View>
+      {userRole !== 'driver' ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Plan & team</Text>
+          <View style={styles.planCard}>
+            <View style={styles.planHeaderRow}>
+              <Text style={styles.planBadge}>
+                {planBadgeLabel}
+              </Text>
+              <Text style={styles.planLimit}>
+                {planLimitLabel}
+              </Text>
+            </View>
           <Text style={styles.planDescription}>
             {businessTier === 'business'
-              ? 'Teams on the business tier can geocode unlimited addresses and share maps.'
-              : 'Free accounts can geocode up to 30 new stops every 24 hours.'}
+              ? 'Your workspace includes unlimited stops.'
+              : 'Free accounts can geocode up to 30 new stops every 24 hours. Upgrade your workspace to business for unlimited stops.'}
           </Text>
           <Text style={styles.planTeamName}>
             {businessName?.trim()
-              ? `Workspace name: ${businessName}`
-              : 'Add a business or team name from Account details.'}
+          ? `Workspace: ${businessName}`
+            : 'Add a workspace name from Account details.'}
+      </Text>
+      {billingLoading ? (
+        <Text style={styles.profilePlan}>Checking billing status…</Text>
+      ) : billingStatus ? (
+        <>
+          <Text style={styles.planMeta}>
+            Status: {billingStatus.billingStatus ?? 'unknown'}
           </Text>
+          <Text style={styles.planMeta}>
+            Driver seats: {billingStatus.numberOfDrivers ?? 'n/a'}
+          </Text>
+        </>
+      ) : null}
+    </View>
+          {currentWorkspaceId ? (
+            <View style={styles.driverSeatBlock}>
+              <Text style={styles.driverSeatTitle}>Driver seats & billing</Text>
+              <Text style={styles.driverSeatHint}>
+                Keep your seat allowance aligned with the people you’ve added to this workspace. We’ll open Stripe only
+                when the plan needs to change.
+              </Text>
+              <View style={styles.driverSeatMetaRow}>
+                <View style={styles.driverSeatMeta}>
+                  <Text style={styles.driverSeatMetaLabel}>Current allowance</Text>
+                  <Text style={styles.driverSeatMetaValue}>
+                    {seatLimit !== null ? `${seatLimit} driver${seatLimit === 1 ? '' : 's'}` : 'Not set'}
+                  </Text>
+                </View>
+                <View style={styles.driverSeatMeta}>
+                  <Text style={styles.driverSeatMetaLabel}>Billing status</Text>
+                  <Text style={styles.driverSeatMetaValue}>
+                    {billingStatus?.billingStatus ? billingStatus.billingStatus : 'Not active'}
+                  </Text>
+                </View>
+              </View>
+              {driverSeatMessage ? (
+                <Text style={styles.driverSeatSuccess}>{driverSeatMessage}</Text>
+              ) : null}
+              {driverSeatError ? <Text style={styles.errorText}>{driverSeatError}</Text> : null}
+              <View style={styles.driverSeatActions}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.driverSeatButton,
+                    pressed && styles.driverSeatButtonPressed,
+                    (!onSyncDriverSeats || driverSeatSaving) && styles.driverSeatButtonDisabled,
+                  ]}
+                  disabled={!onSyncDriverSeats || driverSeatSaving}
+                  onPress={handleSyncDriverSeats}
+                >
+                  {driverSeatSaving ? (
+                    <ActivityIndicator color={colors.surface} />
+                  ) : (
+                    <Text style={styles.driverSeatButtonText}>Sync with members</Text>
+                  )}
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.driverSeatSecondaryButton,
+                    pressed && styles.driverSeatButtonPressed,
+                    checkoutLoading && styles.driverSeatButtonDisabled,
+                  ]}
+                  disabled={checkoutLoading}
+                  onPress={() => handleStartCheckout()}
+                >
+                  {checkoutLoading ? (
+                    <ActivityIndicator color={colors.text} />
+                  ) : (
+                    <Text style={styles.driverSeatSecondaryText}>Review billing in Stripe</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+          {showTeamCodeForm ? (
+            <View style={styles.teamCodeBlock}>
+              <Text style={styles.formLabel}>Workspace invite code</Text>
+              <Text style={styles.teamCodeHint}>
+                Enter the workspace invite code from your dispatcher to join their workspace and unlock
+                the business tier.
+              </Text>
+              <TextInput
+                style={styles.teamCodeInput}
+                placeholder="e.g. NORTHHUB-92A"
+                placeholderTextColor={colors.mutedText}
+                value={teamCode}
+                onChangeText={(text) => {
+                  setTeamCode(text);
+                  if (teamCodeError) {
+                    setTeamCodeError(null);
+                  }
+                  if (teamCodeStatus === 'success') {
+                    setTeamCodeStatus('idle');
+                    setTeamCodeMessage(null);
+                  }
+                }}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                accessible
+                accessibilityLabel="Workspace invite code"
+              />
+              {teamCodeError ? <Text style={styles.errorText}>{teamCodeError}</Text> : null}
+              {teamCodeStatus === 'success' && teamCodeMessage ? (
+                <Text style={styles.teamCodeSuccess}>{teamCodeMessage}</Text>
+              ) : null}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.teamCodeButton,
+                  pressed && styles.teamCodeButtonPressed,
+                  teamCodeStatus === 'loading' && styles.teamCodeButtonDisabled,
+                ]}
+                onPress={handleApplyTeamCode}
+                disabled={teamCodeStatus === 'loading'}
+              >
+                {teamCodeStatus === 'loading' ? (
+                  <ActivityIndicator color={colors.surface} />
+                ) : (
+                  <Text style={styles.teamCodeButtonText}>
+                    {businessTier === 'business' ? 'Refresh workspace access' : 'Join workspace'}
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          ) : null}
+          {showDevTools ? (
+            <View style={styles.devSection}>
+              <Text style={styles.sectionTitle}>Developer tools</Text>
+              <View style={styles.devCard}>
+                <Text style={styles.devLabel}>Current workspace ID</Text>
+                <Text style={styles.devValue}>{currentWorkspaceId ?? 'None assigned'}</Text>
+
+                <Text style={styles.devLabel}>Create & attach workspace</Text>
+                <TextInput
+                  style={styles.devInput}
+                  placeholder="Workspace name"
+                  placeholderTextColor={colors.mutedText}
+                  value={devWorkspaceName}
+                  onChangeText={(text) => {
+                    setDevWorkspaceName(text);
+                    if (devBootstrapStatus === 'error') {
+                      setDevBootstrapStatus('idle');
+                      setDevBootstrapMessage(null);
+                    }
+                  }}
+                />
+                <Pressable
+                  style={[
+                    styles.devButton,
+                    devBootstrapStatus === 'loading' && styles.devButtonDisabled,
+                  ]}
+                  onPress={handleBootstrapWorkspace}
+                  disabled={devBootstrapStatus === 'loading'}
+                >
+                  <Text style={styles.devButtonText}>
+                    {devBootstrapStatus === 'loading' ? 'Creating…' : 'Create workspace'}
+                  </Text>
+                </Pressable>
+                {devBootstrapMessage ? (
+                  <Text
+                    style={
+                      devBootstrapStatus === 'error' ? styles.devStatusError : styles.devStatusSuccess
+                    }
+                  >
+                    {devBootstrapMessage}
+                  </Text>
+                ) : null}
+
+                <Text style={styles.devLabel}>Attach existing workspace</Text>
+                <TextInput
+                  style={styles.devInput}
+                  placeholder="Workspace ID (UUID)"
+                  placeholderTextColor={colors.mutedText}
+                  autoCapitalize="none"
+                  value={devAttachWorkspaceId}
+                  onChangeText={(text) => {
+                    setDevAttachWorkspaceId(text);
+                    if (devAttachStatus === 'error') {
+                      setDevAttachStatus('idle');
+                      setDevAttachMessage(null);
+                    }
+                  }}
+                />
+                <Pressable
+                  style={[
+                    styles.devButton,
+                    devAttachStatus === 'loading' && styles.devButtonDisabled,
+                  ]}
+                  onPress={handleAttachWorkspace}
+                  disabled={devAttachStatus === 'loading'}
+                >
+                  <Text style={styles.devButtonText}>
+                    {devAttachStatus === 'loading' ? 'Attaching…' : 'Attach workspace'}
+                  </Text>
+                </Pressable>
+                {devAttachMessage ? (
+                  <Text
+                    style={
+                      devAttachStatus === 'error' ? styles.devStatusError : styles.devStatusSuccess
+                    }
+                  >
+                    {devAttachMessage}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          ) : null}
         </View>
-        {showTeamCodeForm ? (
-          <View style={styles.teamCodeBlock}>
-            <Text style={styles.formLabel}>Workspace invite code</Text>
-            <Text style={styles.teamCodeHint}>
-              Enter the workspace invite code from your dispatcher to join their workspace and unlock
-              the business tier.
-            </Text>
-            <TextInput
-              style={styles.teamCodeInput}
-              placeholder="e.g. NORTHHUB-92A"
-              placeholderTextColor={colors.mutedText}
-              value={teamCode}
-              onChangeText={(text) => {
-                setTeamCode(text);
-                if (teamCodeError) {
-                  setTeamCodeError(null);
-                }
-                if (teamCodeStatus === 'success') {
-                  setTeamCodeStatus('idle');
-                  setTeamCodeMessage(null);
-                }
-              }}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              accessible
-              accessibilityLabel="Workspace invite code"
-            />
-            {teamCodeError ? <Text style={styles.errorText}>{teamCodeError}</Text> : null}
-            {teamCodeStatus === 'success' && teamCodeMessage ? (
-              <Text style={styles.teamCodeSuccess}>{teamCodeMessage}</Text>
-            ) : null}
-            <Pressable
-              style={({ pressed }) => [
-                styles.teamCodeButton,
-                pressed && styles.teamCodeButtonPressed,
-                teamCodeStatus === 'loading' && styles.teamCodeButtonDisabled,
-              ]}
-              onPress={handleApplyTeamCode}
-              disabled={teamCodeStatus === 'loading'}
-            >
-              {teamCodeStatus === 'loading' ? (
-                <ActivityIndicator color={colors.surface} />
-              ) : (
-                <Text style={styles.teamCodeButtonText}>
-                  {businessTier === 'business' ? 'Refresh workspace access' : 'Join workspace'}
-                </Text>
-              )}
-            </Pressable>
-          </View>
-        ) : null}
-      </View>
+      ) : null}
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Display</Text>
@@ -524,6 +926,17 @@ export function SettingsMenu({
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="email-address"
+              placeholderTextColor={colors.mutedText}
+            />
+          </View>
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Workspace name</Text>
+            <TextInput
+              style={styles.formInput}
+              value={profileBusinessName}
+              onChangeText={setProfileBusinessName}
+              placeholder="Workspace name"
+              autoCapitalize="words"
               placeholderTextColor={colors.mutedText}
             />
           </View>
@@ -969,6 +1382,11 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.mutedText,
       fontSize: 12,
     },
+    planMeta: {
+      color: colors.mutedText,
+      fontSize: 12,
+      marginTop: 4,
+    },
     teamCodeBlock: {
       gap: 8,
       borderRadius: 12,
@@ -977,9 +1395,109 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       backgroundColor: colors.surface,
       padding: 16,
     },
+    devSection: {
+      marginTop: 16,
+      gap: 12,
+    },
+    devCard: {
+      gap: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      padding: 16,
+    },
+    devLabel: {
+      color: colors.mutedText,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    devValue: {
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+      fontSize: 12,
+      color: colors.text,
+    },
     teamCodeHint: {
       color: colors.mutedText,
       fontSize: 12,
+    },
+    driverSeatBlock: {
+      gap: 8,
+      marginTop: 8,
+    },
+    driverSeatTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    driverSeatHint: {
+      color: colors.mutedText,
+      fontSize: 13,
+      marginTop: 4,
+    },
+    driverSeatMetaRow: {
+      flexDirection: isWeb ? 'row' : 'column',
+      gap: 12,
+      marginTop: 12,
+    },
+    driverSeatMeta: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      padding: 12,
+      backgroundColor: colors.surface,
+    },
+    driverSeatMetaLabel: {
+      fontSize: 11,
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+      color: colors.mutedText,
+    },
+    driverSeatMetaValue: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text,
+      marginTop: 4,
+    },
+    driverSeatSuccess: {
+      color: colors.success,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    driverSeatActions: {
+      flexDirection: isWeb ? 'row' : 'column',
+      gap: 8,
+    },
+    driverSeatButton: {
+      borderRadius: 999,
+      paddingVertical: 12,
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      flex: isWeb ? 1 : undefined,
+    },
+    driverSeatButtonPressed: {
+      opacity: 0.9,
+    },
+    driverSeatButtonDisabled: {
+      opacity: 0.7,
+    },
+    driverSeatButtonText: {
+      color: colors.surface,
+      fontWeight: '600',
+    },
+    driverSeatSecondaryButton: {
+      borderRadius: 999,
+      paddingVertical: 12,
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      flex: isWeb ? 1 : undefined,
+    },
+    driverSeatSecondaryText: {
+      color: colors.text,
+      fontWeight: '600',
     },
     teamCodeInput: {
       borderRadius: 10,
@@ -992,11 +1510,30 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       fontWeight: '600',
       letterSpacing: 1,
     },
+    devInput: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      backgroundColor: colors.surface,
+      color: colors.text,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    },
     teamCodeButton: {
       borderRadius: 12,
       paddingVertical: 12,
       alignItems: 'center',
       backgroundColor: colors.primary,
+    },
+    devButton: {
+      borderRadius: 10,
+      paddingVertical: 12,
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+    },
+    devButtonDisabled: {
+      opacity: 0.7,
     },
     teamCodeButtonPressed: {
       opacity: 0.9,
@@ -1007,6 +1544,20 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     teamCodeButtonText: {
       color: colors.surface,
       fontWeight: '600',
+    },
+    devButtonText: {
+      color: colors.surface,
+      fontWeight: '600',
+    },
+    devStatusSuccess: {
+      color: colors.success,
+      fontWeight: '600',
+      fontSize: 12,
+    },
+    devStatusError: {
+      color: colors.danger,
+      fontWeight: '600',
+      fontSize: 12,
     },
     teamCodeSuccess: {
       color: colors.success,
@@ -1165,3 +1716,4 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
   });
 }
+

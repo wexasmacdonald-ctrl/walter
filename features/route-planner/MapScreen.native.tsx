@@ -13,8 +13,9 @@ import {
 import * as Location from 'expo-location';
 
 import { useTheme } from '@/features/theme/theme-context';
+import type MapView from 'react-native-maps';
+import type { LatLng, MapPressEvent } from 'react-native-maps';
 import type { Stop } from './types';
-import type { LatLng } from 'react-native-maps';
 
 export type MapScreenProps = {
   pins: Stop[];
@@ -32,7 +33,6 @@ type UserLocation = {
 };
 
 type MapModule = typeof import('react-native-maps') | null;
-type MapViewType = MapModule extends null ? null : MapModule['default'];
 
 export function MapScreen({
   pins,
@@ -54,7 +54,7 @@ export function MapScreen({
     }
   }, []);
 
-  const MapView: MapViewType = mapModule?.default ?? null;
+  const MapViewComponent = mapModule?.default ?? null;
   const MarkerBadge = useMemo(() => {
     if (!mapModule) {
       return null;
@@ -81,8 +81,8 @@ export function MapScreen({
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [actioningId, setActioningId] = useState<string | null>(null);
 
-  const mapRef = useRef<MapViewType | null>(null);
-  const modalMapRef = useRef<MapViewType | null>(null);
+  const mapRef = useRef<MapView | null>(null);
+  const modalMapRef = useRef<MapView | null>(null);
   const mapProvider = useMemo(
     () => (mapModule && supportsGoogleMapsProvider(mapModule) ? mapModule.PROVIDER_GOOGLE : undefined),
     [mapModule]
@@ -419,7 +419,7 @@ export function MapScreen({
     </View>
   );
 
-  if (!MapView) {
+  if (!MapViewComponent) {
     return (
       <View style={[styles.container, styles.fallbackContainer, { borderColor: colors.border, backgroundColor: colors.surface }]}>
         <Text style={[styles.fallbackTitle, { color: colors.text }]}>Map unavailable in Expo Go</Text>
@@ -467,7 +467,7 @@ export function MapScreen({
       </View>
 
       <View style={styles.mapWrapper}>
-        <MapView
+        <MapViewComponent
           ref={mapRef}
           provider={mapProvider}
           style={styles.map}
@@ -475,14 +475,14 @@ export function MapScreen({
           showsUserLocation
           showsCompass
           showsMyLocationButton
-          onPress={({ nativeEvent }) => {
-            if (nativeEvent.action !== 'marker-press') {
+          onPress={(event: MapPressEvent) => {
+            if (event.nativeEvent.action !== 'marker-press') {
               setSelectedId(null);
             }
           }}
         >
           {renderMarkers()}
-        </MapView>
+        </MapViewComponent>
         {renderOverlay()}
         {renderToast('primary')}
       </View>
@@ -498,7 +498,7 @@ export function MapScreen({
             </View>
           </View>
           <View style={styles.modalMapWrapper}>
-            <MapView
+            <MapViewComponent
               ref={modalMapRef}
               provider={mapProvider}
               style={styles.map}
@@ -506,14 +506,14 @@ export function MapScreen({
               showsUserLocation
               showsCompass
               showsMyLocationButton
-              onPress={({ nativeEvent }) => {
-                if (nativeEvent.action !== 'marker-press') {
+              onPress={(event: MapPressEvent) => {
+                if (event.nativeEvent.action !== 'marker-press') {
                   setSelectedId(null);
                 }
               }}
             >
               {renderMarkers()}
-            </MapView>
+            </MapViewComponent>
             {renderOverlay()}
             {renderToast('modal')}
           </View>
@@ -531,7 +531,7 @@ function extractHouseNumber(address: string | null | undefined): string | null {
   return match ? match[1] : null;
 }
 
-function fitToMarkers(map: MapViewType | null, coords: LatLng[]) {
+function fitToMarkers(map: MapView | null, coords: LatLng[]) {
   if (!map || coords.length === 0) {
     return;
   }

@@ -30,6 +30,7 @@ export function LoginScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [registerSubmitting, setRegisterSubmitting] = useState(false);
   const [registerError, setRegisterError] = useState<string | null>(null);
+  const [rememberDevice, setRememberDevice] = useState(false);
   const identifierInputRef = useRef<TextInput | null>(null);
   const passwordInputRef = useRef<TextInput | null>(null);
   const registerNameRef = useRef<TextInput | null>(null);
@@ -67,7 +68,7 @@ export function LoginScreen() {
     setLoginError(null);
     setLoginSubmitting(true);
     try {
-      await signIn(trimmedIdentifier, password);
+      await signIn(trimmedIdentifier, password, { remember: rememberDevice });
       setPassword('');
     } catch (err) {
       setLoginError(
@@ -140,7 +141,7 @@ export function LoginScreen() {
           </Text>
           <Text style={styles.accessNote}>
             {isRegisterMode
-              ? 'Join your crew now; dispatch upgrades you to the company plan when they invite you.'
+              ? 'Join your crew now; dispatch upgrades you to the company plan when they add you.'
               : 'Use the email or phone you registered with.'}
           </Text>
           <View style={styles.modeSwitch}>
@@ -175,7 +176,7 @@ export function LoginScreen() {
           </View>
           <View style={styles.notice}>
             <Text style={styles.noticeBody}>
-              Your account is tied to your company. Admins invite and assign routes.
+              Your account is tied to your company. Admins add you and assign routes.
             </Text>
           </View>
           {isRegisterMode ? (
@@ -264,7 +265,7 @@ export function LoginScreen() {
                 )}
               </Pressable>
               <Text style={styles.helperText}>
-                Every new workspace starts with 30 new stops per day. Enter a workspace invite code in Settings whenever you join a company so we can unlock unlimited usage for that account.
+                Every new workspace starts with 30 new stops per day. Ask an admin to add you to a company workspace to unlock unlimited usage for that account.
                 </Text>
             </>
           ) : (
@@ -304,6 +305,21 @@ export function LoginScreen() {
                   onSubmitEditing={handleLogin}
                 />
               </View>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.rememberRow,
+                  pressed && styles.rememberRowPressed,
+                ]}
+                onPress={() => setRememberDevice((prev) => !prev)}
+              >
+                <View style={[styles.checkbox, rememberDevice && styles.checkboxChecked]}>
+                  {rememberDevice ? <Text style={styles.checkboxMark}>✓</Text> : null}
+                </View>
+                <View>
+                  <Text style={styles.rememberLabel}>Keep me logged in on this device</Text>
+                  <Text style={styles.rememberHint}>Leave unchecked to sign out automatically.</Text>
+                </View>
+              </Pressable>
               {loginError ? <Text style={styles.error}>{loginError}</Text> : null}
               <Pressable
                 style={({ pressed }) => [
@@ -426,6 +442,42 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 12,
     textAlign: 'center',
+  },
+  rememberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 8,
+  },
+  rememberRowPressed: {
+    opacity: 0.85,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#334155',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0f172a',
+  },
+  checkboxChecked: {
+    backgroundColor: '#38bdf8',
+    borderColor: '#38bdf8',
+  },
+  checkboxMark: {
+    color: '#0f172a',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  rememberLabel: {
+    color: '#e2e8f0',
+    fontWeight: '600',
+  },
+  rememberHint: {
+    color: '#94a3b8',
+    fontSize: 11,
   },
   button: {
     backgroundColor: '#2563eb',

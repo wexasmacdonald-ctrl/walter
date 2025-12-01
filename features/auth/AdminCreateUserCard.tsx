@@ -150,8 +150,8 @@ export function AdminCreateUserCard({ onUserCreated }: AdminCreateUserCardProps)
     <View style={styles.card}>
       <Text style={styles.title}>Create login</Text>
       <Text style={styles.subtitle}>
-        Generate credentials for another admin or developer. Drivers should join with your company
-        invite code instead of getting a manual login.
+        Generate credentials for another admin or developer. Drivers should be added from the driver
+        roster instead of getting a manual login.
       </Text>
       <View style={styles.fieldGroup}>
         <Text style={styles.label}>Name</Text>

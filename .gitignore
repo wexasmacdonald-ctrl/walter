@@ -31,6 +31,7 @@ scripts/test-*.ts
 scripts/validate-*.ts
 scripts/prove-promotion.ts
 stubs/
+tail-*.json
 
 # macOS
 .DS_Store

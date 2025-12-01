@@ -3,6 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import * as authApi from './api';
 import type {
+  AttachWorkspaceInput,
+  AttachWorkspaceResult,
+  BootstrapWorkspaceInput,
+  BootstrapWorkspaceResult,
+  SyncDriverSeatResult,
+} from './api';
+import type {
   AccountProfile,
   AdminUserProfileUpdateResponse,
   AuthUser,
@@ -10,6 +17,7 @@ import type {
   CreateUserResponse,
   ResetUserPasswordResponse,
   RegisterInput,
+  WorkspaceSummary,
   UserRole,
 } from './types';
 
@@ -28,7 +36,7 @@ type AuthContextValue = {
   workspaceName: string | null;
   impersonatorSession: AuthSession | null;
   isImpersonating: boolean;
-  signIn: (identifier: string, password: string) => Promise<void>;
+  signIn: (identifier: string, password: string, options?: { remember?: boolean }) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   signOut: () => Promise<void>;
   createUser: (input: CreateUserInput) => Promise<CreateUserResponse>;
@@ -41,8 +49,11 @@ type AuthContextValue = {
     emailOrPhone?: string;
     businessName?: string | null;
   }) => Promise<AccountProfile>;
+  createWorkspace: (input: { name: string; numberOfDrivers?: number }) => Promise<WorkspaceSummary>;
+  syncDriverSeatLimit: () => Promise<SyncDriverSeatResult>;
+  refreshSession: () => Promise<void>;
   resetUserPassword: (userId: string) => Promise<ResetUserPasswordResponse>;
-  deleteUserAccount: (userId: string) => Promise<void>;
+  removeUserFromWorkspace: (userId: string) => Promise<void>;
   adminUpdateUserProfile: (
     userId: string,
     updates: { fullName?: string | null; emailOrPhone?: string; workspaceId?: string | null; role?: UserRole }
@@ -50,6 +61,12 @@ type AuthContextValue = {
   adminUpdateUserPassword: (userId: string, newPassword: string) => Promise<void>;
   verifyPassword: (password: string) => Promise<void>;
   applyTeamAccessCode: (code: string) => Promise<AuthUser>;
+  bootstrapWorkspace: (input: BootstrapWorkspaceInput) => Promise<BootstrapWorkspaceResult>;
+  attachWorkspace: (input: AttachWorkspaceInput) => Promise<AttachWorkspaceResult>;
+  requestWorkspaceAccess: (adminIdentifier: string) => Promise<
+    | { status: 'pending'; requestId?: string; workspaceId?: string; workspaceName?: string | null }
+    | { status: 'already_member'; workspaceId?: string; workspaceName?: string | null }
+  >;
   selectWorkspace: (workspaceId: string | null, workspaceName?: string | null) => Promise<void>;
   impersonateUser: (userId: string) => Promise<void>;
   endImpersonation: () => Promise<void>;
@@ -74,6 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [activeWorkspaceName, setActiveWorkspaceName] = useState<string | null>(null);
   const [impersonatorSession, setImpersonatorSession] = useState<AuthSession | null>(null);
+  const [rememberDevice, setRememberDevice] = useState(false);
   const workspaceScope = useMemo(() => {
     if (!user) {
       return null;
@@ -148,8 +166,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const adjustedUser = ensureDevBusinessTier(normalizedUser);
           setToken(parsed.token);
           setUser(adjustedUser);
+          setRememberDevice(true);
           void syncWorkspaceSelection(adjustedUser);
-          await persistSession({ token: parsed.token, user: adjustedUser });
+          await persistSession({ token: parsed.token, user: adjustedUser }, { remember: true });
         }
       } catch (error) {
         console.warn('Failed to load auth session', error);
@@ -165,13 +184,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const persistSession = useCallback(async (session: AuthSession | null) => {
-    if (!session) {
-      await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
-      return;
-    }
-    await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
-  }, []);
+  const persistSession = useCallback(
+    async (session: AuthSession | null, options?: { remember?: boolean }) => {
+      const shouldRemember = options?.remember ?? rememberDevice;
+      if (!session || !shouldRemember) {
+        await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+        if (!session) {
+          return;
+        }
+        return;
+      }
+      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+    },
+    [rememberDevice]
+  );
 
   const clearImpersonation = useCallback(async () => {
     setImpersonatorSession(null);
@@ -179,7 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = useCallback(
-    async (identifier: string, password: string) => {
+    async (identifier: string, password: string, options?: { remember?: boolean }) => {
       const result = await authApi.login(identifier, password);
       await clearImpersonation();
       const normalizedUser = ensureDevBusinessTier(result.user);
@@ -189,10 +215,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
       setToken(session.token);
       setUser(session.user);
+      const remember = options?.remember ?? false;
+      setRememberDevice(remember);
       void syncWorkspaceSelection(session.user);
-      await persistSession(session);
+      await persistSession(session, { remember });
     },
-    [persistSession, syncWorkspaceSelection]
+    [persistSession, syncWorkspaceSelection, clearImpersonation]
   );
 
   const register = useCallback(
@@ -206,15 +234,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
       setToken(session.token);
       setUser(session.user);
+      setRememberDevice(false);
       void syncWorkspaceSelection(session.user);
-      await persistSession(session);
+      await persistSession(session, { remember: false });
     },
-    [persistSession, syncWorkspaceSelection]
+    [persistSession, syncWorkspaceSelection, clearImpersonation]
   );
 
   const signOut = useCallback(async () => {
     setUser(null);
     setToken(null);
+    setRememberDevice(false);
     void syncWorkspaceSelection(null);
     await clearImpersonation();
     await persistSession(null);
@@ -301,6 +331,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [token, user, persistSession]
   );
 
+  const createWorkspace = useCallback(
+    async (input: { name: string; numberOfDrivers?: number }) => {
+      if (!token) {
+        throw new Error('UNAUTHORIZED: Missing token');
+      }
+      const result = await authApi.createWorkspaceForAccount(token, input);
+      const normalizedUser = ensureDevBusinessTier(result.user);
+      const session: AuthSession = {
+        token: result.token,
+        user: normalizedUser,
+      };
+      setToken(session.token);
+      setUser(session.user);
+      void syncWorkspaceSelection(session.user);
+      await persistSession(session);
+      return result.workspace;
+    },
+    [token, persistSession, syncWorkspaceSelection]
+  );
+
   const resetUserPassword = useCallback(
     async (userId: string) => {
       if (!token) {
@@ -311,12 +361,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [token, workspaceScope]
   );
 
-  const deleteUserAccount = useCallback(
+  const removeUserFromWorkspace = useCallback(
     async (userId: string) => {
       if (!token) {
         throw new Error('UNAUTHORIZED: Missing token');
       }
-      await authApi.deleteUserAccount(token, userId, workspaceScope ?? undefined);
+      await authApi.removeUserFromWorkspace(token, userId, workspaceScope ?? undefined);
     },
     [token, workspaceScope]
   );
@@ -372,6 +422,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return session.user;
     },
     [token, persistSession, syncWorkspaceSelection]
+  );
+
+  const bootstrapWorkspace = useCallback(
+    async (input: BootstrapWorkspaceInput): Promise<BootstrapWorkspaceResult> => {
+      if (!token) {
+        throw new Error('UNAUTHORIZED: Missing token');
+      }
+      const result = await authApi.bootstrapWorkspace(token, input);
+      const nextSession: AuthSession = {
+        token: result.session.token,
+        user: ensureDevBusinessTier(result.session.user),
+      };
+      setToken(nextSession.token);
+      setUser(nextSession.user);
+      void syncWorkspaceSelection(nextSession.user);
+      await persistSession(nextSession);
+      return result;
+    },
+    [token, persistSession, syncWorkspaceSelection]
+  );
+
+  const attachWorkspace = useCallback(
+    async (input: AttachWorkspaceInput): Promise<AttachWorkspaceResult> => {
+      if (!token) {
+        throw new Error('UNAUTHORIZED: Missing token');
+      }
+      const result = await authApi.attachWorkspace(token, input);
+      const nextSession: AuthSession = {
+        token: result.session.token,
+        user: ensureDevBusinessTier(result.session.user),
+      };
+      setToken(nextSession.token);
+      setUser(nextSession.user);
+      void syncWorkspaceSelection(nextSession.user);
+      await persistSession(nextSession);
+      return result;
+    },
+    [token, persistSession, syncWorkspaceSelection]
+  );
+
+  const requestWorkspaceAccess = useCallback(
+    async (
+      adminIdentifier: string
+    ): Promise<
+      | { status: 'pending'; requestId?: string; workspaceId?: string; workspaceName?: string | null }
+      | { status: 'already_member'; workspaceId?: string; workspaceName?: string | null }
+    > => {
+      if (!token) {
+        throw new Error('UNAUTHORIZED: Missing token');
+      }
+      return authApi.requestWorkspaceAccess(token, adminIdentifier);
+    },
+    [token]
   );
 
   const impersonateUserAccount = useCallback(
@@ -449,6 +552,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return user.businessName ?? activeWorkspaceName ?? null;
   }, [user, activeWorkspaceName]);
 
+  const refreshSession = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+    const profile = await authApi.getMyProfile(token);
+    let updatedUser: AuthUser | null = null;
+    setUser((prev) => {
+      if (!prev) {
+        return prev;
+      }
+      updatedUser = ensureDevBusinessTier({
+        ...prev,
+        fullName: profile.fullName ?? prev.fullName ?? null,
+        emailOrPhone: profile.emailOrPhone ?? prev.emailOrPhone ?? null,
+        businessName: profile.businessName ?? prev.businessName ?? null,
+        businessTier: profile.businessTier ?? prev.businessTier,
+        workspaceId: profile.workspaceId ?? prev.workspaceId ?? null,
+      });
+      return updatedUser;
+    });
+    if (updatedUser) {
+      void syncWorkspaceSelection(updatedUser);
+      await persistSession({ token, user: updatedUser });
+    }
+  }, [token, persistSession, syncWorkspaceSelection]);
+
+  const syncDriverSeatLimit = useCallback(async () => {
+    if (!token) {
+      throw new Error('UNAUTHORIZED: Missing token');
+    }
+    return authApi.syncDriverSeatLimit(token, workspaceScope ?? undefined);
+  }, [token, workspaceScope]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -467,12 +603,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       deleteAccount,
       getProfile,
       updateProfile,
+      createWorkspace,
+      refreshSession,
+      syncDriverSeatLimit,
       resetUserPassword,
-      deleteUserAccount,
+      removeUserFromWorkspace,
       adminUpdateUserProfile,
       adminUpdateUserPassword,
       verifyPassword,
       applyTeamAccessCode,
+      bootstrapWorkspace,
+      attachWorkspace,
+      requestWorkspaceAccess,
       selectWorkspace,
       impersonateUser: impersonateUserAccount,
       endImpersonation,
@@ -492,12 +634,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       deleteAccount,
       getProfile,
       updateProfile,
+      createWorkspace,
+      refreshSession,
+      syncDriverSeatLimit,
       resetUserPassword,
-      deleteUserAccount,
+      removeUserFromWorkspace,
       adminUpdateUserProfile,
       adminUpdateUserPassword,
       verifyPassword,
       applyTeamAccessCode,
+      bootstrapWorkspace,
+      attachWorkspace,
+      requestWorkspaceAccess,
       selectWorkspace,
       impersonatorSession,
       impersonateUserAccount,

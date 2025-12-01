@@ -56,7 +56,8 @@ export function DriverStopsPanel({ refreshSignal }: DriverStopsPanelProps) {
     setError(null);
     try {
       const data = await authApi.fetchMyStops(token);
-      setStops(data);
+      // Treat every run as fresh: reset statuses to pending for this session.
+      setStops(data.map((stop) => ({ ...stop, status: 'pending' as DriverStop['status'] })));
     } catch (err) {
       setError(
         getFriendlyError(err, {
@@ -69,35 +70,17 @@ export function DriverStopsPanel({ refreshSignal }: DriverStopsPanelProps) {
   };
 
   const handleMarkComplete = async (stopId: string) => {
-    if (!token) {
-      return;
-    }
-    try {
-      const updated = await authApi.updateDriverStopStatus(token, stopId, 'complete');
-      setStops((prev) => replaceStop(prev, updated));
-    } catch (err) {
-      setError(
-        getFriendlyError(err, {
-          fallback: "We couldn't update that stop. Try again in a moment.",
-        })
-      );
-    }
+    setError(null);
+    setStops((prev) =>
+      prev.map((stop) => (stop.id === stopId ? { ...stop, status: 'complete' } : stop))
+    );
   };
 
   const handleUndo = async (stopId: string) => {
-    if (!token) {
-      return;
-    }
-    try {
-      const updated = await authApi.updateDriverStopStatus(token, stopId, 'undo');
-      setStops((prev) => replaceStop(prev, updated));
-    } catch (err) {
-      setError(
-        getFriendlyError(err, {
-          fallback: "We couldn't undo that change. Try again.",
-        })
-      );
-    }
+    setError(null);
+    setStops((prev) =>
+      prev.map((stop) => (stop.id === stopId ? { ...stop, status: 'pending' } : stop))
+    );
   };
 
   const pins: Stop[] = useMemo(

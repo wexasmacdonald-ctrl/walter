@@ -33,6 +33,8 @@ API_BASE lives in features/route-planner/api.ts and points at the Cloudflare wor
 
 File: walter/worker/src/index.ts
 
+> Note: the legacy `worker/` directory now just re-exports the same worker to keep older scripts happy. Make all changes under `walter/worker/` so the deployed code and any local copies stay in sync.
+
 Secrets required:
 
 - MAPBOX_ACCESS_TOKEN - Mapbox Search v6 token with batch geocoding access.
@@ -187,6 +189,27 @@ curl -X POST https://blow-api.wexasmacdonald.workers.dev/admin/driver-stops \
 - features/route-planner/PinsForm.tsx - Geocode form that calls the worker (admin only).
 - features/route-planner/MapScreen.* - Map preview components shared by admin/driver flows.
 - worker/src/index.ts - Cloudflare worker deployed with Wrangler.
+
+## Account Roles & Safety Controls
+
+- **Roles**: Drivers only see their stops; admins manage a single workspace; devs inherit admin powers plus can impersonate users and override the active workspace via headers or the in-app directory.
+- **Status checks**: Supabase `status` fields (`active`, `dev-active`, etc.) gate authentication so suspended users cannot sign in, even if their password is correct.
+- **Workspace separation**: Drivers start on the free tier until an admin assigns them. Workspace deletion triggers a single backend cascade that releases users back to the free tier, clears invites, and deletes workspace rows so tenants remain isolated.
+- **Dangerous actions require re-auth**: The Settings menu verifies the current password before deleting an account, and destructive backend endpoints re-check tokens/roles via `requireAuth`.
+- **Usage throttles**: Free-tier accounts hit a 30-address rolling window enforced inside the worker; responses include `limit`, `used`, and `resetsAt` so the client can show a helpful banner.
+
+## Developer Ops Toolkit
+
+- **Workspace directory** (`features/admin/DevWorkspaceDirectory.tsx`) lets devs list, create, open, and delete workspaces, plus move drivers between tenants or the free tier.
+- **Impersonation** (`DevImpersonationPanel`) stores the base dev session so you can become any user temporarily and then revert without signing out.
+- **Driver assignment panel** exposes quick actions for attaching/detaching drivers during QA without needing invite codes.
+- These tools are hidden for non-dev roles; the worker still enforces role checks on every `/dev/*` endpoint.
+
+## Billing & Stripe
+
+- `POST /billing/checkout` creates a Stripe Checkout session using the secret key and price IDs defined in `.env` (`STRIPE_SECRET_KEY`, `STRIPE_PRICE_SMALL`, etc.). Metadata records the requesting user, target workspace, and requested driver count.
+- Webhooks are verified with `STRIPE_WEBHOOK_SECRET` before updating Supabase’s `subscription_access`/`org_billing` tables, which drive the in-app billing status badge.
+- The Settings menu exposes a “Test Stripe Checkout” button that simply calls the worker endpoint and opens the returned URL, so no Stripe logic lives in the Expo bundle.
 ### Database tables
 
 Seed the required tables in Supabase:

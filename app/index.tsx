@@ -6,11 +6,13 @@ import {
   LayoutChangeEvent,
   PanResponder,
   Platform,
+  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -20,9 +22,11 @@ import { Feather } from '@expo/vector-icons';
 import { LoginScreen } from '@/features/auth/LoginScreen';
 import { useAuth } from '@/features/auth/auth-context';
 import * as authApi from '@/features/auth/api';
+import { fetchOrgBillingStatus, type OrgBillingStatus } from '@/features/auth/api';
 import { AdminDriverManager } from '@/features/admin/AdminDriverManager';
 import { AdminDriverDetail } from '@/features/admin/AdminDriverDetail';
 import { AdminTeamList } from '@/features/admin/AdminTeamList';
+import { AdminAccessRequests } from '@/features/admin/AdminAccessRequests';
 import { DevWorkspaceDirectory } from '@/features/admin/DevWorkspaceDirectory';
 import { DevImpersonationPanel } from '@/features/admin/DevImpersonationPanel';
 import { DevDriverAssignmentPanel } from '@/features/admin/DevDriverAssignmentPanel';
@@ -55,10 +59,11 @@ const createRefreshControl = (refreshing: boolean, onRefresh: () => void | Promi
 const isAdminRole = (role?: UserRole | null) => role === 'admin' || role === 'dev';
 
 // Make all text selectable so users can copy content anywhere in the app.
-if (!Text.defaultProps) {
-  Text.defaultProps = {};
+const TextComponent = Text as typeof Text & { defaultProps?: { selectable?: boolean } };
+if (!TextComponent.defaultProps) {
+  TextComponent.defaultProps = {};
 }
-Text.defaultProps.selectable = true;
+TextComponent.defaultProps.selectable = true;
 
 function PinPlannerApp() {
   const { status, user } = useAuth();
@@ -76,9 +81,6 @@ function PinPlannerApp() {
       >
         <AppHeader />
         <Text style={{ fontSize: 20, fontWeight: '700', color: '#1d4ed8' }}>DEV MINIMAL UI</Text>
-        <Text>Status: {status}</Text>
-        <Text>User: {user ? `${user.role} (${user.emailOrPhone ?? user.fullName ?? user.id})` : 'none'}</Text>
-        <Text>WorkspaceId: {user?.workspaceId ?? 'null'}</Text>
         <Text style={{ color: '#475569' }}>
           If this screen renders, the JS bundle is running. Set FORCE_DEV_MINIMAL_UI to false to restore the full app.
         </Text>
@@ -572,7 +574,7 @@ function InfoBanner({ title, message, tone = 'info' }: InfoBannerProps) {
 }
 
 function PlannerScreen() {
-  const { user, status } = useAuth();
+  const { user, status, refreshSession } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const bumpRefreshSignal = useCallback(() => {
@@ -584,42 +586,21 @@ function PlannerScreen() {
       return;
     }
     setRefreshing(true);
-    bumpRefreshSignal();
     try {
-      await delay(600);
+      await refreshSession();
+    } catch (error) {
+      console.warn('Session refresh failed', error);
     } finally {
+      bumpRefreshSignal();
+      await delay(600);
       setRefreshing(false);
     }
-  }, [refreshing, bumpRefreshSignal]);
-
-  const debugOverlay = (
-    <View
-      style={{
-        position: 'absolute',
-        top: 8,
-        left: 8,
-        right: 8,
-        padding: 8,
-        borderRadius: 8,
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        zIndex: 9999,
-      }}
-      pointerEvents="none"
-    >
-      <Text style={{ color: '#fff', fontSize: 12 }}>
-        status={status}, user={user ? user.role : 'none'}, workspaceId={user?.workspaceId ?? 'null'}
-      </Text>
-      {user?.role === 'dev' ? (
-        <Text style={{ color: '#a3e635', fontSize: 12, marginTop: 2 }}>Dev profile is active.</Text>
-      ) : null}
-    </View>
-  );
+  }, [refreshing, refreshSession, bumpRefreshSignal]);
 
   if (!user) {
     return (
       <SafeAreaView style={[styles.safeArea, styles.loadingScreen]}>
         <AppHeader />
-        {debugOverlay}
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>No user loaded (status {status})</Text>
         </View>
@@ -628,27 +609,21 @@ function PlannerScreen() {
   }
   if (isAdminRole(user.role)) {
     return (
-      <>
-        {debugOverlay}
-        <AdminPlanner
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          refreshSignal={refreshSignal}
-          onRefreshSignal={bumpRefreshSignal}
-        />
-      </>
-    );
-  }
-  return (
-    <>
-      {debugOverlay}
-      <DriverPlanner
+      <AdminPlanner
         refreshing={refreshing}
         onRefresh={handleRefresh}
         refreshSignal={refreshSignal}
         onRefreshSignal={bumpRefreshSignal}
       />
-    </>
+    );
+  }
+  return (
+    <DriverPlanner
+      refreshing={refreshing}
+      onRefresh={handleRefresh}
+      refreshSignal={refreshSignal}
+      onRefreshSignal={bumpRefreshSignal}
+    />
   );
 }
 
@@ -666,6 +641,9 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
     updateProfile,
     verifyPassword,
     applyTeamAccessCode,
+    bootstrapWorkspace,
+    attachWorkspace,
+    syncDriverSeatLimit,
   } = useAuth();
   const { colors } = useTheme();
   const [activeDriverId, setActiveDriverId] = useState<string | null>(null);
@@ -675,6 +653,9 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
   const [companyDirectory, setCompanyDirectory] = useState<WorkspaceSummary[]>([]);
   const [companyDirectoryLoading, setCompanyDirectoryLoading] = useState(false);
   const [companyDirectoryError, setCompanyDirectoryError] = useState<string | null>(null);
+  const [billingStatus, setBillingStatus] = useState<OrgBillingStatus | null>(null);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
   const isDevUser = user?.role === 'dev';
   const hasWorkspaceContext = Boolean(workspaceId);
   const autoSelectedWorkspace = useRef(false);
@@ -694,7 +675,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
   );
   const scrollRef = useRef<ScrollView | null>(null);
   const swipeTranslate = useRef(new Animated.Value(0)).current;
-  const sectionPositions = useRef<Record<AdminSectionKey, number>>({});
+  const sectionPositions = useRef<Partial<Record<AdminSectionKey, number>>>({});
   const [experienceHistory, setExperienceHistory] = useState<AdminExperienceMode[]>([]);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const { width: screenWidth } = useWindowDimensions();
@@ -708,6 +689,46 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
       }));
     }
   }, [isDevUser]);
+
+  const loadBillingStatus = useCallback(async () => {
+    if (!token || !workspaceId) {
+      setBillingStatus(null);
+      return;
+    }
+    setBillingLoading(true);
+    setBillingError(null);
+    try {
+      const status = await fetchOrgBillingStatus(token, workspaceId ?? undefined);
+      setBillingStatus(status);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('ORG_NOT_FOUND')) {
+        setBillingStatus(null);
+        setBillingError(null);
+      } else {
+        console.error('Failed to load billing status', error);
+        setBillingStatus(null);
+        setBillingError('Could not load billing status.');
+      }
+    } finally {
+      setBillingLoading(false);
+    }
+  }, [token, workspaceId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        await loadBillingStatus();
+      } catch {
+        // handled in loadBillingStatus
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadBillingStatus]);
 
   useEffect(() => {
     if (!isDevUser) {
@@ -848,12 +869,30 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
     navigateToMode('directory');
   }, [isDevUser, navigateToMode]);
 
+  const handleSyncDriverSeats = useCallback(async () => {
+    const result = await syncDriverSeatLimit();
+    if (result.action !== 'checkout') {
+      await loadBillingStatus();
+    }
+    return result;
+  }, [syncDriverSeatLimit, loadBillingStatus]);
+
+  const billingActive = billingStatus?.billingStatus === 'active';
+  const canSkipBillingGate = isDevUser || (user?.role === 'admin' && billingStatus === null);
+
   const menuTrigger = (
     <SettingsMenu
       userName={user?.fullName}
       userRole={user?.role ?? 'admin'}
       businessTier={user?.businessTier ?? 'free'}
       businessName={user?.businessName ?? null}
+      billingStatus={billingStatus}
+      billingLoading={billingLoading}
+      workspaceId={workspaceId}
+      onBootstrapWorkspace={bootstrapWorkspace}
+      onAttachWorkspace={attachWorkspace}
+      onRefreshBillingStatus={loadBillingStatus}
+      onSyncDriverSeats={handleSyncDriverSeats}
       onDeleteAccount={deleteAccount}
       onSignOut={signOut}
       onChangePassword={changePassword}
@@ -963,7 +1002,14 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
   );
   const panHandlers = isDevUser ? panResponder.panHandlers : {};
 
-  const sections = [
+  const sections: Array<{
+    key: AdminSectionKey;
+    title: string;
+    description?: string;
+    badge?: string | null;
+    visible: boolean;
+    content: ReactNode;
+  }> = [
     {
       key: 'teamAccess' as const,
       title: 'Team roster & access',
@@ -978,6 +1024,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
           {hasWorkspaceContext ? (
             <View style={styles.sectionSpacer}>
               <AdminTeamList refreshSignal={refreshSignal} />
+              <AdminAccessRequests refreshSignal={refreshSignal} />
             </View>
           ) : (
             <InfoBanner
@@ -1111,7 +1158,6 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
     }
     return (
       <View style={styles.plannerContent} pointerEvents={pointerEvents}>
-        {/* Workspace heading removed for cleaner view */}
         {activeDriverId ? (
           <AdminDriverDetail
             driverId={activeDriverId}
@@ -1193,24 +1239,44 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
 
   let content: ReactNode;
   try {
-    content = (
-    <PlannerContainer headerRight={menuTrigger}>
-      <View style={styles.experienceStage}>
-        {previousMode ? (
-          <Animated.View
-            style={[
-              styles.previousStage,
-              {
-                transform: [{ translateX: previousTranslate }],
-                opacity: previousOpacity,
-              },
+    content = !billingActive && !billingLoading && !canSkipBillingGate ? (
+      <SafeAreaView style={[styles.safeArea, styles.loadingScreen]}>
+        <AppHeader rightSlot={menuTrigger} />
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Billing inactive.</Text>
+          <Text style={[styles.loadingText, { marginTop: 8 }]}>
+            Activate billing to create routes and manage drivers.
+          </Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.linkButton,
+              { marginTop: 16, borderColor: colors.primary },
+              pressed && styles.linkButtonPressed,
             ]}
-            pointerEvents="none"
+            onPress={loadBillingStatus}
           >
-            {renderExperienceContent(previousMode, { preview: true })}
-          </Animated.View>
-        ) : null}
-        <Animated.View
+            <Text style={[styles.linkButtonText, { color: colors.primary }]}>Refresh billing status</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    ) : (
+      <PlannerContainer headerRight={menuTrigger}>
+        <View style={styles.experienceStage}>
+          {previousMode ? (
+            <Animated.View
+              style={[
+                styles.previousStage,
+                {
+                  transform: [{ translateX: previousTranslate }],
+                  opacity: previousOpacity,
+                },
+              ]}
+              pointerEvents="none"
+            >
+              {renderExperienceContent(previousMode, { preview: true })}
+            </Animated.View>
+          ) : null}
+          <Animated.View
             style={[
               styles.currentStage,
               {
@@ -1250,11 +1316,19 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
     updateProfile,
     verifyPassword,
     applyTeamAccessCode,
+    createWorkspace,
+    requestWorkspaceAccess,
   } = useAuth();
   const { colors } = useTheme();
   const [openSections, setOpenSections] = useState<Record<DriverSectionKey, boolean>>({
     driverPlan: false,
   });
+  const [workspaceNameInput, setWorkspaceNameInput] = useState(user?.businessName ?? '');
+  const [workspaceDriverSeats, setWorkspaceDriverSeats] = useState('1');
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
+  const [accessAdminContact, setAccessAdminContact] = useState('');
+  const [requestingAccess, setRequestingAccess] = useState(false);
+  const [accessMessage, setAccessMessage] = useState<string | null>(null);
 
   const toggleSection = useCallback((key: DriverSectionKey) => {
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -1266,6 +1340,9 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
       userRole={user?.role ?? 'driver'}
       businessTier={user?.businessTier ?? 'free'}
       businessName={user?.businessName ?? null}
+      billingStatus={null}
+      billingLoading={false}
+      workspaceId={user?.workspaceId ?? null}
       onDeleteAccount={deleteAccount}
       onSignOut={signOut}
       onChangePassword={changePassword}
@@ -1276,11 +1353,82 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
     />
   );
 
-  const sections = [
+  const canCreateWorkspace = user?.role === 'driver' && !user?.workspaceId;
+
+  const handleRequestAccess = useCallback(async () => {
+    if (requestingAccess) {
+      return;
+    }
+    const trimmed = accessAdminContact.trim();
+    if (!trimmed) {
+      Alert.alert('Enter an admin contact', 'Type the email or phone number of a workspace admin.');
+      return;
+    }
+    setRequestingAccess(true);
+    setAccessMessage(null);
+    try {
+      const result = await requestWorkspaceAccess(trimmed);
+      if (result.status === 'already_member') {
+        setAccessMessage('You are already in this workspace.');
+      } else {
+        setAccessMessage('Request sent to the workspace admins.');
+      }
+    } catch (error) {
+      Alert.alert(
+        'Request not sent',
+        getFriendlyError(error, {
+          fallback: 'Could not send the access request. Double-check the admin contact and try again.',
+        })
+      );
+    } finally {
+      setRequestingAccess(false);
+    }
+  }, [accessAdminContact, requestWorkspaceAccess, requestingAccess]);
+
+  const handleCreateWorkspace = useCallback(async () => {
+    if (creatingWorkspace) {
+      return;
+    }
+    const trimmed = workspaceNameInput.trim();
+    if (!trimmed) {
+      Alert.alert('Add a workspace name', 'Give your workspace a short name to set it up.');
+      return;
+    }
+    const seatValue = Number(workspaceDriverSeats.trim());
+    if (!Number.isFinite(seatValue) || seatValue < 1) {
+      Alert.alert('Enter driver seats', 'Specify how many drivers you plan to manage.');
+      return;
+    }
+    const seatCount = Math.max(1, Math.floor(seatValue));
+    setCreatingWorkspace(true);
+    try {
+      const workspace = await createWorkspace({ name: trimmed, numberOfDrivers: seatCount });
+      setWorkspaceNameInput(workspace.name);
+      setWorkspaceDriverSeats(String(seatCount));
+      Alert.alert('Workspace created', `${workspace.name} is live on the free tier.`);
+    } catch (error) {
+      Alert.alert(
+        'Workspace not created',
+        getFriendlyError(error, { fallback: 'Could not create your workspace. Try again.' })
+      );
+    } finally {
+      setCreatingWorkspace(false);
+    }
+  }, [createWorkspace, creatingWorkspace, workspaceDriverSeats, workspaceNameInput]);
+
+  const sections: Array<{
+    key: DriverSectionKey;
+    title: string;
+    description?: string;
+    badge?: string | null;
+    visible: boolean;
+    content: ReactNode;
+  }> = [
     {
       key: 'driverPlan' as const,
       title: 'Assignments & stops',
       description: "Review today's manifest. Dispatch manages edits for you.",
+      visible: true,
       content: <DriverStopsPanel refreshSignal={refreshSignal} />,
     },
   ];
@@ -1296,6 +1444,135 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
         automaticallyAdjustKeyboardInsets
         refreshControl={createRefreshControl(refreshing, onRefresh)}
       >
+        {!user?.workspaceId ? (
+          <View
+            style={[
+              styles.sectionCard,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+                shadowColor: colors.overlay,
+              },
+            ]}
+          >
+            <View style={styles.sectionHeaderText}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Request access to a company</Text>
+              <Text style={[styles.sectionDescription, { color: colors.mutedText }]}>
+                Enter the email or phone number of an admin at the company. We will notify their admin inbox to approve
+                your access.
+              </Text>
+            </View>
+            <View style={styles.workspaceForm}>
+              <TextInput
+                value={accessAdminContact}
+                onChangeText={setAccessAdminContact}
+                placeholder="admin@example.com or phone"
+                placeholderTextColor={colors.mutedText}
+                style={[
+                  styles.input,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: colors.surface,
+                    color: colors.text,
+                  },
+                ]}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                editable={!requestingAccess}
+              />
+              <Pressable
+                accessibilityRole="button"
+                onPress={handleRequestAccess}
+                disabled={requestingAccess}
+                style={({ pressed }) => [
+                  styles.pillButton,
+                  { borderColor: colors.primary, backgroundColor: colors.primary },
+                  (pressed || requestingAccess) && styles.pillButtonPressed,
+                ]}
+              >
+                <Text style={[styles.pillButtonText, { color: colors.surface }]}>
+                  {requestingAccess ? 'Sending request...' : 'Request access'}
+                </Text>
+              </Pressable>
+              {accessMessage ? (
+                <Text style={[styles.sectionDescription, { color: colors.mutedText }]}>{accessMessage}</Text>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+        {canCreateWorkspace ? (
+          <View
+            style={[
+              styles.sectionCard,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+                shadowColor: colors.overlay,
+              },
+            ]}
+          >
+            <View style={styles.sectionHeaderText}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Create your workspace</Text>
+              <Text style={[styles.sectionDescription, { color: colors.mutedText }]}>
+                Launch a free-tier workspace and upgrade later when you are ready to scale.
+              </Text>
+            </View>
+            <View style={styles.workspaceForm}>
+              <TextInput
+                value={workspaceNameInput}
+                onChangeText={setWorkspaceNameInput}
+                placeholder="Workspace name"
+                placeholderTextColor={colors.mutedText}
+                style={[
+                  styles.input,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: colors.surface,
+                    color: colors.text,
+                  },
+                ]}
+                autoCapitalize="words"
+                autoCorrect
+                editable={!creatingWorkspace}
+              />
+              <TextInput
+                value={workspaceDriverSeats}
+                onChangeText={(value) => setWorkspaceDriverSeats(value.replace(/[^0-9]/g, ''))}
+                placeholder="Driver seats (e.g. 5)"
+                placeholderTextColor={colors.mutedText}
+                style={[
+                  styles.input,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: colors.surface,
+                    color: colors.text,
+                  },
+                ]}
+                keyboardType="number-pad"
+                inputMode="numeric"
+                editable={!creatingWorkspace}
+              />
+              <Pressable
+                accessibilityRole="button"
+                onPress={handleCreateWorkspace}
+                disabled={creatingWorkspace}
+                style={({ pressed }) => [
+                  styles.pillButton,
+                  { borderColor: colors.primary, backgroundColor: colors.primary },
+                  (pressed || creatingWorkspace) && styles.pillButtonPressed,
+                ]}
+              >
+                <Text style={[styles.pillButtonText, { color: colors.surface }]}>
+                  {creatingWorkspace ? 'Creating workspace...' : 'Create workspace free'}
+                </Text>
+              </Pressable>
+              <Text style={[styles.sectionDescription, { color: colors.mutedText }]}>
+                Free trial tier by default. Invite admins and drivers once you are set up.
+              </Text>
+            </View>
+          </View>
+        ) : null}
         {sections.map((section) => (
           <SectionCard
             key={section.key}
@@ -1339,42 +1616,16 @@ const styles = StyleSheet.create({
   containerDesktop: {
     alignItems: 'flex-start',
   },
-  workspaceHeading: {
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    gap: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    columnGap: 12,
+  workspaceForm: {
+    gap: 12,
+    marginTop: 8,
   },
-  workspaceHeadingLeft: {
-    flex: 1,
-    gap: 2,
-  },
-  workspaceHeadingLabel: {
-    fontSize: 12,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  workspaceHeadingValue: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  backLink: {
+  input: {
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#f8fafc',
-  },
-  backLinkPressed: {
-    opacity: 0.85,
-  },
-  backLinkText: {
-    color: '#2563eb',
-    fontWeight: '600',
+    paddingVertical: Platform.OS === 'web' ? 10 : 12,
+    fontSize: 15,
   },
   experienceStage: {
     flex: 1,
@@ -1623,6 +1874,10 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
+  },
+  errorText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   headerInfo: {
     flex: 1,

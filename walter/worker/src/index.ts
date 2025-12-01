@@ -10,6 +10,13 @@ type Env = {
   SUPABASE_SERVICE_KEY?: string;
   SUPABASE_SERVICE_ROLE?: string;
   CORS_ORIGINS?: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_PRICE_SMALL?: string;
+  STRIPE_PRICE_MEDIUM?: string;
+  STRIPE_PRICE_LARGE?: string;
+  STRIPE_SUCCESS_URL?: string;
+  STRIPE_CANCEL_URL?: string;
 };
 
 type Pin = {
@@ -159,6 +166,69 @@ type WorkspaceSummary = WorkspaceRow & {
   invite_count?: number;
 };
 
+type BillingTier = 'small' | 'medium' | 'large';
+
+type StripeCheckoutMetadata = {
+  userId: string;
+  workspaceId: string | null;
+  numberOfDrivers: number;
+  tier: BillingTier;
+  maxDrivers: number;
+};
+
+type StripeEvent = {
+  id: string;
+  type: string;
+  created: number;
+  data: { object: any };
+};
+
+type SubscriptionAccessPayload = {
+  user_id: string;
+  workspace_id: string | null;
+  stripe_customer_id: string | null;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_subscription_id: string | null;
+  tier: BillingTier;
+  max_drivers: number;
+  period_starts_at: string;
+  period_ends_at: string;
+  paid: boolean;
+};
+
+type OrganizationRow = {
+  id: string;
+  plan_tier?: string | null;
+  number_of_drivers?: number | null;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  billing_status?: string | null;
+};
+
+type OrgBillingRow = {
+  org_id: string;
+  stripe_subscription_id?: string | null;
+  stripe_customer_id?: string | null;
+  billing_status?: string | null;
+  number_of_drivers?: number | null;
+  plan_id?: string | null;
+  last_checkout_session_id?: string | null;
+  last_checkout_session_created?: string | null;
+};
+
+type WorkspaceAccessRequestRow = {
+  id: string;
+  requester_id: string;
+  admin_id: string;
+  workspace_id: string;
+  status: 'pending' | 'approved' | 'declined';
+  created_at?: string | null;
+  resolved_at?: string | null;
+  approved_by?: string | null;
+  declined_by?: string | null;
+};
+
 const MAX_ADDRESSES = 150;
 const DEFAULT_ADMIN_IDENTIFIER = 'admin@example.com';
 const DEFAULT_ADMIN_PASSWORD = 'AdminPass';
@@ -173,10 +243,17 @@ const FREE_TIER_WINDOW_MS = 1000 * 60 * 60 * 24;
 const USAGE_TABLE = 'address_usage_events';
 const WORKSPACE_TABLE = 'workspaces';
 const WORKSPACE_INVITE_TABLE = 'workspace_invites';
+const WORKSPACE_ACCESS_REQUESTS_TABLE = 'workspace_access_requests';
+const DEFAULT_COORDINATE = { latitude: 44.9778, longitude: -93.265 };
+const STRIPE_API_BASE = 'https://api.stripe.com/v1';
+const SUBSCRIPTION_ACCESS_TABLE = 'subscription_access';
+const BILLING_PERIOD_MONTHS = 1;
+const ORGANIZATION_TABLE = 'organizations';
+const ORG_BILLING_TABLE = 'org_billing';
 const INVITE_CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 const INVITE_CODE_LENGTH = 8;
 
-const BASE_HEADERS: HeadersInit = {
+const BASE_HEADERS: Record<string, string> = {
   'Content-Type': 'application/json',
 };
 
@@ -184,6 +261,94 @@ const STATUS_ACTIVE = 'active';
 const STATUS_DEV_ACTIVE = 'dev-active';
 
 const ADMIN_EQUIVALENT_ROLES: UserRole[] = ['admin', 'dev'];
+const BILLING_SUCCESS_HTML = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Billing Updated</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: #f5f7fb;
+        margin: 0;
+        padding: 40px 24px;
+        color: #111827;
+        text-align: center;
+      }
+      .card {
+        max-width: 420px;
+        margin: 0 auto;
+        background: #fff;
+        border-radius: 18px;
+        padding: 32px;
+        box-shadow: 0 20px 45px rgba(15, 23, 42, 0.15);
+      }
+      h1 {
+        font-size: 24px;
+        margin-bottom: 12px;
+      }
+      p {
+        margin: 0;
+        line-height: 1.5;
+      }
+      .spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid #dbeafe;
+        border-top-color: #2563eb;
+        border-radius: 50%;
+        margin: 24px auto;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .hint {
+        font-size: 14px;
+        color: #6b7280;
+        margin-top: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="spinner"></div>
+      <h1>Payment Complete</h1>
+      <p>Updating your workspace…</p>
+      <p class="hint">This window will close automatically.</p>
+    </div>
+    <script>
+      (function () {
+        function notify() {
+          var sessionId = new URLSearchParams(window.location.search).get('session_id');
+          if (window.opener && typeof window.opener.postMessage === 'function') {
+            window.opener.postMessage(
+              {
+                type: 'billingUpdated',
+                sessionId: sessionId || null,
+              },
+              '*'
+            );
+          }
+          setTimeout(function () {
+            window.close();
+          }, 600);
+        }
+        if (document.readyState === 'complete') {
+          notify();
+        } else {
+          window.addEventListener('load', notify);
+        }
+      })();
+    </script>
+  </body>
+</html>`;
 
 function normalizeStatus(status?: string | null): string {
   return (status ?? STATUS_ACTIVE).toLowerCase();
@@ -279,6 +444,10 @@ export default {
       return respond({ ok: true });
     }
 
+    if (request.method === 'GET' && url.pathname === '/billing/success') {
+      return renderBillingSuccessPage(request);
+    }
+
     if (request.method === 'POST' && url.pathname === '/auth/login') {
       return handleAuthLogin(request, env, respond);
     }
@@ -352,9 +521,26 @@ export default {
       );
     }
 
-    if (request.method === 'DELETE' && url.pathname === '/admin/users') {
+    if (request.method === 'GET' && url.pathname === '/admin/access-requests') {
       return requireAuth(routeContext, respond, ['admin'], () =>
-        handleAdminDeleteUser(request, env, respond, routeContext)
+        handleAdminListAccessRequests(request, env, respond, routeContext)
+      );
+    }
+
+    const accessRequestMatch =
+      request.method === 'POST'
+        ? url.pathname.match(/^\/admin\/access-requests\/([^/]+)\/(approve|decline)$/)
+        : null;
+    if (accessRequestMatch) {
+      return requireAuth(routeContext, respond, ['admin'], () =>
+        handleAdminResolveAccessRequest(
+          request,
+          env,
+          respond,
+          routeContext,
+          accessRequestMatch[1],
+          accessRequestMatch[2] as 'approve' | 'decline'
+        )
       );
     }
 
@@ -388,6 +574,12 @@ export default {
       );
     }
 
+    if (request.method === 'POST' && url.pathname === '/account/request-access') {
+      return requireAuth(routeContext, respond, ['admin', 'driver'], () =>
+        handleAccountRequestAccess(request, env, respond, routeContext)
+      );
+    }
+
     if (request.method === 'GET' && url.pathname === '/account/profile') {
       return requireAuth(routeContext, respond, ['admin', 'driver'], () =>
         handleAccountGetProfile(env, respond, routeContext)
@@ -397,6 +589,12 @@ export default {
     if (request.method === 'PATCH' && url.pathname === '/account/profile') {
       return requireAuth(routeContext, respond, ['admin', 'driver'], () =>
         handleAccountUpdateProfile(request, env, respond, routeContext)
+      );
+    }
+
+    if (request.method === 'POST' && url.pathname === '/account/workspaces') {
+      return requireAuth(routeContext, respond, ['admin', 'driver', 'dev'], () =>
+        handleAccountCreateWorkspace(request, env, respond, routeContext)
       );
     }
 
@@ -438,9 +636,15 @@ export default {
       );
     }
 
-    if (request.method === 'DELETE' && /^\/dev\/workspaces\/[^/]+$/.test(url.pathname)) {
+    if (request.method === 'POST' && url.pathname === '/dev/bootstrap-workspace') {
       return requireAuth(routeContext, respond, ['dev'], () =>
-        handleDevDeleteWorkspace(request, env, respond, routeContext)
+        handleDevBootstrapWorkspace(request, env, respond, routeContext)
+      );
+    }
+
+    if (request.method === 'POST' && url.pathname === '/dev/attach-workspace') {
+      return requireAuth(routeContext, respond, ['dev'], () =>
+        handleDevAttachWorkspace(request, env, respond, routeContext)
       );
     }
 
@@ -448,6 +652,34 @@ export default {
       return requireAuth(routeContext, respond, ['dev'], () =>
         handleDevImpersonate(request, env, respond, routeContext)
       );
+    }
+
+    if (request.method === 'GET' && url.pathname === '/billing/status') {
+      return requireAuth(routeContext, respond, ['admin', 'driver', 'dev'], () =>
+        handleBillingGetStatus(request, env, respond, routeContext)
+      );
+    }
+
+    if (request.method === 'POST' && url.pathname === '/billing/checkout') {
+      return requireAuth(routeContext, respond, ['admin', 'driver'], () =>
+        handleBillingCreateCheckoutSession(request, env, respond, routeContext)
+      );
+    }
+
+    if (request.method === 'POST' && url.pathname === '/billing/driver-cap') {
+      return requireAuth(routeContext, respond, ['admin', 'dev'], () =>
+        handleBillingUpdateDriverCap(request, env, respond, routeContext)
+      );
+    }
+
+    if (request.method === 'POST' && url.pathname === '/billing/sync-driver-cap') {
+      return requireAuth(routeContext, respond, ['admin', 'dev'], () =>
+        handleBillingSyncDriverCap(request, env, respond, routeContext)
+      );
+    }
+
+    if (request.method === 'POST' && url.pathname === '/stripe/webhook') {
+      return handleStripeWebhook(request, env, respond);
     }
 
     if (request.method === 'POST' && url.pathname === '/account/team-access-code') {
@@ -573,16 +805,928 @@ async function handleGeocode(
   return respond({ pins });
 }
 
+async function handleBillingGetStatus(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
+    return respond({ error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' }, 500);
+  }
+
+  const workspaceId = resolveWorkspaceId(context, request);
+  if (!workspaceId) {
+    return respond(
+      {
+        error: 'WORKSPACE_REQUIRED',
+        message: 'Select a workspace to view billing status.',
+      },
+      400
+    );
+  }
+
+  if (!canAccessWorkspace(context, workspaceId)) {
+    return respond({ error: 'FORBIDDEN' }, 403);
+  }
+
+  let workspace: WorkspaceRow | null = null;
+  try {
+    workspace = await fetchWorkspaceById(env, workspaceId);
+  } catch (error) {
+    console.error('Failed to fetch workspace for billing status', error);
+    return respond({ error: 'WORKSPACE_LOOKUP_FAILED' }, 500);
+  }
+
+  if (!workspace) {
+    return respond({ error: 'WORKSPACE_NOT_FOUND' }, 404);
+  }
+
+  let organization: OrganizationRow | null = null;
+  try {
+    organization = await fetchOrganizationById(env, workspaceId);
+  } catch (error) {
+    console.error('Failed to fetch organization for billing status', error);
+    return respond({ error: 'ORG_LOOKUP_FAILED' }, 500);
+  }
+
+  let billingRow: OrgBillingRow | null = null;
+  try {
+    billingRow = await fetchOrgBillingRow(env, workspaceId);
+    if (!billingRow) {
+      billingRow = await seedOrgBillingDefaults(env, {
+        orgId: workspaceId,
+        numberOfDrivers: organization?.number_of_drivers ?? null,
+        billingStatus: 'inactive',
+      });
+    }
+  } catch (error) {
+    console.error('Failed to load billing status', error);
+    return respond({ error: 'BILLING_LOOKUP_FAILED' }, 500);
+  }
+
+  const billingPayload =
+    mapOrgBillingRowToStatus(billingRow, organization?.plan_tier ?? null) ?? {
+      orgId: workspaceId,
+      billingStatus: null,
+      planTier: organization?.plan_tier ?? null,
+      numberOfDrivers: organization?.number_of_drivers ?? null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      lastCheckoutSessionId: null,
+    };
+
+  return respond(billingPayload);
+}
+
+async function handleBillingCreateCheckoutSession(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (
+    !env.STRIPE_SECRET_KEY ||
+    !env.STRIPE_PRICE_SMALL ||
+    !env.STRIPE_PRICE_MEDIUM ||
+    !env.STRIPE_PRICE_LARGE
+  ) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Stripe configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  const authUser = context.authUser;
+  if (!authUser) {
+    return respond({ error: 'UNAUTHORIZED' }, 401);
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const numberOfDriversRaw =
+    typeof body?.numberOfDrivers === 'number'
+      ? body.numberOfDrivers
+      : typeof body?.numberOfDrivers === 'string'
+        ? Number(body.numberOfDrivers)
+        : typeof body?.drivers === 'number'
+          ? body.drivers
+          : typeof body?.drivers === 'string'
+            ? Number(body.drivers)
+            : null;
+  const numberOfDrivers =
+    numberOfDriversRaw !== null && Number.isFinite(numberOfDriversRaw) ? Math.floor(numberOfDriversRaw) : null;
+
+  if (!numberOfDrivers || numberOfDrivers <= 0) {
+    return respond(
+      { error: 'INVALID_INPUT', message: 'Provide a valid numberOfDrivers greater than zero.' },
+      400
+    );
+  }
+
+  const tierSelection = selectBillingTier(numberOfDrivers, env);
+  if (!tierSelection.ok) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: tierSelection.message ?? 'Stripe pricing is not configured for this tier.',
+      },
+      500
+    );
+  }
+
+  const workspaceId = resolveWorkspaceId(context, request);
+  if (!workspaceId) {
+    return respond(
+      {
+        error: 'WORKSPACE_REQUIRED',
+        message: 'Select a workspace before starting checkout.',
+      },
+      400
+    );
+  }
+
+  const metadata: StripeCheckoutMetadata = {
+    userId: authUser.id,
+    workspaceId,
+    numberOfDrivers,
+    tier: tierSelection.tier,
+    maxDrivers: tierSelection.maxDrivers,
+  };
+
+  const params = buildStripeCheckoutParams({
+    tierSelection,
+    metadata,
+    successUrl: resolveStripeSuccessUrl(request, env),
+    cancelUrl: resolveStripeCancelUrl(request, env),
+  });
+  const customerEmail =
+    typeof authUser.emailOrPhone === 'string' && authUser.emailOrPhone.includes('@')
+      ? authUser.emailOrPhone
+      : null;
+  if (customerEmail) {
+    params.set('customer_email', customerEmail);
+  }
+
+  let session: any;
+  try {
+    session = await createStripeCheckoutSession(env.STRIPE_SECRET_KEY, params);
+  } catch (error) {
+    console.error('Failed to create Stripe Checkout Session', error);
+    return respond({ error: 'STRIPE_ERROR', message: 'Unable to start checkout.' }, 502);
+  }
+
+  return respond({
+    checkoutUrl: session?.url ?? null,
+    sessionId: session?.id ?? null,
+    tier: tierSelection.tier,
+    maxDrivers: tierSelection.maxDrivers,
+  });
+}
+
+async function handleStripeWebhook(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response
+): Promise<Response> {
+  if (!env.STRIPE_WEBHOOK_SECRET) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'STRIPE_WEBHOOK_SECRET is not configured.',
+      },
+      500
+    );
+  }
+
+  const rawBodyBuffer = await request.arrayBuffer();
+  const rawBody = new TextDecoder().decode(rawBodyBuffer);
+  const signatureHeader = request.headers.get('Stripe-Signature');
+  const isValidSignature = await verifyStripeSignature(rawBodyBuffer, signatureHeader, env.STRIPE_WEBHOOK_SECRET);
+  if (!isValidSignature) {
+    return respond({ error: 'INVALID_SIGNATURE' }, 400);
+  }
+
+  let event: StripeEvent;
+  try {
+    event = JSON.parse(rawBody) as StripeEvent;
+  } catch (error) {
+    console.error('Failed to parse Stripe event', error);
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const eventType = event?.type ?? '';
+  const payload = event?.data?.object ?? null;
+  if (!payload) {
+    return respond({ error: 'INVALID_EVENT' }, 400);
+  }
+
+  if (
+    eventType === 'checkout.session.completed' ||
+    eventType === 'checkout.session.async_payment_succeeded'
+  ) {
+    const metadata = extractStripeMetadata(payload);
+    if (!metadata) {
+      console.warn('Stripe checkout session missing metadata', payload?.id);
+      return respond({ received: true });
+    }
+    const period = extractPeriodRangeFromSession(payload) ?? calculateDefaultPeriodRange();
+    try {
+      await persistSubscriptionAccess(env, metadata, {
+        stripeCheckoutSessionId: typeof payload?.id === 'string' ? payload.id : null,
+        stripePaymentIntentId:
+          typeof payload?.payment_intent === 'string'
+            ? payload.payment_intent
+            : payload?.payment_intent?.id ?? null,
+        stripeCustomerId: normalizeStripeCustomerId(payload?.customer),
+        stripeSubscriptionId: normalizeStripeSubscriptionId(payload?.subscription),
+        periodStartsAt: period.periodStartsAt,
+        periodEndsAt: period.periodEndsAt,
+      });
+    } catch (error) {
+      console.error('Failed to persist subscription access from checkout.session.completed', error);
+      return respond({ error: 'PERSIST_FAILED' }, 500);
+    }
+  }
+
+  if (eventType === 'invoice.payment_succeeded') {
+    const metadata =
+      extractStripeMetadata(payload?.metadata) ??
+      extractStripeMetadata(payload?.lines?.data?.[0]?.metadata) ??
+      extractStripeMetadata(payload?.payment_intent?.metadata);
+    if (!metadata) {
+      console.warn('Stripe invoice missing metadata', payload?.id);
+      return respond({ received: true });
+    }
+    const period = extractPeriodRangeFromInvoice(payload) ?? calculateDefaultPeriodRange();
+    try {
+      await persistSubscriptionAccess(env, metadata, {
+        stripeCheckoutSessionId: null,
+        stripePaymentIntentId: normalizeStripePaymentIntentId(payload?.payment_intent),
+        stripeCustomerId: normalizeStripeCustomerId(payload?.customer),
+        stripeSubscriptionId: normalizeStripeSubscriptionId(payload?.subscription),
+        periodStartsAt: period.periodStartsAt,
+        periodEndsAt: period.periodEndsAt,
+      });
+    } catch (error) {
+      console.error('Failed to persist subscription access from invoice.payment_succeeded', error);
+      return respond({ error: 'PERSIST_FAILED' }, 500);
+    }
+  }
+
+  return respond({ received: true });
+}
+
+async function handleBillingUpdateDriverCap(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
+    return respond({ error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' }, 500);
+  }
+
+  const workspaceId = resolveWorkspaceId(context, request);
+  if (!workspaceId) {
+    return respond(
+      {
+        error: 'WORKSPACE_REQUIRED',
+        message: 'Select a workspace before updating driver seats.',
+      },
+      400
+    );
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const numberOfDriversRaw =
+    typeof body?.numberOfDrivers === 'number'
+      ? body.numberOfDrivers
+      : typeof body?.numberOfDrivers === 'string'
+        ? Number(body.numberOfDrivers)
+        : null;
+  const numberOfDrivers =
+    numberOfDriversRaw !== null && Number.isFinite(numberOfDriversRaw) ? Math.floor(numberOfDriversRaw) : null;
+
+  if (!numberOfDrivers || numberOfDrivers < 1) {
+    return respond(
+      { error: 'INVALID_INPUT', message: 'Provide a driver seat limit of at least 1.' },
+      400
+    );
+  }
+
+  let billingRow = await fetchOrgBillingRow(env, workspaceId);
+  if (!billingRow) {
+    billingRow = await seedOrgBillingDefaults(env, {
+      orgId: workspaceId,
+      numberOfDrivers,
+      billingStatus: 'inactive',
+    });
+  }
+
+  const currentLimit = billingRow?.number_of_drivers ?? null;
+  const billingInactive =
+    !billingRow?.billing_status || billingRow.billing_status === 'inactive';
+  if (
+    currentLimit !== null &&
+    numberOfDrivers > currentLimit &&
+    context.authUser?.role !== 'dev' &&
+    !billingInactive
+  ) {
+    return respond(
+      {
+        error: 'UPGRADE_REQUIRED',
+        message: 'Start a new billing checkout to increase driver seats.',
+        currentLimit,
+      },
+      409
+    );
+  }
+
+  const driverCount = await countWorkspaceDrivers(env, workspaceId);
+  if (numberOfDrivers < driverCount) {
+    return respond(
+      {
+        error: 'LIMIT_BELOW_DRIVER_COUNT',
+        message: `You currently have ${driverCount} drivers. Remove drivers before lowering the limit.`,
+        driverCount,
+      },
+      400
+    );
+  }
+
+  try {
+    await updateOrgBillingDetails(env, workspaceId, {
+      numberOfDrivers,
+    });
+  } catch (error) {
+    console.error('Failed to update driver seat limit', error);
+    return respond({ error: 'DRIVER_CAP_UPDATE_FAILED' }, 500);
+  }
+
+  let organization: OrganizationRow | null = null;
+  try {
+    organization = await fetchOrganizationById(env, workspaceId);
+  } catch (error) {
+    console.error('Failed to fetch organization for driver cap update', error);
+  }
+
+  const updatedBilling = await fetchOrgBillingRow(env, workspaceId);
+  const billingPayload =
+    mapOrgBillingRowToStatus(updatedBilling, organization?.plan_tier ?? null) ?? {
+      orgId: workspaceId,
+      billingStatus: updatedBilling?.billing_status ?? null,
+      planTier: organization?.plan_tier ?? null,
+      numberOfDrivers: numberOfDrivers,
+      stripeCustomerId: updatedBilling?.stripe_customer_id ?? null,
+      stripeSubscriptionId: updatedBilling?.stripe_subscription_id ?? null,
+      lastCheckoutSessionId: updatedBilling?.last_checkout_session_id ?? null,
+    };
+
+  return respond({
+    status: 'ok',
+    billing: billingPayload,
+  });
+}
+
+async function handleBillingSyncDriverCap(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
+    return respond({ error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' }, 500);
+  }
+
+  const workspaceId = resolveWorkspaceId(context, request);
+  if (!workspaceId) {
+    return respond(
+      {
+        error: 'WORKSPACE_REQUIRED',
+        message: 'Select a workspace before syncing driver seats.',
+      },
+      400
+    );
+  }
+
+  let driverCount: number;
+  try {
+    driverCount = await countWorkspaceDrivers(env, workspaceId);
+  } catch (error) {
+    console.error('Failed to count drivers for seat sync', error);
+    return respond({ error: 'DRIVER_COUNT_FAILED' }, 500);
+  }
+
+  const targetSeatCount = Math.max(driverCount, 1);
+
+  const tierSelection = selectBillingTier(targetSeatCount, env);
+  if (!tierSelection.ok) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: tierSelection.message ?? 'Billing tiers are not configured.',
+      },
+      500
+    );
+  }
+
+  let billingRow: OrgBillingRow | null = null;
+  try {
+    billingRow = await fetchOrgBillingRow(env, workspaceId);
+    if (!billingRow) {
+      billingRow = await seedOrgBillingDefaults(env, {
+        orgId: workspaceId,
+        numberOfDrivers: targetSeatCount,
+        billingStatus: 'inactive',
+      });
+    }
+  } catch (error) {
+    console.error('Failed to load billing during seat sync', error);
+    return respond({ error: 'BILLING_LOOKUP_FAILED' }, 500);
+  }
+
+  const billingStatus = billingRow?.billing_status ?? null;
+  const currentLimit = billingRow?.number_of_drivers ?? null;
+  const billingActive = billingStatus === 'active';
+
+  if (!billingActive) {
+    try {
+      await updateOrgBillingDetails(env, workspaceId, {
+        numberOfDrivers: targetSeatCount,
+      });
+    } catch (error) {
+      console.error('Failed to sync driver cap for inactive billing', error);
+      return respond({ error: 'DRIVER_CAP_UPDATE_FAILED' }, 500);
+    }
+    const updatedBilling = await fetchOrgBillingRow(env, workspaceId);
+    return respond({
+      action: 'updated',
+      numberOfDrivers: targetSeatCount,
+      driverCount,
+      tier: tierSelection.tier,
+      currentLimit: updatedBilling?.number_of_drivers ?? currentLimit,
+      billingStatus: updatedBilling?.billing_status ?? billingStatus,
+    });
+  }
+
+  if (currentLimit === targetSeatCount) {
+    return respond({
+      action: 'no_change',
+      numberOfDrivers: targetSeatCount,
+      driverCount,
+      tier: tierSelection.tier,
+      currentLimit,
+      billingStatus,
+    });
+  }
+
+  return respond({
+    action: 'checkout',
+    numberOfDrivers: targetSeatCount,
+    driverCount,
+    tier: tierSelection.tier,
+    currentLimit,
+    billingStatus,
+  });
+}
+
+type TierSelection =
+  | {
+      ok: true;
+      tier: BillingTier;
+      priceId: string;
+      maxDrivers: number;
+      amountCad: number;
+    }
+  | {
+      ok: false;
+      message?: string;
+    };
+
+function selectBillingTier(numberOfDrivers: number, env: Env): TierSelection {
+  if (numberOfDrivers <= 10) {
+    if (!env.STRIPE_PRICE_SMALL) {
+      return { ok: false, message: 'Missing STRIPE_PRICE_SMALL.' };
+    }
+    return { ok: true, tier: 'small', priceId: env.STRIPE_PRICE_SMALL, maxDrivers: 10, amountCad: 150 };
+  }
+  if (numberOfDrivers <= 25) {
+    if (!env.STRIPE_PRICE_MEDIUM) {
+      return { ok: false, message: 'Missing STRIPE_PRICE_MEDIUM.' };
+    }
+    return { ok: true, tier: 'medium', priceId: env.STRIPE_PRICE_MEDIUM, maxDrivers: 25, amountCad: 250 };
+  }
+  if (!env.STRIPE_PRICE_LARGE) {
+    return { ok: false, message: 'Missing STRIPE_PRICE_LARGE.' };
+  }
+  return { ok: true, tier: 'large', priceId: env.STRIPE_PRICE_LARGE, maxDrivers: numberOfDrivers, amountCad: 350 };
+}
+
+function buildStripeCheckoutParams(input: {
+  tierSelection: Extract<TierSelection, { ok: true }>;
+  metadata: StripeCheckoutMetadata;
+  successUrl: string;
+  cancelUrl: string;
+}): URLSearchParams {
+  const params = new URLSearchParams();
+  params.set('mode', 'subscription');
+  params.set('payment_method_types[0]', 'card');
+  params.set('line_items[0][price]', input.tierSelection.priceId);
+  params.set('line_items[0][quantity]', '1');
+  params.set('success_url', input.successUrl);
+  params.set('cancel_url', input.cancelUrl);
+  params.set('client_reference_id', input.metadata.userId);
+  params.set('locale', 'auto');
+  params.set('allow_promotion_codes', 'false');
+  appendStripeMetadata(params, 'metadata', input.metadata);
+  appendStripeMetadata(params, 'subscription_data[metadata]', input.metadata);
+  return params;
+}
+
+function appendStripeMetadata(params: URLSearchParams, prefix: string, metadata: StripeCheckoutMetadata): void {
+  const entries: Array<[keyof StripeCheckoutMetadata, any]> = [
+    ['userId', metadata.userId],
+    ['workspaceId', metadata.workspaceId],
+    ['numberOfDrivers', metadata.numberOfDrivers],
+    ['tier', metadata.tier],
+    ['maxDrivers', metadata.maxDrivers],
+  ];
+  entries.forEach(([key, value]) => {
+    if (value === null || typeof value === 'undefined') {
+      return;
+    }
+    params.set(`${prefix}[${key}]`, String(value));
+  });
+}
+
+function resolveStripeSuccessUrl(request: Request, env: Env): string {
+  if (env.STRIPE_SUCCESS_URL) {
+    return env.STRIPE_SUCCESS_URL;
+  }
+  const origin = new URL(request.url).origin;
+  return `${origin}/billing/success?session_id={CHECKOUT_SESSION_ID}`;
+}
+
+function resolveStripeCancelUrl(request: Request, env: Env): string {
+  if (env.STRIPE_CANCEL_URL) {
+    return env.STRIPE_CANCEL_URL;
+  }
+  const origin = new URL(request.url).origin;
+  return `${origin}/billing/cancel`;
+}
+
+async function createStripeCheckoutSession(secretKey: string, params: URLSearchParams): Promise<any> {
+  const response = await fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params.toString(),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Stripe checkout failed (${response.status}): ${text}`);
+  }
+  return text ? JSON.parse(text) : null;
+}
+
+async function verifyStripeSignature(
+  rawBody: ArrayBuffer,
+  signatureHeader: string | null,
+  secret: string
+): Promise<boolean> {
+  const parsed = parseStripeSignatureHeader(signatureHeader);
+  if (!parsed) {
+    return false;
+  }
+  const encoder = new TextEncoder();
+  const signedPayload = `${parsed.timestamp}.${new TextDecoder().decode(rawBody)}`;
+  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
+    'sign',
+  ]);
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(signedPayload));
+  const expected = bufferToHex(signature);
+  return parsed.signatures.some((candidate) => timingSafeEqual(expected, candidate));
+}
+
+function parseStripeSignatureHeader(
+  header: string | null
+): { timestamp: string; signatures: string[] } | null {
+  if (!header) {
+    return null;
+  }
+  const parts = header.split(',').map((part) => part.trim());
+  let timestamp = '';
+  const signatures: string[] = [];
+  parts.forEach((part) => {
+    const [key, value] = part.split('=');
+    if (key === 't') {
+      timestamp = value;
+    }
+    if (key === 'v1' && value) {
+      signatures.push(value);
+    }
+  });
+  if (!timestamp || signatures.length === 0) {
+    return null;
+  }
+  return { timestamp, signatures };
+}
+
+function bufferToHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+function parseNumericMetadata(value: any): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.floor(value);
+  }
+  if (typeof value === 'string') {
+    const num = Number(value);
+    if (Number.isFinite(num)) {
+      return Math.floor(num);
+    }
+  }
+  return null;
+}
+
+function normalizeBillingTier(value: any): BillingTier | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.toLowerCase();
+  if (normalized === 'small' || normalized === 'medium' || normalized === 'large') {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeStripeCustomerId(value: any): string | null {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value;
+  }
+  if (value && typeof value === 'object' && typeof value.id === 'string') {
+    return value.id;
+  }
+  return null;
+}
+
+function normalizeStripeSubscriptionId(value: any): string | null {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value;
+  }
+  if (value && typeof value === 'object' && typeof value.id === 'string') {
+    return value.id;
+  }
+  return null;
+}
+
+function normalizeStripePaymentIntentId(value: any): string | null {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value;
+  }
+  if (value && typeof value === 'object' && typeof value.id === 'string') {
+    return value.id;
+  }
+  return null;
+}
+
+function extractStripeMetadata(source: any): StripeCheckoutMetadata | null {
+  const meta = source?.metadata ?? source;
+  if (!meta || typeof meta !== 'object') {
+    return null;
+  }
+  const userId =
+    typeof (meta as any).userId === 'string'
+      ? (meta as any).userId
+      : typeof (meta as any).user_id === 'string'
+        ? (meta as any).user_id
+        : null;
+  const workspaceId =
+    typeof (meta as any).workspaceId === 'string'
+      ? (meta as any).workspaceId
+      : typeof (meta as any).workspace_id === 'string'
+        ? (meta as any).workspace_id
+        : null;
+  const numberOfDrivers = parseNumericMetadata((meta as any).numberOfDrivers ?? (meta as any).drivers);
+  const tier = normalizeBillingTier((meta as any).tier);
+  const maxDrivers = parseNumericMetadata((meta as any).maxDrivers ?? (meta as any).max_drivers);
+
+  if (!userId || !tier || numberOfDrivers === null || maxDrivers === null) {
+    return null;
+  }
+
+  return {
+    userId,
+    workspaceId,
+    numberOfDrivers,
+    tier,
+    maxDrivers,
+  };
+}
+
+function extractPeriodRangeFromSession(session: any): { periodStartsAt: string; periodEndsAt: string } | null {
+  const sub = session?.subscription;
+  if (sub && typeof sub === 'object') {
+    const start = parseTimestampSeconds((sub as any).current_period_start);
+    const end = parseTimestampSeconds((sub as any).current_period_end);
+    if (start && end) {
+      return { periodStartsAt: start, periodEndsAt: end };
+    }
+  }
+  return null;
+}
+
+function extractPeriodRangeFromInvoice(invoice: any): { periodStartsAt: string; periodEndsAt: string } | null {
+  const start = parseTimestampSeconds(invoice?.lines?.data?.[0]?.period?.start ?? invoice?.period_start);
+  const end = parseTimestampSeconds(invoice?.lines?.data?.[0]?.period?.end ?? invoice?.period_end);
+  if (start && end) {
+    return { periodStartsAt: start, periodEndsAt: end };
+  }
+  return null;
+}
+
+function calculateDefaultPeriodRange(reference = new Date()): { periodStartsAt: string; periodEndsAt: string } {
+  const start = new Date(reference);
+  const end = new Date(reference);
+  end.setMonth(end.getMonth() + BILLING_PERIOD_MONTHS);
+  return { periodStartsAt: start.toISOString(), periodEndsAt: end.toISOString() };
+}
+
+function parseTimestampSeconds(value: any): string | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Date(value * 1000).toISOString();
+  }
+  return null;
+}
+
+async function persistSubscriptionAccess(
+  env: Env,
+  metadata: StripeCheckoutMetadata,
+  stripeIds: {
+    stripeCustomerId: string | null;
+    stripeCheckoutSessionId: string | null;
+    stripePaymentIntentId: string | null;
+    stripeSubscriptionId: string | null;
+    periodStartsAt: string;
+    periodEndsAt: string;
+  }
+): Promise<void> {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
+    throw new Error('Supabase configuration is incomplete.');
+  }
+
+  const payload: SubscriptionAccessPayload = {
+    user_id: metadata.userId,
+    workspace_id: metadata.workspaceId,
+    stripe_customer_id: stripeIds.stripeCustomerId,
+    stripe_checkout_session_id: stripeIds.stripeCheckoutSessionId,
+    stripe_payment_intent_id: stripeIds.stripePaymentIntentId,
+    stripe_subscription_id: stripeIds.stripeSubscriptionId,
+    tier: metadata.tier,
+    max_drivers: metadata.maxDrivers,
+    period_starts_at: stripeIds.periodStartsAt,
+    period_ends_at: stripeIds.periodEndsAt,
+    paid: true,
+  };
+
+  await upsertSubscriptionAccess(env, payload);
+
+  if (metadata.workspaceId) {
+    try {
+      await updateOrgBillingDetails(env, metadata.workspaceId, {
+        numberOfDrivers: metadata.maxDrivers,
+        billingStatus: 'active',
+        lastCheckoutSessionId: stripeIds.stripeCheckoutSessionId ?? null,
+      });
+    } catch (seatError) {
+      console.error('Failed to update billing metadata after checkout', seatError);
+    }
+  }
+}
+
+async function upsertSubscriptionAccess(env: Env, payload: SubscriptionAccessPayload): Promise<void> {
+  const baseUrl = normalizeSupabaseUrl(env.SUPABASE_URL!);
+  const selectUrl = new URL(`/rest/v1/${SUBSCRIPTION_ACCESS_TABLE}`, baseUrl);
+  selectUrl.searchParams.set('select', 'id');
+  if (payload.stripe_subscription_id) {
+    selectUrl.searchParams.set('stripe_subscription_id', `eq.${payload.stripe_subscription_id}`);
+  } else {
+    selectUrl.searchParams.set('user_id', `eq.${payload.user_id}`);
+    if (payload.workspace_id) {
+      selectUrl.searchParams.set('workspace_id', `eq.${payload.workspace_id}`);
+    } else {
+      selectUrl.searchParams.set('workspace_id', 'is.null');
+    }
+  }
+
+  const existingRes = await fetch(selectUrl.toString(), {
+    method: 'GET',
+    headers: supabaseHeaders(env),
+  });
+  if (!existingRes.ok) {
+    const errorBody = await existingRes.text();
+    throw new Error(`Supabase select failed (${existingRes.status}): ${errorBody}`);
+  }
+  const existing = (await existingRes.json()) as Array<{ id?: string }>;
+  const hasExisting = Array.isArray(existing) && existing.length > 0;
+
+  const record = { ...payload };
+
+  if (hasExisting) {
+    const updateUrl = new URL(`/rest/v1/${SUBSCRIPTION_ACCESS_TABLE}`, baseUrl);
+    if (payload.stripe_subscription_id) {
+      updateUrl.searchParams.set('stripe_subscription_id', `eq.${payload.stripe_subscription_id}`);
+    } else {
+      updateUrl.searchParams.set('user_id', `eq.${payload.user_id}`);
+      if (payload.workspace_id) {
+        updateUrl.searchParams.set('workspace_id', `eq.${payload.workspace_id}`);
+      } else {
+        updateUrl.searchParams.set('workspace_id', 'is.null');
+      }
+    }
+
+    const updateRes = await fetch(updateUrl.toString(), {
+      method: 'PATCH',
+      headers: {
+        ...supabaseHeaders(env),
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify(record),
+    });
+    if (!updateRes.ok) {
+      const errorBody = await updateRes.text();
+      throw new Error(`Supabase update failed (${updateRes.status}): ${errorBody}`);
+    }
+    return;
+  }
+
+  const insertUrl = new URL(`/rest/v1/${SUBSCRIPTION_ACCESS_TABLE}`, baseUrl);
+  const insertRes = await fetch(insertUrl.toString(), {
+    method: 'POST',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify({ id: crypto.randomUUID(), ...record }),
+  });
+  if (!insertRes.ok) {
+    const errorBody = await insertRes.text();
+    throw new Error(`Supabase insert failed (${insertRes.status}): ${errorBody}`);
+  }
+}
+
 async function handleAuthLogin(
   request: Request,
   env: Env,
   respond: (data: unknown, status?: number) => Response
 ): Promise<Response> {
+  console.log('authLogin env', {
+    hasUrl: Boolean(env.SUPABASE_URL),
+    serviceKeyLength: env.SUPABASE_SERVICE_KEY?.length ?? null,
+    serviceRoleLength: env.SUPABASE_SERVICE_ROLE?.length ?? null,
+    jwtLength: env.JWT_SIGNING_KEY?.length ?? null,
+  });
   if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE) || !env.JWT_SIGNING_KEY) {
     return respond(
       {
         error: 'CONFIG_ERROR',
         message: 'Supabase or JWT configuration is incomplete.',
+        meta: {
+          hasUrl: Boolean(env.SUPABASE_URL),
+          serviceKeyLength: env.SUPABASE_SERVICE_KEY?.length ?? null,
+          serviceRoleLength: env.SUPABASE_SERVICE_ROLE?.length ?? null,
+          jwtLength: env.JWT_SIGNING_KEY?.length ?? null,
+        },
       },
       500
     );
@@ -625,6 +1769,8 @@ async function handleAuthLogin(
           status: 'active',
           password_hash: passwordHash,
           must_change_password: false,
+          business_tier: 'business',
+          business_name: 'Default Workspace',
           workspace_id: null,
         };
         await supabaseInsert(env, 'users', payload);
@@ -858,6 +2004,21 @@ async function handleAdminCreateUser(
   const tempPassword = generateTempPassword();
   const passwordHash = await hashPassword(tempPassword);
 
+  if (role === 'driver' && context.authUser?.role !== 'dev') {
+    const seatCheck = await checkDriverSeatCapacity(env, workspaceId);
+    if (!seatCheck.allowed) {
+      return respond(
+        {
+          error: 'DRIVER_CAP_REACHED',
+          message: 'Driver seat limit reached. Update billing to add more drivers.',
+          limit: seatCheck.limit,
+          current: seatCheck.current,
+        },
+        409
+      );
+    }
+  }
+
   const payload: SupabaseInsertPayload = {
     id: crypto.randomUUID(),
     full_name: fullName,
@@ -941,79 +2102,6 @@ async function handleAdminResetUserPassword(
   return respond({ status: 'ok', tempPassword, role: deriveUserRole(user) });
 }
 
-async function handleAdminDeleteUser(
-  request: Request,
-  env: Env,
-  respond: (data: unknown, status?: number) => Response,
-  context: RouteContext
-): Promise<Response> {
-  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
-    return respond(
-      {
-        error: 'CONFIG_ERROR',
-        message: 'Supabase configuration is incomplete.',
-      },
-      500
-    );
-  }
-
-  let body: any;
-  try {
-    body = await request.json();
-  } catch {
-    return respond({ error: 'INVALID_JSON' }, 400);
-  }
-
-  const userId = typeof body?.user_id === 'string' ? body.user_id.trim() : '';
-  if (!userId) {
-    return respond(
-      { error: 'INVALID_USER_ID', message: 'user_id is required.' },
-      400
-    );
-  }
-
-  let user: SupabaseUserRow | null = null;
-  try {
-    user = await fetchUserById(env, userId);
-  } catch (error) {
-    console.error('Failed to fetch user for delete', error);
-    return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
-  }
-
-  if (!user) {
-    return respond({ error: 'USER_NOT_FOUND' }, 404);
-  }
-
-  if (!canAccessWorkspace(context, user.workspace_id ?? null)) {
-    return respond({ error: 'FORBIDDEN' }, 403);
-  }
-
-  // Soft removal: demote to driver within the same workspace, keep account/searchable
-  try {
-    await updateUserProfile(env, user.id, {
-      role: 'driver',
-      status: STATUS_ACTIVE,
-      workspace_id: null,
-      business_tier: 'free',
-      business_name: null,
-    });
-    try {
-      await clearUserCreatorReferences(env, user.id);
-    } catch (cleanupError) {
-      console.error('Failed to clear creator references during soft delete', cleanupError);
-    }
-    try {
-      await deleteDriverStopsRecords(env, user.id);
-    } catch (stopError) {
-      console.error('Failed to clear driver stops during soft delete', stopError);
-    }
-    return respond({ status: 'ok', mode: 'soft-removed' });
-  } catch (error) {
-    console.error('Failed to soft-remove user', error);
-    return respond({ error: 'USER_DELETE_FAILED' }, 500);
-  }
-}
-
 async function handleAdminKickUser(
   request: Request,
   env: Env,
@@ -1081,6 +2169,217 @@ async function handleAdminKickUser(
   }
 }
 
+async function handleAdminListAccessRequests(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
+    return respond(
+      { error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' },
+      500
+    );
+  }
+
+  const workspaceId = resolveWorkspaceId(context, request);
+  if (!workspaceId) {
+    return respond(
+      { error: 'WORKSPACE_REQUIRED', message: 'Select a workspace to view access requests.' },
+      400
+    );
+  }
+
+  if (!canAccessWorkspace(context, workspaceId)) {
+    return respond({ error: 'FORBIDDEN' }, 403);
+  }
+
+  let rows: WorkspaceAccessRequestRow[] = [];
+  try {
+    rows = await listWorkspaceAccessRequests(env, workspaceId);
+  } catch (error) {
+    console.error('Failed to list workspace access requests', error);
+    return respond({ error: 'ACCESS_REQUEST_LIST_FAILED' }, 500);
+  }
+
+  if (rows.length === 0) {
+    return respond({ requests: [] });
+  }
+
+  let workspace: WorkspaceRow | null = null;
+  try {
+    workspace = await fetchWorkspaceById(env, workspaceId);
+  } catch (error) {
+    console.error('Failed to fetch workspace for access requests', error);
+  }
+
+  const uniqueRequesterIds = Array.from(new Set(rows.map((row) => row.requester_id)));
+  const requesterMap = new Map<string, SupabaseUserRow | null>();
+  for (const requesterId of uniqueRequesterIds) {
+    try {
+      requesterMap.set(requesterId, await fetchUserById(env, requesterId));
+    } catch (error) {
+      console.error('Failed to fetch requester for access request', requesterId, error);
+      requesterMap.set(requesterId, null);
+    }
+  }
+
+  const requests = rows.map((row) => {
+    const requester = requesterMap.get(row.requester_id);
+    return {
+      id: row.id,
+      status: row.status,
+      requesterId: row.requester_id,
+      requesterName: requester?.full_name ?? null,
+      requesterContact: requester?.email_or_phone ?? null,
+      createdAt: row.created_at ?? null,
+      workspaceId: row.workspace_id,
+      workspaceName: workspace?.name ?? null,
+    };
+  });
+
+  return respond({ requests });
+}
+
+async function handleAdminResolveAccessRequest(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext,
+  requestId: string,
+  resolution: 'approve' | 'decline'
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
+    return respond(
+      { error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' },
+      500
+    );
+  }
+
+  if (!requestId) {
+    return respond({ error: 'INVALID_REQUEST_ID', message: 'Request id is required.' }, 400);
+  }
+
+  const workspaceId = resolveWorkspaceId(context, request);
+  if (!workspaceId) {
+    return respond(
+      { error: 'WORKSPACE_REQUIRED', message: 'Select a workspace before resolving requests.' },
+      400
+    );
+  }
+
+  const authUser = context.authUser;
+  if (!authUser) {
+    return respond({ error: 'UNAUTHORIZED' }, 401);
+  }
+
+  let record: WorkspaceAccessRequestRow | null = null;
+  try {
+    record = await fetchAccessRequestById(env, requestId);
+  } catch (error) {
+    console.error('Failed to load access request', error);
+    return respond({ error: 'REQUEST_LOOKUP_FAILED' }, 500);
+  }
+
+  if (!record) {
+    return respond({ error: 'REQUEST_NOT_FOUND' }, 404);
+  }
+
+  if (!canAccessWorkspace(context, record.workspace_id ?? null)) {
+    return respond({ error: 'FORBIDDEN' }, 403);
+  }
+
+  let workspaceForApproval: WorkspaceRow | null = null;
+  try {
+    workspaceForApproval = await fetchWorkspaceById(env, record.workspace_id);
+  } catch (error) {
+    console.error('Failed to fetch workspace for access request approval', error);
+  }
+
+  if (record.status !== 'pending') {
+    return respond({ error: 'REQUEST_ALREADY_RESOLVED' }, 400);
+  }
+
+  if (resolution === 'decline') {
+    try {
+      await updateWorkspaceAccessRequest(env, record.id, {
+        status: 'declined',
+        resolved_at: new Date().toISOString(),
+        declined_by: authUser.id,
+        approved_by: null,
+      });
+    } catch (error) {
+      console.error('Failed to decline access request', error);
+      return respond({ error: 'REQUEST_UPDATE_FAILED' }, 500);
+    }
+    return respond({ status: 'declined' });
+  }
+
+  // approve path
+  let requester: SupabaseUserRow | null = null;
+  try {
+    requester = await fetchUserById(env, record.requester_id);
+  } catch (error) {
+    console.error('Failed to load requester for access approval', error);
+    return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
+  }
+
+  if (!requester) {
+    return respond({ error: 'REQUESTER_NOT_FOUND' }, 404);
+  }
+
+  if (requester.workspace_id && requester.workspace_id !== record.workspace_id) {
+    return respond(
+      {
+        error: 'REQUESTER_IN_ANOTHER_WORKSPACE',
+        message: 'This user already joined another workspace.',
+      },
+      409
+    );
+  }
+
+  try {
+    const seatCheck = await checkDriverSeatCapacity(env, record.workspace_id);
+    if (!seatCheck.allowed) {
+      return respond(
+        {
+          error: 'DRIVER_SEAT_LIMIT_REACHED',
+          message: `This workspace allows ${seatCheck.limit} drivers. Increase the allowance before approving.`,
+          current: seatCheck.current,
+          limit: seatCheck.limit,
+        },
+        409
+      );
+    }
+  } catch (error) {
+    console.error('Seat capacity check failed during approval', error);
+    return respond({ error: 'DRIVER_SEAT_CHECK_FAILED' }, 500);
+  }
+
+  try {
+    await assignUserToWorkspace(env, requester.id, record.workspace_id, {
+      businessName: workspaceForApproval?.name ?? null,
+    });
+  } catch (error) {
+    console.error('Failed to assign requester to workspace', error);
+    return respond({ error: 'WORKSPACE_JOIN_FAILED' }, 500);
+  }
+
+  try {
+    await updateWorkspaceAccessRequest(env, record.id, {
+      status: 'approved',
+      resolved_at: new Date().toISOString(),
+      approved_by: authUser.id,
+      declined_by: null,
+    });
+  } catch (error) {
+    console.error('Failed to mark access request approved', error);
+    return respond({ error: 'REQUEST_UPDATE_FAILED' }, 500);
+  }
+
+  return respond({ status: 'approved' });
+}
+
 async function handleAdminUpdateUserProfile(
   request: Request,
   env: Env,
@@ -1102,6 +2401,11 @@ async function handleAdminUpdateUserProfile(
     body = await request.json();
   } catch {
     return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const actor = context.authUser;
+  if (!actor) {
+    return respond({ error: 'UNAUTHORIZED' }, 401);
   }
 
   const workspaceScope = resolveWorkspaceId(context, request);
@@ -1183,7 +2487,7 @@ async function handleAdminUpdateUserProfile(
     status?: string;
   } = {};
   if (workspaceUpdateProvided) {
-    if (context.authUser.role !== 'dev') {
+    if (actor.role !== 'dev') {
       return respond({ error: 'FORBIDDEN' }, 403);
     }
     if (workspaceIdInput) {
@@ -1249,7 +2553,7 @@ async function handleAdminUpdateUserProfile(
       );
     }
     if (roleInput === 'dev') {
-      if (context.authUser.role !== 'dev') {
+      if (actor.role !== 'dev') {
         return respond({ error: 'FORBIDDEN' }, 403);
       }
       updates.role = 'admin';
@@ -1260,6 +2564,37 @@ async function handleAdminUpdateUserProfile(
     } else if (roleInput === 'driver') {
       updates.role = 'driver';
       updates.status = STATUS_ACTIVE;
+      const targetWorkspaceId =
+        updates.workspace_id ??
+        user.workspace_id ??
+        workspaceScope ??
+        null;
+      if (!targetWorkspaceId) {
+        return respond(
+          {
+            error: 'WORKSPACE_REQUIRED',
+            message: 'Assign the user to a workspace before switching to driver role.',
+          },
+          400
+        );
+      }
+      if (!updates.workspace_id && user.workspace_id === null) {
+        updates.workspace_id = targetWorkspaceId;
+      }
+      if (context.authUser?.role !== 'dev') {
+        const seatCheck = await checkDriverSeatCapacity(env, targetWorkspaceId);
+        if (!seatCheck.allowed) {
+          return respond(
+            {
+              error: 'DRIVER_CAP_REACHED',
+              message: 'Driver seat limit reached. Update billing to add more drivers.',
+              limit: seatCheck.limit,
+              current: seatCheck.current,
+            },
+            409
+          );
+        }
+      }
     } else {
       return respond(
         { error: 'INVALID_ROLE', message: 'role must be admin, driver, or dev.' },
@@ -1891,7 +3226,7 @@ async function handleDevCreateWorkspace(
   }
 }
 
-async function handleDevDeleteWorkspace(
+async function handleDevBootstrapWorkspace(
   request: Request,
   env: Env,
   respond: (data: unknown, status?: number) => Response,
@@ -1901,41 +3236,175 @@ async function handleDevDeleteWorkspace(
     return respond({ error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' }, 500);
   }
 
-  const match = request.url.match(/\/dev\/workspaces\/([^/]+)$/);
-  const workspaceId = match?.[1] ? decodeURIComponent(match[1]) : '';
-  if (!workspaceId) {
-    return respond({ error: 'INVALID_WORKSPACE_ID', message: 'Workspace id is required.' }, 400);
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
   }
 
-  let workspace: WorkspaceRow | null = null;
+  const requestedName = typeof body?.name === 'string' ? body.name.trim() : '';
+  const workspaceName =
+    requestedName.length > 0 ? requestedName : `Workspace ${new Date().toISOString()}`;
+  const planTier =
+    typeof body?.planTier === 'string' && body.planTier.trim().length > 0
+      ? body.planTier.trim()
+      : null;
+  const planId =
+    typeof body?.planId === 'string' && body.planId.trim().length > 0 ? body.planId.trim() : null;
+  const numberOfDrivers =
+    typeof body?.numberOfDrivers === 'number' && Number.isFinite(body.numberOfDrivers)
+      ? Math.max(0, Math.floor(body.numberOfDrivers))
+      : 0;
+  const billingStatus =
+    typeof body?.billingStatus === 'string' && body.billingStatus.trim().length > 0
+      ? body.billingStatus.trim()
+      : 'inactive';
+
+  const explicitUserId =
+    typeof body?.adminUserId === 'string' && body.adminUserId.trim().length > 0
+      ? body.adminUserId.trim()
+      : null;
+  const identifier =
+    typeof body?.adminIdentifier === 'string' && body.adminIdentifier.trim().length > 0
+      ? body.adminIdentifier.trim()
+      : null;
+
+  let targetUser: SupabaseUserRow | null = null;
   try {
-    workspace = await fetchWorkspaceById(env, workspaceId);
+    if (explicitUserId) {
+      targetUser = await fetchUserById(env, explicitUserId);
+    } else if (identifier) {
+      targetUser = await fetchUserByIdentifier(env, identifier);
+    } else if (context.authUser) {
+      targetUser = await fetchUserById(env, context.authUser.id);
+    }
   } catch (error) {
-    console.error('Failed to fetch workspace for delete', error);
-    return respond({ error: 'WORKSPACE_LOOKUP_FAILED' }, 500);
+    console.error('Bootstrap workspace user lookup failed', error);
+    return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
   }
 
-  if (!workspace) {
-    return respond({ error: 'WORKSPACE_NOT_FOUND' }, 404);
+  if (!targetUser) {
+    return respond(
+      { error: 'USER_NOT_FOUND', message: 'Provide adminUserId or adminIdentifier.' },
+      404
+    );
   }
 
   try {
-    await releaseWorkspaceUsers(env, workspaceId);
-    await clearWorkspaceDriverStops(env, workspaceId);
-    await deleteWorkspaceInvites(env, workspaceId);
-    await deleteWorkspaceById(env, workspaceId);
-    return respond({
-      status: 'ok',
-      workspace: {
-        id: workspace.id,
-        name: workspace.name,
-        createdBy: workspace.created_by ?? null,
-        createdAt: workspace.created_at ?? null,
-      },
+    const workspace = await createWorkspace(env, workspaceName, context.authUser?.id ?? null);
+    const organization = await upsertOrganizationRecord(env, {
+      orgId: workspace.id,
+      planTier,
+      numberOfDrivers,
     });
+    const billingRow = await seedOrgBillingDefaults(env, {
+      orgId: workspace.id,
+      numberOfDrivers,
+      billingStatus,
+      planId,
+    });
+    const updatedUser = await assignUserToWorkspace(env, targetUser.id, workspace.id, {
+      businessName: workspace.name ?? null,
+    });
+    const session = await buildSessionPayload(updatedUser, env);
+    const billingPayload = mapOrgBillingRowToStatus(
+      billingRow,
+      organization?.plan_tier ?? planTier ?? null
+    );
+
+    return respond(
+      {
+        workspace,
+        organization,
+        billing: billingPayload,
+        session,
+      },
+      201
+    );
   } catch (error) {
-    console.error('Failed to delete workspace', error);
-    return respond({ error: 'WORKSPACE_DELETE_FAILED' }, 500);
+    console.error('Bootstrap workspace failed', error);
+    return respond({ error: 'WORKSPACE_BOOTSTRAP_FAILED' }, 500);
+  }
+}
+
+async function handleDevAttachWorkspace(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
+    return respond({ error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' }, 500);
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const workspaceId =
+    typeof body?.workspaceId === 'string' && body.workspaceId.trim().length > 0
+      ? body.workspaceId.trim()
+      : null;
+  if (!workspaceId) {
+    return respond({ error: 'INVALID_WORKSPACE_ID', message: 'workspaceId is required.' }, 400);
+  }
+
+  const explicitUserId =
+    typeof body?.userId === 'string' && body.userId.trim().length > 0
+      ? body.userId.trim()
+      : null;
+  const identifier =
+    typeof body?.identifier === 'string' && body.identifier.trim().length > 0
+      ? body.identifier.trim()
+      : null;
+
+  let targetUser: SupabaseUserRow | null = null;
+  try {
+    if (explicitUserId) {
+      targetUser = await fetchUserById(env, explicitUserId);
+    } else if (identifier) {
+      targetUser = await fetchUserByIdentifier(env, identifier);
+    } else if (context.authUser) {
+      targetUser = await fetchUserById(env, context.authUser.id);
+    }
+  } catch (error) {
+    console.error('Attach workspace user lookup failed', error);
+    return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
+  }
+
+  if (!targetUser) {
+    return respond({ error: 'USER_NOT_FOUND' }, 404);
+  }
+
+  try {
+    const workspace = await fetchWorkspaceById(env, workspaceId);
+    if (!workspace) {
+      return respond({ error: 'WORKSPACE_NOT_FOUND' }, 404);
+    }
+
+    const billingRow = await ensureWorkspaceBillingSeeded(env, {
+      orgId: workspace.id,
+      numberOfDrivers: body?.numberOfDrivers,
+      planTier: body?.planTier,
+      planId: body?.planId,
+      billingStatus: body?.billingStatus,
+    });
+    const updatedUser = await assignUserToWorkspace(env, targetUser.id, workspace.id, {
+      businessName: workspace.name ?? null,
+    });
+    const session = await buildSessionPayload(updatedUser, env);
+    const billingPayload = mapOrgBillingRowToStatus(
+      billingRow,
+      body?.planTier ?? null
+    );
+    return respond({ workspace, billing: billingPayload, session });
+  } catch (error) {
+    console.error('Attach workspace failed', error);
+    return respond({ error: 'WORKSPACE_ATTACH_FAILED' }, 500);
   }
 }
 
@@ -2239,6 +3708,120 @@ async function handleAccountVerifyPassword(
   return respond({ status: 'ok' });
 }
 
+async function handleAccountRequestAccess(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
+    return respond(
+      { error: 'CONFIG_ERROR', message: 'Supabase configuration is incomplete.' },
+      500
+    );
+  }
+
+  const authUser = context.authUser;
+  if (!authUser) {
+    return respond({ error: 'UNAUTHORIZED' }, 401);
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const adminIdentifier =
+    typeof body?.admin_identifier === 'string' ? body.admin_identifier.trim() : '';
+  if (!adminIdentifier) {
+    return respond(
+      { error: 'INVALID_IDENTIFIER', message: 'Admin email or phone is required.' },
+      400
+    );
+  }
+
+  if (authUser.workspaceId) {
+    return respond({
+      status: 'already_member',
+      workspaceId: authUser.workspaceId,
+      workspaceName: authUser.businessName ?? null,
+    });
+  }
+
+  let adminUser: SupabaseUserRow | null = null;
+  try {
+    adminUser = await fetchUserByIdentifier(env, adminIdentifier);
+  } catch (error) {
+    console.error('Failed to lookup admin identifier for access request', error);
+    return respond({ error: 'USER_LOOKUP_FAILED' }, 500);
+  }
+
+  if (!adminUser || (adminUser.role !== 'admin' && !isDevStatus(adminUser.status))) {
+    return respond(
+      { error: 'ADMIN_NOT_FOUND', message: 'No workspace admin matches that contact.' },
+      404
+    );
+  }
+
+  const workspaceId = adminUser.workspace_id ?? null;
+  if (!workspaceId) {
+    return respond(
+      {
+        error: 'ADMIN_WORKSPACE_REQUIRED',
+        message: 'That admin is not assigned to a workspace.',
+      },
+      400
+    );
+  }
+
+  if (authUser.workspaceId === workspaceId) {
+    return respond({
+      status: 'already_member',
+      workspaceId,
+      workspaceName: adminUser.business_name ?? null,
+    });
+  }
+
+  let workspace: WorkspaceRow | null = null;
+  try {
+    workspace = await fetchWorkspaceById(env, workspaceId);
+  } catch (error) {
+    console.error('Failed to load workspace for access request', error);
+  }
+  const workspaceName = workspace?.name ?? adminUser.business_name ?? null;
+
+  let existing: WorkspaceAccessRequestRow | null = null;
+  try {
+    existing = await findPendingAccessRequest(env, authUser.id, workspaceId);
+  } catch (error) {
+    console.error('Failed to check pending access requests', error);
+    return respond({ error: 'REQUEST_LOOKUP_FAILED' }, 500);
+  }
+
+  let record: WorkspaceAccessRequestRow | null = existing;
+  if (!record) {
+    try {
+      record = await createWorkspaceAccessRequest(env, {
+        requesterId: authUser.id,
+        adminId: adminUser.id,
+        workspaceId,
+      });
+    } catch (error) {
+      console.error('Failed to create workspace access request', error);
+      return respond({ error: 'REQUEST_CREATE_FAILED' }, 500);
+    }
+  }
+
+  return respond({
+    status: 'pending',
+    requestId: record?.id ?? null,
+    workspaceId,
+    workspaceName,
+  });
+}
+
 async function handleAccountGetProfile(
   env: Env,
   respond: (data: unknown, status?: number) => Response,
@@ -2380,6 +3963,99 @@ async function handleAccountUpdateProfile(
   } catch (error) {
     console.error('Failed to update profile', error);
     return respond({ error: 'ACCOUNT_PROFILE_UPDATE_FAILED' }, 500);
+  }
+}
+
+async function handleAccountCreateWorkspace(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE) || !env.JWT_SIGNING_KEY) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase or JWT configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  const authUser = context.authUser;
+  if (!authUser) {
+    return respond({ error: 'UNAUTHORIZED' }, 401);
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return respond({ error: 'INVALID_JSON' }, 400);
+  }
+
+  const name = typeof body?.name === 'string' ? body.name.trim() : '';
+  if (!name) {
+    return respond({ error: 'INVALID_WORKSPACE_NAME', message: 'Workspace name is required.' }, 400);
+  }
+
+  const numberOfDriversRaw =
+    typeof body?.numberOfDrivers === 'number'
+      ? body.numberOfDrivers
+      : typeof body?.numberOfDrivers === 'string'
+        ? Number(body.numberOfDrivers)
+        : null;
+  let numberOfDrivers =
+    numberOfDriversRaw !== null && Number.isFinite(numberOfDriversRaw) ? Math.floor(numberOfDriversRaw) : 1;
+  if (numberOfDrivers < 1) {
+    numberOfDrivers = 1;
+  }
+
+  if (authUser.workspaceId) {
+    return respond(
+      {
+        error: 'WORKSPACE_EXISTS',
+        message: 'You already belong to a workspace. Remove yourself before creating a new one.',
+      },
+      400
+    );
+  }
+
+  try {
+    const workspace = await createWorkspace(env, name, authUser.id);
+    const nextRole: UserRole = authUser.role === 'driver' ? 'admin' : authUser.role;
+    const updated = await updateUserProfile(env, authUser.id, {
+      workspace_id: workspace.id,
+      business_name: name,
+      business_tier: 'free',
+      role: nextRole,
+    });
+    try {
+      await seedOrgBillingDefaults(env, {
+        orgId: workspace.id,
+        numberOfDrivers,
+        billingStatus: 'inactive',
+      });
+    } catch (seedError) {
+      console.error('Failed to seed billing defaults during workspace create', seedError);
+    }
+    const session = await buildSessionPayload(updated, env);
+    return respond(
+      {
+        workspace: {
+          id: workspace.id,
+          name: workspace.name,
+          createdBy: workspace.created_by ?? null,
+          createdAt: workspace.created_at ?? null,
+        },
+        token: session.token,
+        user: session.user,
+      },
+      201
+    );
+  } catch (error) {
+    console.error('Failed to create workspace for account', error);
+    return respond({ error: 'WORKSPACE_CREATE_FAILED' }, 500);
   }
 }
 
@@ -2605,7 +4281,7 @@ async function handleDriverStopStatusUpdate(
 }
 
 function jsonResponse(data: unknown, status = 200, origin: string | null = null): Response {
-  const headers: HeadersInit = { ...BASE_HEADERS };
+  const headers: Record<string, string> = { ...BASE_HEADERS };
   if (origin) {
     headers['Access-Control-Allow-Origin'] = origin;
     headers['Vary'] = 'Origin';
@@ -2617,7 +4293,7 @@ function jsonResponse(data: unknown, status = 200, origin: string | null = null)
 }
 
 function handlePreflight(request: Request, origin: string | null): Response {
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     ...BASE_HEADERS,
     'Access-Control-Allow-Headers':
       request.headers.get('Access-Control-Request-Headers') ?? 'Content-Type,Authorization',
@@ -3019,6 +4695,467 @@ function normalizeSupabaseUrl(baseUrl: string): string {
   return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
 }
 
+function isSupabaseRelationMissingError(error: unknown, relation: string): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.message.includes(`relation "${relation}" does not exist`);
+}
+
+async function fetchOrganizationById(env: Env, orgId: string): Promise<OrganizationRow | null> {
+  try {
+    if (!env.SUPABASE_URL) {
+      throw new Error('Supabase URL missing');
+    }
+    const url = new URL(`/rest/v1/${ORGANIZATION_TABLE}`, normalizeSupabaseUrl(env.SUPABASE_URL));
+    url.searchParams.set('id', `eq.${orgId}`);
+    url.searchParams.set('limit', '1');
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: supabaseHeaders(env),
+    });
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Supabase select organizations failed (${response.status}): ${errorBody}`);
+    }
+    const rows = (await response.json()) as OrganizationRow[];
+    return rows.length > 0 ? rows[0] : null;
+  } catch (error) {
+    if (isSupabaseRelationMissingError(error, ORGANIZATION_TABLE)) {
+      console.warn('organizations table missing; continuing without organization record');
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function upsertOrganizationRecord(
+  env: Env,
+  input: { orgId: string; planTier?: string | null; numberOfDrivers?: number | null }
+): Promise<OrganizationRow | null> {
+  try {
+    if (!env.SUPABASE_URL) {
+      throw new Error('Supabase URL missing');
+    }
+    const url = new URL(`/rest/v1/${ORGANIZATION_TABLE}`, normalizeSupabaseUrl(env.SUPABASE_URL));
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        ...supabaseHeaders(env),
+        Prefer: 'resolution=merge-duplicates,return=representation',
+      },
+      body: JSON.stringify([
+        {
+          id: input.orgId,
+          plan_tier: input.planTier ?? null,
+          number_of_drivers: input.numberOfDrivers ?? null,
+        },
+      ]),
+    });
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Supabase upsert organizations failed (${response.status}): ${errorBody}`);
+    }
+    const rows = (await response.json()) as OrganizationRow[];
+    return rows.length > 0 ? rows[0] : null;
+  } catch (error) {
+    if (isSupabaseRelationMissingError(error, ORGANIZATION_TABLE)) {
+      console.warn('organizations table missing; skipping organization upsert');
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function seedOrgBillingDefaults(
+  env: Env,
+  input: {
+    orgId: string;
+    numberOfDrivers?: number | null;
+    billingStatus?: string | null;
+    planId?: string | null;
+  }
+): Promise<OrgBillingRow | null> {
+  if (!env.SUPABASE_URL) {
+    throw new Error('Supabase URL missing');
+  }
+  const url = new URL(`/rest/v1/${ORG_BILLING_TABLE}`, normalizeSupabaseUrl(env.SUPABASE_URL));
+  const response = await fetch(url.toString(), {
+    method: 'POST',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'resolution=merge-duplicates,return=representation',
+    },
+    body: JSON.stringify([
+      {
+        org_id: input.orgId,
+        number_of_drivers: input.numberOfDrivers ?? null,
+        billing_status: input.billingStatus ?? 'inactive',
+        plan_id: input.planId ?? null,
+      },
+    ]),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase upsert org_billing failed (${response.status}): ${errorBody}`);
+  }
+  const rows = (await response.json()) as OrgBillingRow[];
+  if (rows.length > 0) {
+    return rows[0];
+  }
+  return fetchOrgBillingRow(env, input.orgId);
+}
+
+async function ensureWorkspaceBillingSeeded(
+  env: Env,
+  input: {
+    orgId: string;
+    planTier?: string | null;
+    planId?: string | null;
+    numberOfDrivers?: number | null;
+    billingStatus?: string | null;
+  }
+): Promise<OrgBillingRow | null> {
+  await upsertOrganizationRecord(env, {
+    orgId: input.orgId,
+    planTier: input.planTier ?? null,
+    numberOfDrivers: input.numberOfDrivers ?? null,
+  });
+  return seedOrgBillingDefaults(env, {
+    orgId: input.orgId,
+    numberOfDrivers: input.numberOfDrivers ?? null,
+    billingStatus: input.billingStatus ?? 'inactive',
+    planId: input.planId ?? null,
+  });
+}
+
+async function assignUserToWorkspace(
+  env: Env,
+  userId: string,
+  workspaceId: string,
+  options?: { businessName?: string | null }
+): Promise<SupabaseUserRow> {
+  if (!env.SUPABASE_URL) {
+    throw new Error('Supabase URL missing');
+  }
+  const url = new URL(`/rest/v1/users`, normalizeSupabaseUrl(env.SUPABASE_URL));
+  url.searchParams.set('id', `eq.${userId}`);
+  const response = await fetch(url.toString(), {
+    method: 'PATCH',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify({
+      workspace_id: workspaceId,
+      business_tier: 'business',
+      business_name: options?.businessName ?? null,
+    }),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase update user workspace failed (${response.status}): ${errorBody}`);
+  }
+  const rows = (await response.json()) as SupabaseUserRow[];
+  if (rows.length === 0) {
+    throw new Error('assignUserToWorkspace returned empty response');
+  }
+  return rows[0];
+}
+
+async function findPendingAccessRequest(
+  env: Env,
+  requesterId: string,
+  workspaceId: string
+): Promise<WorkspaceAccessRequestRow | null> {
+  if (!env.SUPABASE_URL) {
+    throw new Error('Supabase URL missing');
+  }
+  const url = new URL(
+    `/rest/v1/${WORKSPACE_ACCESS_REQUESTS_TABLE}`,
+    normalizeSupabaseUrl(env.SUPABASE_URL)
+  );
+  url.searchParams.set('workspace_id', `eq.${workspaceId}`);
+  url.searchParams.set('requester_id', `eq.${requesterId}`);
+  url.searchParams.set('status', 'eq.pending');
+  url.searchParams.set('limit', '1');
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: supabaseHeaders(env),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase select access requests failed (${response.status}): ${errorBody}`);
+  }
+  const rows = (await response.json()) as WorkspaceAccessRequestRow[];
+  return rows.length > 0 ? rows[0] : null;
+}
+
+async function createWorkspaceAccessRequest(
+  env: Env,
+  input: { requesterId: string; adminId: string; workspaceId: string }
+): Promise<WorkspaceAccessRequestRow> {
+  if (!env.SUPABASE_URL) {
+    throw new Error('Supabase URL missing');
+  }
+  const url = new URL(
+    `/rest/v1/${WORKSPACE_ACCESS_REQUESTS_TABLE}`,
+    normalizeSupabaseUrl(env.SUPABASE_URL)
+  );
+  const response = await fetch(url.toString(), {
+    method: 'POST',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify([
+      {
+        requester_id: input.requesterId,
+        admin_id: input.adminId,
+        workspace_id: input.workspaceId,
+        status: 'pending',
+      },
+    ]),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase insert access request failed (${response.status}): ${errorBody}`);
+  }
+  const rows = (await response.json()) as WorkspaceAccessRequestRow[];
+  if (rows.length === 0) {
+    throw new Error('ACCESS_REQUEST_CREATE_FAILED');
+  }
+  return rows[0];
+}
+
+async function listWorkspaceAccessRequests(
+  env: Env,
+  workspaceId: string
+): Promise<WorkspaceAccessRequestRow[]> {
+  if (!env.SUPABASE_URL) {
+    throw new Error('Supabase URL missing');
+  }
+  const url = new URL(
+    `/rest/v1/${WORKSPACE_ACCESS_REQUESTS_TABLE}`,
+    normalizeSupabaseUrl(env.SUPABASE_URL)
+  );
+  url.searchParams.set('workspace_id', `eq.${workspaceId}`);
+  url.searchParams.set('status', 'eq.pending');
+  url.searchParams.append('order', 'created_at.asc');
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: supabaseHeaders(env),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase list access requests failed (${response.status}): ${errorBody}`);
+  }
+  return (await response.json()) as WorkspaceAccessRequestRow[];
+}
+
+async function fetchAccessRequestById(
+  env: Env,
+  requestId: string
+): Promise<WorkspaceAccessRequestRow | null> {
+  if (!env.SUPABASE_URL) {
+    throw new Error('Supabase URL missing');
+  }
+  const url = new URL(
+    `/rest/v1/${WORKSPACE_ACCESS_REQUESTS_TABLE}`,
+    normalizeSupabaseUrl(env.SUPABASE_URL)
+  );
+  url.searchParams.set('id', `eq.${requestId}`);
+  url.searchParams.set('limit', '1');
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: supabaseHeaders(env),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase select access request failed (${response.status}): ${errorBody}`);
+  }
+  const rows = (await response.json()) as WorkspaceAccessRequestRow[];
+  return rows.length > 0 ? rows[0] : null;
+}
+
+async function updateWorkspaceAccessRequest(
+  env: Env,
+  requestId: string,
+  updates: Partial<Pick<WorkspaceAccessRequestRow, 'status' | 'resolved_at' | 'approved_by' | 'declined_by'>>
+): Promise<void> {
+  if (!env.SUPABASE_URL) {
+    throw new Error('Supabase URL missing');
+  }
+  const url = new URL(
+    `/rest/v1/${WORKSPACE_ACCESS_REQUESTS_TABLE}`,
+    normalizeSupabaseUrl(env.SUPABASE_URL)
+  );
+  url.searchParams.set('id', `eq.${requestId}`);
+  const response = await fetch(url.toString(), {
+    method: 'PATCH',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify(updates),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase update access request failed (${response.status}): ${errorBody}`);
+  }
+}
+
+async function fetchOrgBillingRow(env: Env, orgId: string): Promise<OrgBillingRow | null> {
+  if (!env.SUPABASE_URL) {
+    throw new Error('Supabase URL missing');
+  }
+  const url = new URL(`/rest/v1/${ORG_BILLING_TABLE}`, normalizeSupabaseUrl(env.SUPABASE_URL));
+  url.searchParams.set('org_id', `eq.${orgId}`);
+  url.searchParams.set('limit', '1');
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: supabaseHeaders(env),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase select org_billing failed (${response.status}): ${errorBody}`);
+  }
+  const rows = (await response.json()) as OrgBillingRow[];
+  return rows.length > 0 ? rows[0] : null;
+}
+
+function mapOrgBillingRowToStatus(
+  row: OrgBillingRow | null,
+  planTier: string | null
+): {
+  orgId: string;
+  billingStatus: string | null;
+  planTier: string | null;
+  numberOfDrivers: number | null;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  lastCheckoutSessionId: string | null;
+} | null {
+  if (!row) {
+    return null;
+  }
+  return {
+    orgId: row.org_id,
+    billingStatus: row.billing_status ?? null,
+    planTier,
+    numberOfDrivers: row.number_of_drivers ?? null,
+    stripeCustomerId: row.stripe_customer_id ?? null,
+    stripeSubscriptionId: row.stripe_subscription_id ?? null,
+    lastCheckoutSessionId: row.last_checkout_session_id ?? null,
+  };
+}
+
+function renderBillingSuccessPage(_request: Request): Response {
+  return new Response(BILLING_SUCCESS_HTML, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+    },
+  });
+}
+
+type DriverSeatCheck = {
+  allowed: boolean;
+  current: number;
+  limit: number | null;
+};
+
+async function countWorkspaceDrivers(env: Env, workspaceId: string): Promise<number> {
+  const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
+  url.searchParams.set('workspace_id', `eq.${workspaceId}`);
+  url.searchParams.set('role', 'eq.driver');
+  url.searchParams.set('select', 'id');
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'count=exact',
+    },
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase select driver count failed (${response.status}): ${errorBody}`);
+  }
+  const range = response.headers.get('content-range');
+  if (range) {
+    const match = range.match(/\d+-\d+\/(\d+|\*)/);
+    if (match && match[1] && match[1] !== '*') {
+      const parsed = Number(match[1]);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  const rows = (await response.json()) as Array<{ id: string }>;
+  return rows.length;
+}
+
+async function checkDriverSeatCapacity(env: Env, workspaceId: string): Promise<DriverSeatCheck> {
+  if (!workspaceId) {
+    return { allowed: true, current: 0, limit: null };
+  }
+  let billingRow: OrgBillingRow | null = null;
+  try {
+    billingRow = await fetchOrgBillingRow(env, workspaceId);
+  } catch (error) {
+    console.error('Failed to load billing row for seat check', error);
+    return { allowed: true, current: 0, limit: null };
+  }
+  const limit = billingRow?.number_of_drivers ?? null;
+  if (!limit || limit <= 0) {
+    return { allowed: true, current: 0, limit: null };
+  }
+  const current = await countWorkspaceDrivers(env, workspaceId);
+  if (current >= limit) {
+    return { allowed: false, current, limit };
+  }
+  return { allowed: true, current, limit };
+}
+
+async function updateOrgBillingDetails(
+  env: Env,
+  workspaceId: string,
+  updates: { numberOfDrivers?: number; billingStatus?: string | null; lastCheckoutSessionId?: string | null }
+): Promise<void> {
+  if (!env.SUPABASE_URL) {
+    throw new Error('Supabase URL missing');
+  }
+  const body: Record<string, unknown> = {};
+  if (typeof updates.numberOfDrivers === 'number' && Number.isFinite(updates.numberOfDrivers)) {
+    body.number_of_drivers = updates.numberOfDrivers;
+  }
+  if (typeof updates.billingStatus === 'string') {
+    body.billing_status = updates.billingStatus;
+  } else if (updates.billingStatus === null) {
+    body.billing_status = null;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'lastCheckoutSessionId')) {
+    body.last_checkout_session_id = updates.lastCheckoutSessionId ?? null;
+  }
+  if (Object.keys(body).length === 0) {
+    return;
+  }
+  const url = new URL(`/rest/v1/${ORG_BILLING_TABLE}`, normalizeSupabaseUrl(env.SUPABASE_URL));
+  url.searchParams.set('org_id', `eq.${workspaceId}`);
+  const response = await fetch(url.toString(), {
+    method: 'PATCH',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase update org_billing failed (${response.status}): ${errorBody}`);
+  }
+}
+
 async function fetchUserByIdentifier(env: Env, identifier: string): Promise<SupabaseUserRow | null> {
   const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
   url.searchParams.set(
@@ -3098,7 +5235,9 @@ async function fetchUsersByRole(
     id: string;
     full_name: string | null;
     email_or_phone: string;
+    role?: string | null;
     status?: string | null;
+    workspace_id?: string | null;
   }>;
 
   return rows
@@ -3933,12 +6072,12 @@ const DEFAULT_BCRYPT_ROUNDS = 10;
 
 async function hashPassword(password: string, rounds = DEFAULT_BCRYPT_ROUNDS): Promise<string> {
   return new Promise((resolve, reject) => {
-    bcrypt.genSalt(rounds, (saltErr: Error | null, salt: string) => {
+    bcrypt.genSalt(rounds, (saltErr: Error | null, salt?: string) => {
       if (saltErr || !salt) {
         reject(saltErr ?? new Error('Failed to generate salt'));
         return;
       }
-      bcrypt.hash(password, salt, (hashErr: Error | null, hash: string) => {
+      bcrypt.hash(password, salt, (hashErr: Error | null, hash?: string) => {
         if (hashErr || !hash) {
           reject(hashErr ?? new Error('Failed to hash password'));
           return;
@@ -3951,7 +6090,7 @@ async function hashPassword(password: string, rounds = DEFAULT_BCRYPT_ROUNDS): P
 
 async function verifyPassword(password: string, hash: string): Promise<boolean> {
   return new Promise((resolve) => {
-    bcrypt.compare(password, hash, (err: Error | null, same: boolean) => {
+    bcrypt.compare(password, hash, (err: Error | null, same?: boolean) => {
       if (err) {
         console.error('bcrypt compare failed', err);
         resolve(false);
@@ -4021,7 +6160,8 @@ async function signJwt(claims: JwtClaims, secret: string): Promise<string> {
   const payloadB64 = base64UrlEncode(encoder.encode(JSON.stringify(claims)));
   const data = `${headerB64}.${payloadB64}`;
   const key = await importHmacKey(secret);
-  const signatureBuffer = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
+  const dataBytes = encoder.encode(data);
+  const signatureBuffer = await crypto.subtle.sign('HMAC', key, dataBytes);
   const signatureB64 = base64UrlEncode(new Uint8Array(signatureBuffer));
   return `${data}.${signatureB64}`;
 }
@@ -4035,8 +6175,9 @@ async function verifyJwt(token: string, secret: string): Promise<JwtClaims> {
   const encoder = new TextEncoder();
   const key = await importHmacKey(secret);
   const data = `${headerB64}.${payloadB64}`;
-  const signature = base64UrlDecode(signatureB64);
-  const valid = await crypto.subtle.verify('HMAC', key, signature, encoder.encode(data));
+  const signatureBytes = base64UrlDecode(signatureB64);
+  const dataBytes = encoder.encode(data);
+  const valid = await crypto.subtle.verify('HMAC', key, signatureBytes.buffer as ArrayBuffer, dataBytes);
   if (!valid) {
     throw new Error('Invalid signature');
   }
@@ -4050,7 +6191,8 @@ async function verifyJwt(token: string, secret: string): Promise<JwtClaims> {
 
 async function importHmacKey(secret: string): Promise<CryptoKey> {
   const encoder = new TextEncoder();
-  return crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
+  const secretBytes = encoder.encode(secret);
+  return crypto.subtle.importKey('raw', secretBytes.buffer as ArrayBuffer, { name: 'HMAC', hash: 'SHA-256' }, false, [
     'sign',
     'verify',
   ]);
