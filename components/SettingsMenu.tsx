@@ -12,9 +12,9 @@ import {
   Text,
   TextInput,
   View,
-  Linking,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as WebBrowser from 'expo-web-browser';
 
 import { useTheme } from '@/features/theme/theme-context';
 import { useAuth } from '@/features/auth/auth-context';
@@ -534,13 +534,11 @@ export function SettingsMenu({
         }
 
         const url = String(data.checkoutUrl);
-        const supported = await Linking.canOpenURL(url);
-        if (!supported) {
-          Alert.alert('Error', 'Cannot open Stripe checkout URL.');
-          return;
-        }
-
-        await Linking.openURL(url);
+        await WebBrowser.openBrowserAsync(url, {
+          enableDefaultShareMenuItem: false,
+          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+        });
+        await onRefreshBillingStatus?.();
       } catch (error) {
         console.error('Checkout request failed', error);
         Alert.alert('Error', 'Network error talking to billing.');
@@ -548,7 +546,7 @@ export function SettingsMenu({
         setCheckoutLoading(false);
       }
     },
-    [checkoutLoading, currentWorkspaceId, token, seatLimit]
+    [checkoutLoading, currentWorkspaceId, token, seatLimit, onRefreshBillingStatus]
   );
 
   const handleSyncDriverSeats = useCallback(async () => {

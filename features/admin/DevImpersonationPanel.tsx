@@ -4,6 +4,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 
@@ -35,6 +36,8 @@ export function DevImpersonationPanel({ refreshSignal }: DevImpersonationPanelPr
   const [message, setMessage] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
     if (!token) {
@@ -62,6 +65,12 @@ export function DevImpersonationPanel({ refreshSignal }: DevImpersonationPanelPr
     }
   }, [expanded, loadUsers, refreshSignal]);
 
+  useEffect(() => {
+    if (!expanded) {
+      setSearchQuery('');
+    }
+  }, [expanded]);
+
   const handleViewAs = async (targetId: string) => {
     if (!targetId) {
       return;
@@ -83,9 +92,61 @@ export function DevImpersonationPanel({ refreshSignal }: DevImpersonationPanelPr
     }
   };
 
+  const handleDeleteUser = async (targetId: string) => {
+    if (!token) {
+      return;
+    }
+    const target = users.find((entry) => entry.id === targetId);
+    if (!target) {
+      return;
+    }
+    const confirmed = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        'Delete account?',
+        `Permanently delete ${target.fullName || target.emailOrPhone || 'this user'}?`,
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+        ]
+      );
+    });
+    if (!confirmed) {
+      return;
+    }
+    setDeletingId(targetId);
+    setError(null);
+    setMessage(null);
+    try {
+      await authApi.deleteUserAccount(token, targetId);
+      setUsers((prev) => prev.filter((entry) => entry.id !== targetId));
+      setMessage('Account deleted.');
+    } catch (err) {
+      setError(
+        getFriendlyError(err, {
+          fallback: 'Could not delete that account. Try again.',
+        })
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const viewingAsLabel = isImpersonating
     ? user?.fullName || user?.emailOrPhone || 'Unknown user'
     : null;
+
+  const filteredUsers = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      return users;
+    }
+    return users.filter((entry) => {
+      const name = entry.fullName?.toLowerCase() ?? '';
+      const contact = entry.emailOrPhone?.toLowerCase() ?? '';
+      const workspace = entry.workspaceId?.toLowerCase() ?? '';
+      return name.includes(query) || contact.includes(query) || workspace.includes(query);
+    });
+  }, [users, searchQuery]);
 
   return (
     <View style={styles.card}>
@@ -122,15 +183,24 @@ export function DevImpersonationPanel({ refreshSignal }: DevImpersonationPanelPr
 
       {expanded ? (
         <View style={styles.listSection}>
+          <TextInput
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search name, email, or workspace"
+            placeholderTextColor={colors.mutedText}
+          />
           {loading ? (
             <View style={styles.loaderRow}>
               <ActivityIndicator color={colors.primary} />
               <Text style={styles.loaderText}>Loading accounts…</Text>
             </View>
-          ) : users.length === 0 ? (
-            <Text style={styles.emptyText}>No accounts found.</Text>
+          ) : filteredUsers.length === 0 ? (
+            <Text style={styles.emptyText}>
+              {users.length === 0 ? 'No accounts found.' : 'No matches. Try another search.'}
+            </Text>
           ) : (
-            users.map((entry) => {
+            filteredUsers.map((entry) => {
               const isCurrentUser = entry.id === user?.id;
               const disabled = busyId === entry.id || isCurrentUser;
               return (
@@ -152,23 +222,40 @@ export function DevImpersonationPanel({ refreshSignal }: DevImpersonationPanelPr
                       {entry.workspaceId ? ` • ${entry.workspaceId}` : ' • Free tier'}
                     </Text>
                   </View>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.viewButton,
-                      pressed && styles.viewButtonPressed,
-                      (disabled || entry.role === 'dev') && styles.viewButtonDisabled,
-                    ]}
-                    disabled={disabled || entry.role === 'dev'}
-                    onPress={() => void handleViewAs(entry.id)}
-                  >
-                    {busyId === entry.id ? (
-                      <ActivityIndicator color={colors.surface} size="small" />
-                    ) : (
-                      <Text style={styles.viewButtonText}>
-                        {entry.role === 'dev' ? 'Dev account' : isCurrentUser ? 'Active' : 'View as'}
-                      </Text>
-                    )}
-                  </Pressable>
+                  <View style={styles.userActions}>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.viewButton,
+                        pressed && styles.viewButtonPressed,
+                        (disabled || entry.role === 'dev') && styles.viewButtonDisabled,
+                      ]}
+                      disabled={disabled || entry.role === 'dev'}
+                      onPress={() => void handleViewAs(entry.id)}
+                    >
+                      {busyId === entry.id ? (
+                        <ActivityIndicator color={colors.surface} size="small" />
+                      ) : (
+                        <Text style={styles.viewButtonText}>
+                          {entry.role === 'dev' ? 'Dev account' : isCurrentUser ? 'Active' : 'View as'}
+                        </Text>
+                      )}
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.deleteButton,
+                        pressed && styles.deleteButtonPressed,
+                        deletingId === entry.id && styles.deleteButtonDisabled,
+                      ]}
+                      disabled={deletingId === entry.id || entry.role === 'dev'}
+                      onPress={() => void handleDeleteUser(entry.id)}
+                    >
+                      {deletingId === entry.id ? (
+                        <ActivityIndicator color={colors.surface} size="small" />
+                      ) : (
+                        <Text style={styles.deleteButtonText}>Delete</Text>
+                      )}
+                    </Pressable>
+                  </View>
                 </View>
               );
             })
@@ -222,6 +309,15 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     listSection: {
       gap: 10,
     },
+    searchInput: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      color: colors.text,
+      backgroundColor: colors.surface,
+    },
     loaderRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -247,17 +343,21 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderColor: colors.primary,
       backgroundColor: isDark ? '#0f172a' : '#eef2ff',
     },
-    userRowDisabled: {
-      opacity: 0.6,
-    },
-    userInfo: {
-      flex: 1,
-      gap: 2,
-    },
-    userName: {
-      color: colors.text,
-      fontWeight: '600',
-    },
+  userRowDisabled: {
+    opacity: 0.6,
+  },
+  userInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  userActions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  userName: {
+    color: colors.text,
+    fontWeight: '600',
+  },
     userMeta: {
       color: colors.mutedText,
       fontSize: 12,
@@ -276,10 +376,28 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     viewButtonDisabled: {
       backgroundColor: colors.border,
     },
-    viewButtonText: {
-      color: colors.surface,
-      fontWeight: '600',
-    },
+  viewButtonText: {
+    color: colors.surface,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    backgroundColor: colors.danger,
+  },
+  deleteButtonPressed: {
+    opacity: 0.85,
+  },
+  deleteButtonDisabled: {
+    opacity: 0.6,
+  },
+  deleteButtonText: {
+    color: colors.surface,
+    fontWeight: '600',
+  },
     collapsedHint: {
       color: colors.mutedText,
       fontStyle: 'italic',
@@ -321,4 +439,3 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
   });
 }
-

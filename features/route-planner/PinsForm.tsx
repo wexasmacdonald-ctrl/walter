@@ -30,6 +30,70 @@ function extractHouseNumber(address: string): string | null {
   return match ? match[1] : null;
 }
 
+type ParsedAddresses = {
+  uniqueLines: string[];
+  duplicates: Array<{ value: string; count: number }>;
+};
+
+function parseAddressInput(value: string): ParsedAddresses {
+  const lines = value.split('\n');
+  const seen = new Map<string, { canonical: string; count: number }>();
+  const uniqueLines: string[] = [];
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return;
+    }
+    const key = trimmed.toLowerCase();
+    const entry = seen.get(key);
+    if (!entry) {
+      seen.set(key, { canonical: trimmed, count: 1 });
+      uniqueLines.push(trimmed);
+    } else {
+      entry.count += 1;
+    }
+  });
+
+  const duplicates = Array.from(seen.values())
+    .filter((entry) => entry.count > 1)
+    .map((entry) => ({ value: entry.canonical, count: entry.count }));
+
+  return { uniqueLines, duplicates };
+}
+
+type ParsedAddresses = {
+  uniqueLines: string[];
+  duplicates: Array<{ value: string; count: number }>;
+};
+
+function parseAddressInput(value: string): ParsedAddresses {
+  const lines = value.split('\n');
+  const seen = new Map<string, { canonical: string; count: number }>();
+  const uniqueLines: string[] = [];
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return;
+    }
+    const key = trimmed.toLowerCase();
+    const entry = seen.get(key);
+    if (!entry) {
+      seen.set(key, { canonical: trimmed, count: 1 });
+      uniqueLines.push(trimmed);
+    } else {
+      entry.count += 1;
+    }
+  });
+
+  const duplicates = Array.from(seen.values())
+    .filter((entry) => entry.count > 1)
+    .map((entry) => ({ value: entry.canonical, count: entry.count }));
+
+  return { uniqueLines, duplicates };
+}
+
 export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps) {
   const { token, signOut, user } = useAuth();
   const { colors, isDark } = useTheme();
@@ -38,6 +102,8 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [state, setState] = useState<FormState>({ type: 'idle' });
+  const parsedAddresses = useMemo(() => parseAddressInput(input), [input]);
+  const hasDuplicates = parsedAddresses.duplicates.length > 0;
 
   const [showInput, setShowInput] = useState(true);
   const [showList, setShowList] = useState(false);
@@ -212,6 +278,16 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
     setSelected({});
   };
 
+  const handleRemoveDuplicates = () => {
+    if (!hasDuplicates) {
+      return;
+    }
+    setInput(parsedAddresses.uniqueLines.join('\n'));
+    if (state.type === 'error') {
+      setState({ type: 'idle' });
+    }
+  };
+
   const handleGeocode = useCallback(async () => {
     if (!token) {
       setState({
@@ -222,10 +298,7 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
       return;
     }
 
-    const addresses = input
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
+    const addresses = parsedAddresses.uniqueLines;
 
     if (addresses.length === 0) {
       setState({ type: 'error', message: 'Enter at least one address.' });
@@ -329,7 +402,7 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
       setLoading(false);
       onLoadingChange?.(false);
     }
-  }, [input, onPinsChange, onLoadingChange, token, signOut]);
+  }, [parsedAddresses, onPinsChange, onLoadingChange, token, signOut]);
 
   const handleStartInput = useCallback(() => {
     setShowInput(true);
@@ -359,6 +432,27 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
             autoCapitalize="none"
             placeholderTextColor={placeholderColor}
           />
+          {hasDuplicates ? (
+            <View style={styles.duplicateBanner}>
+              <Text style={styles.duplicateTitle}>Duplicate addresses detected</Text>
+              {parsedAddresses.duplicates.map((dup) => (
+                <Text key={dup.value} style={styles.duplicateEntry}>
+                  {dup.value}
+                  {dup.count > 1 ? ` (x${dup.count})` : ''}
+                </Text>
+              ))}
+              <Text style={styles.duplicateHint}>Duplicates are ignored when geocoding.</Text>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.duplicateButton,
+                  pressed && styles.duplicateButtonPressed,
+                ]}
+                onPress={handleRemoveDuplicates}
+              >
+                <Text style={styles.duplicateButtonText}>Remove duplicates</Text>
+              </Pressable>
+            </View>
+          ) : null}
           <Pressable
             accessibilityRole="button"
             onPress={handleGeocode}
@@ -492,11 +586,6 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
                           style={styles.addressBody}
                         >
                           <Text style={styles.addressLine}>{pin.address || 'Address unavailable'}</Text>
-                          <Text style={styles.addressStatus}>
-                            {typeof pin.lat === 'number' && typeof pin.lng === 'number'
-                              ? 'Location ready'
-                              : 'Missing coordinates'}
-                          </Text>
                         </Pressable>
 
                         {isActive && !isEditing && (
@@ -667,6 +756,44 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.text,
       marginBottom: 16,
     },
+    duplicateBanner: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: isDark ? '#1a2a3d' : colors.primaryMuted,
+      padding: 12,
+      gap: 6,
+      marginBottom: 8,
+    },
+    duplicateTitle: {
+      color: colors.primary,
+      fontWeight: '600',
+    },
+    duplicateEntry: {
+      color: colors.text,
+      fontSize: 13,
+    },
+    duplicateHint: {
+      color: colors.mutedText,
+      fontSize: 12,
+    },
+    duplicateButton: {
+      marginTop: 4,
+      alignSelf: 'flex-start',
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      paddingVertical: 6,
+      paddingHorizontal: 14,
+      backgroundColor: colors.primary,
+    },
+    duplicateButtonPressed: {
+      opacity: 0.9,
+    },
+    duplicateButtonText: {
+      color: onPrimary,
+      fontWeight: '600',
+    },
     resultContainer: {
       marginTop: 16,
       minHeight: 24,
@@ -809,10 +936,6 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     addressLine: {
       color: colors.text,
       fontWeight: '600',
-    },
-    addressStatus: {
-      color: colors.mutedText,
-      fontSize: 12,
     },
     inlineActions: {
       flexDirection: 'row',

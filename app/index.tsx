@@ -225,6 +225,8 @@ type AdminExperienceMode = 'home' | 'workspace' | 'directory';
 
 type DriverSectionKey = 'driverPlan';
 
+type SectionTone = 'neutral' | 'muted' | 'accent';
+
 type SectionCardProps = {
   title: string;
   description?: string;
@@ -233,6 +235,7 @@ type SectionCardProps = {
   onToggle: () => void;
   children: ReactNode;
   onLayout?: (event: LayoutChangeEvent) => void;
+  tone?: SectionTone;
 };
 
 function SectionCard({
@@ -243,17 +246,30 @@ function SectionCard({
   onToggle,
   children,
   onLayout,
+  tone = 'neutral',
 }: SectionCardProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const toneStyles =
+    tone === 'accent'
+      ? {
+          backgroundColor: isDark ? '#111b2f' : '#e0f2fe',
+          borderColor: isDark ? 'rgba(148, 163, 184, 0.35)' : '#93c5fd',
+        }
+      : tone === 'muted'
+      ? {
+          backgroundColor: isDark ? '#0d1828' : '#f4f4f7',
+          borderColor: isDark ? colors.border : '#e2e8f0',
+        }
+      : {
+          backgroundColor: isDark ? colors.surface : '#ffffff',
+          borderColor: colors.border,
+        };
   return (
     <View
       style={[
         styles.sectionCard,
-        {
-          backgroundColor: colors.surface,
-          borderColor: colors.border,
-          shadowColor: colors.overlay,
-        },
+        toneStyles,
+        { shadowColor: colors.overlay },
       ]}
       onLayout={onLayout}
     >
@@ -630,7 +646,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
         // handled in loadBillingStatus
       }
     })();
-  }, [loadBillingStatus]);
+  }, [loadBillingStatus, refreshSignal]);
 
   useEffect(() => {
     if (!isDevUser) {
@@ -1088,9 +1104,9 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
                   tone="warning"
                 />
               ) : null}
-              {sections
-                .filter((section) => section.visible)
-                .map((section) => (
+            {sections
+              .filter((section) => section.visible)
+              .map((section) => (
                 <SectionCard
                   key={section.key}
                   title={section.title}
@@ -1098,6 +1114,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
                   badge={section.badge}
                   isOpen={openSections[section.key]}
                   onToggle={() => toggleSection(section.key)}
+                  tone="neutral"
                   onLayout={
                     options?.preview
                       ? undefined
@@ -1491,6 +1508,7 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
             badge={section.badge}
             isOpen={openSections[section.key]}
             onToggle={() => toggleSection(section.key)}
+            tone="neutral"
           >
             {section.content}
           </SectionCard>

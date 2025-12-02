@@ -30,18 +30,18 @@ type ThemeContextValue = {
 const THEME_STORAGE_KEY = 'settings/theme';
 
 const lightColors: ThemeColors = {
-  background: '#f8fafc',
+  background: '#e9eef7',
   surface: '#ffffff',
-  border: '#e2e8f0',
+  border: '#d4dbe7',
   text: '#0f172a',
   mutedText: '#475569',
   primary: '#1d4ed8',
-  primaryMuted: '#e0ecff',
+  primaryMuted: '#dbeafe',
   success: '#16a34a',
   successMuted: '#dcfce7',
   danger: '#dc2626',
   dangerMuted: '#fee2e2',
-  overlay: 'rgba(15, 23, 42, 0.45)',
+  overlay: 'rgba(15, 23, 42, 0.35)',
 };
 
 const darkColors: ThemeColors = {
