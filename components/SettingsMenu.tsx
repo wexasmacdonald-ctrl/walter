@@ -1194,14 +1194,14 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 24,
+      paddingHorizontal: 16,
       paddingBottom: 16,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
       backgroundColor: colors.surface,
     },
     modalHeaderSpacer: {
-      width: 80,
+      width: 64,
       height: 32,
     },
     backTrigger: {
@@ -1240,6 +1240,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.text,
       textAlign: 'center',
       flex: 1,
+      flexShrink: 1,
     },
     modalContent: {
       padding: 24,
