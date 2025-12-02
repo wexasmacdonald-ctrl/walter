@@ -103,6 +103,7 @@ type SupabaseUserRow = {
   business_tier?: BusinessTier | null;
   business_name?: string | null;
   workspace_id?: string | null;
+  last_active_at?: string | null;
 };
 
 type SupabaseInsertPayload = {
@@ -116,6 +117,7 @@ type SupabaseInsertPayload = {
   business_tier: BusinessTier;
   business_name: string | null;
   workspace_id: string | null;
+  last_active_at: string | null;
 };
 
 type DriverStopRow = {
@@ -1779,6 +1781,7 @@ async function handleAuthLogin(
           business_tier: 'business',
           business_name: 'Default Workspace',
           workspace_id: null,
+          last_active_at: new Date().toISOString(),
         };
         await supabaseInsert(env, 'users', payload);
         user = await fetchUserById(env, payload.id);
@@ -1798,6 +1801,12 @@ async function handleAuthLogin(
   const passwordValid = await verifyPassword(password, user.password_hash);
   if (!passwordValid) {
     return respond({ error: 'INVALID_CREDENTIALS' }, 401);
+  }
+
+  try {
+    await updateUserLastActiveAt(env, user.id, new Date().toISOString());
+  } catch (error) {
+    console.error('Failed to record last active timestamp', error);
   }
 
   try {
@@ -1884,6 +1893,7 @@ async function handleAuthRegister(
     business_tier: 'free',
     business_name: businessNameInput.length > 0 ? businessNameInput : null,
     workspace_id: null,
+    last_active_at: new Date().toISOString(),
   };
 
   try {
@@ -2037,6 +2047,7 @@ async function handleAdminCreateUser(
     business_tier: businessTierInput === 'free' ? 'free' : 'business',
     business_name: businessNameInput.length > 0 ? businessNameInput : null,
     workspace_id: workspaceId,
+    last_active_at: new Date().toISOString(),
   };
 
   try {
@@ -3457,6 +3468,7 @@ async function handleDevListUsers(
       role: deriveUserRole(user),
       status: normalizeStatus(user.status),
       workspaceId: user.workspace_id ?? null,
+      lastActiveAt: user.last_active_at ?? null,
     }));
     return respond({ users: summaries });
   } catch (error) {
@@ -5363,7 +5375,7 @@ async function listAllUsers(env: Env): Promise<SupabaseUserRow[]> {
   const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
   url.searchParams.set(
     'select',
-    'id,full_name,email_or_phone,role,status,must_change_password,workspace_id,business_tier,business_name'
+    'id,full_name,email_or_phone,role,status,must_change_password,workspace_id,business_tier,business_name,last_active_at'
   );
   const response = await fetch(url.toString(), {
     method: 'GET',
@@ -5995,6 +6007,23 @@ async function updateUserPassword(
   }
 }
 
+async function updateUserLastActiveAt(env: Env, userId: string, timestamp: string): Promise<void> {
+  const url = new URL(`/rest/v1/users?id=eq.${userId}`, normalizeSupabaseUrl(env.SUPABASE_URL!));
+  const response = await fetch(url.toString(), {
+    method: 'PATCH',
+    headers: {
+      ...supabaseHeaders(env),
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify({ last_active_at: timestamp }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase update failed (${response.status}): ${errorBody}`);
+  }
+}
+
 async function updateUserProfile(
   env: Env,
   userId: string,
@@ -6006,6 +6035,7 @@ async function updateUserProfile(
     workspace_id?: string | null;
     role?: UserRole;
     status?: string;
+    last_active_at?: string | null;
   }
 ): Promise<SupabaseUserRow> {
   const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));

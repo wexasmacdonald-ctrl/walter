@@ -88,6 +88,7 @@ export type DevUserSummary = {
   emailOrPhone: string;
   role: UserRole;
   workspaceId: string | null;
+  lastActiveAt: string | null;
 };
 
 export type DriverStopStatus = 'pending' | 'complete';

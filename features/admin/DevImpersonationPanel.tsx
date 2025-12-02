@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -193,7 +194,7 @@ export function DevImpersonationPanel({ refreshSignal }: DevImpersonationPanelPr
           {loading ? (
             <View style={styles.loaderRow}>
               <ActivityIndicator color={colors.primary} />
-              <Text style={styles.loaderText}>Loading accounts…</Text>
+              <Text style={styles.loaderText}>Loading accounts...</Text>
             </View>
           ) : filteredUsers.length === 0 ? (
             <Text style={styles.emptyText}>
@@ -217,11 +218,14 @@ export function DevImpersonationPanel({ refreshSignal }: DevImpersonationPanelPr
                       {entry.fullName || entry.emailOrPhone || 'Unnamed user'}
                     </Text>
                     <Text style={styles.userMeta}>{entry.emailOrPhone}</Text>
-                    <Text style={styles.userMeta}>
-                      {entry.role.toUpperCase()}
-                      {entry.workspaceId ? ` • ${entry.workspaceId}` : ' • Free tier'}
-                    </Text>
-                  </View>
+                <Text style={styles.userMeta}>
+                  {entry.role.toUpperCase()}
+                  {entry.workspaceId ? ` • ${entry.workspaceId}` : ' • Free tier'}
+                </Text>
+                <Text style={styles.userMeta}>
+                  Last active {formatLastActive(entry.lastActiveAt)}
+                </Text>
+              </View>
                   <View style={styles.userActions}>
                     <Pressable
                       style={({ pressed }) => [
@@ -266,6 +270,43 @@ export function DevImpersonationPanel({ refreshSignal }: DevImpersonationPanelPr
       )}
     </View>
   );
+}
+
+function formatLastActive(timestamp: string | null): string {
+  if (!timestamp) {
+    return 'not recorded';
+  }
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    return 'not recorded';
+  }
+  const diffInMs = Date.now() - parsed.getTime();
+  if (diffInMs < 60_000) {
+    return 'just now';
+  }
+  const minutes = Math.floor(diffInMs / 60_000);
+  if (minutes < 60) {
+    return `${minutes} min${minutes === 1 ? '' : 's'} ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours} hr${hours === 1 ? '' : 's'} ago`;
+  }
+  const days = Math.floor(hours / 24);
+  if (days < 7) {
+    return `${days} day${days === 1 ? '' : 's'} ago`;
+  }
+  const now = new Date();
+  const dateFormatter = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: parsed.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+  });
+  const timeFormatter = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  return `${dateFormatter.format(parsed)} at ${timeFormatter.format(parsed)}`;
 }
 
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
@@ -336,7 +377,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderColor: colors.border,
       padding: 12,
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       gap: 12,
     },
     userRowActive: {
@@ -350,10 +391,11 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     flex: 1,
     gap: 2,
   },
-  userActions: {
-    flexDirection: 'row',
-    gap: 6,
-  },
+    userActions: {
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      gap: 8,
+    },
   userName: {
     color: colors.text,
     fontWeight: '600',
@@ -365,10 +407,11 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     viewButton: {
       borderRadius: 999,
       paddingVertical: 6,
-      paddingHorizontal: 16,
+      paddingHorizontal: 14,
       backgroundColor: colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
+      alignSelf: 'flex-start',
     },
     viewButtonPressed: {
       opacity: 0.85,
@@ -380,14 +423,17 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     color: colors.surface,
     fontWeight: '600',
   },
-  deleteButton: {
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: colors.danger,
-    backgroundColor: colors.danger,
-  },
+    deleteButton: {
+      borderRadius: 999,
+      paddingVertical: 6,
+      paddingHorizontal: 14,
+      borderWidth: 1,
+      borderColor: colors.danger,
+      backgroundColor: colors.danger,
+      alignSelf: 'flex-start',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
   deleteButtonPressed: {
     opacity: 0.85,
   },
