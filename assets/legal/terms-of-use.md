@@ -25,19 +25,19 @@ Third-Party Services
 The App relies on service providers such as database or authentication platforms, hosting and CDN services, build or delivery services, map or geocoding providers, and web-based payments. Using the App means you also accept the terms required by those services. We are not responsible for providers we do not control.
 
 Updates and Availability  
-We may update the App automatically. Features can change or be discontinued. Service may be unavailable during maintenance, outages, or events beyond our control.
+We may update the App automatically. Features, tiers, limits, or eligibility may change or be discontinued at any time. Service may be unavailable during maintenance, outages, or events beyond our control. We may throttle, disable, or block usage that appears abusive or unsafe.
 
 Support  
 Support is provided on a reasonable-efforts basis with no guaranteed response or resolution times.
 
 Fees  
-The App offers a free tier and paid business tiers. Billing and subscription upgrades are managed on the web (including Stripe Checkout); the iOS companion does not process in-app purchases. Trial or promotional pricing may change at any time.
+The App offers a free tier and paid business tiers. Billing and subscription upgrades are managed on the web (including Stripe Checkout); the iOS companion does not process in-app purchases. Pricing, plans, and limits may change at any time to the fullest extent permitted by law.
 
 Disclaimers  
 To the maximum extent permitted by law, the App and related services are provided "as is" and "as available," without warranties of any kind, whether express or implied, including merchantability, fitness for a particular purpose, non-infringement, accuracy, or availability.
 
 Limitation of Liability  
-To the maximum extent permitted by law, MacDonald AI and its officers, employees, and agents are not liable for indirect, incidental, special, consequential, exemplary, or punitive damages; any loss of profits, revenue, data, or goodwill; or any damages exceeding CAD $100 in total, arising from the App or these Terms.
+To the maximum extent permitted by law, MacDonald AI and its officers, employees, and agents are not liable for indirect, incidental, special, consequential, exemplary, or punitive damages; any loss of profits, revenue, data, or goodwill; or any damages exceeding the greater of (a) CAD $100 in total or (b) amounts you paid to us in the three months before the claim, arising from the App or these Terms. Your sole remedy for dissatisfaction with the App is to stop using it.
 
 Indemnity  
 You agree to defend, indemnify, and hold harmless MacDonald AI from claims, losses, liabilities, damages, costs, and expenses (including reasonable legal fees) that result from your use of the App, your breach of these Terms, or your violation of law or third-party rights.

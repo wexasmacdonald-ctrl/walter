@@ -12,9 +12,9 @@ Information We Process
 1. Account Details: name or alias, email address or phone number, workspace or company, and role (admin, driver, or developer).  
 2. Credentials: hashed passwords (never stored in plain text) and session tokens.  
 3. Route Data: addresses or stops assigned to you, any admin-supplied lists, and progress updates; we may normalize, deduplicate, or geocode addresses to operate the service.  
-4. Activity and Diagnostics: login timestamps ("last active"), error codes, device or OS version, installation identifiers, and basic usage needed to operate and troubleshoot the App.  
-5. Billing Flow Metadata: when you start a subscription checkout on the web, we exchange customer and workspace identifiers with our payment processor; card data is handled by the processor.  
-We do not collect your precise GPS location, and we do not run advertising or cross-app tracking.
+4. Activity and Diagnostics: login timestamps ("last active"), error codes, device or OS version, installation identifiers, and basic usage needed to operate and troubleshoot the App. If we add crash/analytics tooling, it is limited to operating and improving the App.  
+5. Billing Flow Metadata: when you start a subscription checkout on the web, we exchange customer and workspace identifiers with our payment processor; payment card data is collected and stored by the processor (not by us).  
+If we handle push notifications, we store the device token only to deliver messages. We do not collect your precise GPS location, and we do not run advertising or cross-app tracking.
 
 Purposes of Processing  
 We handle information to create and manage accounts, authenticate access, display and synchronize assigned stops, support administrators, secure the App, prevent abuse (including rate limits and deduplication), diagnose issues, fulfill subscription billing via the web, and satisfy legal requirements.
@@ -31,7 +31,7 @@ Primary hosting occurs in Canada. Some processing may take place in the United S
 
 Retention  
 1. Account, credential, and Route Data are kept until the account is deleted by you or an administrator.  
-2. Security and activity logs (including last-active timestamps) are retained for up to 30 days before deletion.  
+2. Security and activity logs (including last-active timestamps) are retained for up to 30 days before deletion, unless a longer period is required by law or to resolve an active issue.  
 3. Backups are purged on the next scheduled cycle (within 30 days) after an account is deleted.
 
 Your Controls and Rights  
