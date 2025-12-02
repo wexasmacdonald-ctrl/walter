@@ -1,10 +1,10 @@
-Blow-Pin – Terms of Use
+Blow-Grid – Terms of Use
 
 Effective date: December 2, 2025  
 Owner: MacDonald AI, Ottawa, Ontario, Canada  
 Contact: campbell@macdonaldautomation.com
 
-These Terms of Use (the “Terms”) govern your access to and use of the Blow-Pin application and related services (the “App”). “We”, “us”, and “our” mean MacDonald AI. “You” means the individual or entity using the App. By installing, accessing, or using the App, you agree to these Terms. If you do not agree, do not use the App.
+These Terms of Use (the “Terms”) govern your access to and use of the Blow-Grid application and related services (the “App”). “We”, “us”, and “our” mean MacDonald AI. “You” means the individual or entity using the App. By installing, accessing, or using the App, you agree to these Terms. If you do not agree, do not use the App.
 
 ## 1. Acceptance
 Installing, accessing, or using the App means you accept and agree to be bound by these Terms. If you do not agree, you must not use the App.
