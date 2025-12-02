@@ -23,7 +23,7 @@ Legal or Contractual Basis
 Processing is necessary to perform agreements with users, to pursue our legitimate interests in delivering and safeguarding the App, and to meet applicable legal obligations.
 
 Disclosures to Service Providers  
-1. Information may be shared with Service Providers solely to operate the App, including database and API platforms, hosting or CDN services, build and delivery services, map and geocoding providers, payment processors, and diagnostic services.  
+1. Information may be shared with Service Providers solely to operate the App, including but not limited to database and API platforms, hosting or CDN services, build and delivery services, map and geocoding providers, payment processors, and diagnostic services.  
 2. Service Providers follow our instructions, must protect confidentiality, and cannot use data for their own purposes.
 
 International Processing  

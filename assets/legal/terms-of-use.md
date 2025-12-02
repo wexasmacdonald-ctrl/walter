@@ -13,7 +13,7 @@ License
 We grant a limited, revocable, non-exclusive, non-transferable license to install and use the App for your personal or business use. All other rights are reserved.
 
 Acceptable Use  
-You agree not to copy, modify, reverse engineer, or create derivative works of the App; bypass security or access controls; misuse maps or geocoding or send unlawful or harmful content; interfere with the App; or violate third-party terms that apply to services used within the App.
+You agree not to copy, modify, reverse engineer, or create derivative works of the App; bypass security or access controls; misuse maps or geocoding or send unlawful or harmful content; interfere with the App; or violate third-party terms that apply to services used within the App. This includes, but is not limited to, attempts to exploit vulnerabilities, scrape data, or circumvent rate limits.
 
 Stored Data  
 Addresses, stops, and similar records belong to the account holder or whoever supplied them. We may normalize, deduplicate, or geocode addresses to operate the service. Removing an individual account does not automatically delete data that another user still needs, but you can request deletion through in-app tools.
