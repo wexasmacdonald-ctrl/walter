@@ -4,6 +4,7 @@ import {
   Alert,
   AppState,
   AppStateStatus,
+  Dimensions,
   Modal,
   Platform,
   Pressable,
@@ -1161,8 +1162,9 @@ export function SettingsMenu({
 
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
   const isWeb = Platform.OS === 'web';
-  const constrainedWidth = isWeb ? 520 : undefined;
-  const horizontalGutter = isWeb ? 16 : 0;
+  const windowWidth = Dimensions.get('window').width;
+  const constrainedWidth = isWeb ? Math.min(520, windowWidth - 32) : undefined;
+  const horizontalGutter = isWeb ? Math.max(12, (windowWidth - (constrainedWidth ?? windowWidth)) / 2) : 0;
   return StyleSheet.create({
     menuTrigger: {
       paddingHorizontal: 12,
