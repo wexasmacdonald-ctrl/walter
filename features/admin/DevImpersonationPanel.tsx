@@ -80,6 +80,9 @@ export function DevImpersonationPanel({ refreshSignal }: DevImpersonationPanelPr
     setError(null);
     setMessage(null);
     try {
+      if (impersonatorSession) {
+        await endImpersonation();
+      }
       await impersonateUser(targetId);
       setMessage('Now viewing the app exactly how they see it.');
     } catch (err) {

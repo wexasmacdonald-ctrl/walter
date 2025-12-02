@@ -5372,20 +5372,46 @@ async function fetchAdmins(env: Env, workspaceId?: string | null): Promise<UserS
 }
 
 async function listAllUsers(env: Env): Promise<SupabaseUserRow[]> {
-  const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
-  url.searchParams.set(
-    'select',
-    'id,full_name,email_or_phone,role,status,must_change_password,workspace_id,business_tier,business_name,last_active_at'
-  );
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: supabaseHeaders(env),
-  });
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Supabase select users failed (${response.status}): ${errorBody}`);
+  const baseSelect =
+    'id,full_name,email_or_phone,role,status,must_change_password,workspace_id,business_tier,business_name';
+  const extendedSelect = `${baseSelect},last_active_at`;
+
+  const fetchUsers = async (
+    selectClause: string
+  ): Promise<{ ok: boolean; body: string; status: number }> => {
+    const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
+    url.searchParams.set('select', selectClause);
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: supabaseHeaders(env),
+    });
+    const body = await response.text();
+    return { ok: response.ok, body, status: response.status };
+  };
+
+  const extendedAttempt = await fetchUsers(extendedSelect);
+  if (extendedAttempt.ok) {
+    return JSON.parse(extendedAttempt.body) as SupabaseUserRow[];
   }
-  return (await response.json()) as SupabaseUserRow[];
+  if (
+    extendedAttempt.body.includes('last_active_at') ||
+    extendedAttempt.body.includes('last-active-at')
+  ) {
+    const fallbackAttempt = await fetchUsers(baseSelect);
+    if (!fallbackAttempt.ok) {
+      throw new Error(
+        `Supabase select users failed (${fallbackAttempt.status}): ${
+          fallbackAttempt.body || 'fallback_failed'
+        }`
+      );
+    }
+    return JSON.parse(fallbackAttempt.body) as SupabaseUserRow[];
+  }
+  throw new Error(
+    `Supabase select users failed (${extendedAttempt.status}): ${
+      extendedAttempt.body || 'unknown_error'
+    }`
+  );
 }
 
 async function fetchDriversWithoutWorkspace(env: Env): Promise<UserSummary[]> {
