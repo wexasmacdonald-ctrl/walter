@@ -4,7 +4,7 @@ Acceptance
 Installing, accessing, or using Blow-Pin (the "App") means you agree to these Terms of Use. If you do not agree, do not use the App.
 
 Eligibility  
-The App may be used by individuals who receive an account invite. You must comply with these Terms and applicable laws. The App is not directed to children under 13.
+The App may be used by individuals who create an account or are added by an administrator. You must comply with these Terms and applicable laws. The App is not directed to children under 13.
 
 Accounts and Security  
 You are responsible for safeguarding your credentials and for activity under your account. Provide accurate information and keep it up to date. We may suspend or terminate accounts that violate these Terms or threaten the App or its users. Developer-only tools (for example, impersonation or account removal) are restricted to authorized developer roles.
