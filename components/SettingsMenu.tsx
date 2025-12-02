@@ -1161,7 +1161,7 @@ export function SettingsMenu({
 
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
   const isWeb = Platform.OS === 'web';
-  const constrainedWidth = isWeb ? 420 : undefined;
+  const constrainedWidth = isWeb ? 520 : undefined;
   return StyleSheet.create({
     menuTrigger: {
       paddingHorizontal: 12,
@@ -1241,7 +1241,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       padding: 24,
       gap: 24,
       backgroundColor: colors.background,
-      alignItems: isWeb ? 'flex-start' : 'stretch',
+      alignItems: isWeb ? 'center' : 'stretch',
     },
     confirmOverlay: {
       ...StyleSheet.absoluteFillObject,
@@ -1331,8 +1331,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       backgroundColor: colors.surface,
       padding: 20,
       gap: 6,
-      alignSelf: isWeb ? 'flex-start' : 'stretch',
-      width: isWeb ? constrainedWidth : '100%',
+      alignSelf: 'stretch',
+      width: '100%',
+      maxWidth: constrainedWidth,
     },
     profileName: {
       fontSize: 22,
@@ -1355,8 +1356,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     section: {
       gap: 12,
-      alignSelf: isWeb ? 'flex-start' : 'stretch',
-      width: isWeb ? constrainedWidth : '100%',
+      alignSelf: 'stretch',
+      width: '100%',
+      maxWidth: constrainedWidth,
     },
     sectionTitle: {
       fontSize: 14,
@@ -1586,8 +1588,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderWidth: 1,
       borderColor: colors.border,
       gap: 4,
-      alignSelf: isWeb ? 'flex-start' : 'stretch',
-      width: isWeb ? constrainedWidth : '100%',
+      alignSelf: 'stretch',
+      width: '100%',
+      maxWidth: constrainedWidth,
     },
     menuItemPressed: {
       opacity: 0.85,
@@ -1616,8 +1619,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderWidth: 1,
       borderColor: colors.danger,
       gap: 6,
-      alignSelf: isWeb ? 'flex-start' : 'stretch',
-      width: isWeb ? constrainedWidth : '100%',
+      alignSelf: 'stretch',
+      width: '100%',
+      maxWidth: constrainedWidth,
     },
     destructiveItemPressed: {
       opacity: 0.9,
@@ -1638,8 +1642,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     legalFooter: {
       gap: 4,
       paddingTop: 8,
-      alignSelf: isWeb ? 'flex-start' : 'stretch',
-      width: isWeb ? constrainedWidth : '100%',
+      alignSelf: 'stretch',
+      width: '100%',
+      maxWidth: constrainedWidth,
     },
     legalFooterText: {
       color: colors.mutedText,
@@ -1656,8 +1661,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     sheetGroup: {
       gap: 16,
-      alignSelf: isWeb ? 'flex-start' : 'stretch',
-      width: isWeb ? constrainedWidth : '100%',
+      alignSelf: 'stretch',
+      width: '100%',
+      maxWidth: constrainedWidth,
     },
     sheetTitle: {
       fontSize: 20,
