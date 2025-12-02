@@ -25,7 +25,7 @@ What you get:
 
 If the iOS/Android map shows a beige screen, the native Google tiles are missing API keys. Follow `docs/maps-sdk-setup.md` to enable the Maps SDKs, create platform-specific keys, and load them via `GOOGLE_MAPS_IOS_KEY` / `GOOGLE_MAPS_ANDROID_KEY`.
 
-API_BASE lives in features/route-planner/api.ts and points at the Cloudflare worker (default: https://blow-api.wexasmacdonald.workers.dev).
+API_BASE lives in features/route-planner/api.ts and points at the Cloudflare worker (default: https://api.blow-grid.com, override with EXPO_PUBLIC_API_BASE_URL).
 
 ---
 
@@ -123,13 +123,13 @@ Returned payload:
 Health check:
 
 `bash
-curl https://blow-api.wexasmacdonald.workers.dev/health
+curl https://api.blow-grid.com/health
 `
 
 Login test:
 
 `bash
-curl -X POST https://blow-api.wexasmacdonald.workers.dev/auth/login \
+curl -X POST https://api.blow-grid.com/auth/login \
   -H "Content-Type: application/json" \
   --data '{ "identifier": "admin@example.com", "password": "REPLACE_ME" }'
 `
@@ -137,7 +137,7 @@ curl -X POST https://blow-api.wexasmacdonald.workers.dev/auth/login \
 Geocode test:
 
 `bash
-curl -X POST https://blow-api.wexasmacdonald.workers.dev/geocode \
+curl -X POST https://api.blow-grid.com/geocode \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   --data '{ "addresses": [
@@ -149,7 +149,7 @@ curl -X POST https://blow-api.wexasmacdonald.workers.dev/geocode \
 Driver stops test (replace DRIVER_ID and TOKEN):
 
 `bash
-curl -X POST https://blow-api.wexasmacdonald.workers.dev/admin/driver-stops \
+curl -X POST https://api.blow-grid.com/admin/driver-stops \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer TOKEN" \
   --data '{ "driver_id": "DRIVER_ID", "addresses": [

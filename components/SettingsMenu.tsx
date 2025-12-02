@@ -22,6 +22,7 @@ import { useAuth } from '@/features/auth/auth-context';
 import { openPrivacyPolicy, openTermsOfUse } from '@/features/legal/legal-documents';
 import type { AuthUser, BusinessTier } from '@/features/auth/types';
 import type { OrgBillingStatus, SyncDriverSeatResult } from '@/features/auth/api';
+import { API_BASE } from '@/features/route-planner/api';
 
 const isIOS = Platform.OS === 'ios';
 const EXISTING_CUSTOMER_NOTICE =
@@ -505,7 +506,7 @@ export function SettingsMenu({
             : 1;
       setCheckoutLoading(true);
       try {
-        const resp = await fetch('https://blow-api.wexasmacdonald.workers.dev/billing/checkout', {
+        const resp = await fetch(`${API_BASE}/billing/checkout`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
