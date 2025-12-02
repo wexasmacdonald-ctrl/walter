@@ -1162,6 +1162,7 @@ export function SettingsMenu({
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
   const isWeb = Platform.OS === 'web';
   const constrainedWidth = isWeb ? 520 : undefined;
+  const horizontalGutter = isWeb ? 16 : 0;
   return StyleSheet.create({
     menuTrigger: {
       paddingHorizontal: 12,
@@ -1185,6 +1186,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     modalSafeArea: {
       flex: 1,
+      paddingHorizontal: horizontalGutter,
     },
     modalHeader: {
       flexDirection: 'row',
