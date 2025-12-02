@@ -117,7 +117,7 @@ type SupabaseInsertPayload = {
   business_tier: BusinessTier;
   business_name: string | null;
   workspace_id: string | null;
-  last_active_at: string | null;
+  last_active_at?: string | null;
 };
 
 type DriverStopRow = {
@@ -1781,7 +1781,6 @@ async function handleAuthLogin(
           business_tier: 'business',
           business_name: 'Default Workspace',
           workspace_id: null,
-          last_active_at: new Date().toISOString(),
         };
         await supabaseInsert(env, 'users', payload);
         user = await fetchUserById(env, payload.id);
@@ -1893,7 +1892,6 @@ async function handleAuthRegister(
     business_tier: 'free',
     business_name: businessNameInput.length > 0 ? businessNameInput : null,
     workspace_id: null,
-    last_active_at: new Date().toISOString(),
   };
 
   try {
@@ -2047,7 +2045,6 @@ async function handleAdminCreateUser(
     business_tier: businessTierInput === 'free' ? 'free' : 'business',
     business_name: businessNameInput.length > 0 ? businessNameInput : null,
     workspace_id: workspaceId,
-    last_active_at: new Date().toISOString(),
   };
 
   try {
