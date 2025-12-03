@@ -1164,8 +1164,8 @@ export function SettingsMenu({
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
   const isWeb = Platform.OS === 'web';
   const windowWidth = Dimensions.get('window').width;
-  const constrainedWidth = isWeb ? Math.min(520, windowWidth - 16) : undefined;
-  const horizontalGutter = isWeb ? 8 : 0;
+  const constrainedWidth = isWeb ? Math.min(840, windowWidth - 32) : undefined;
+  const horizontalGutter = isWeb ? 16 : 0;
   return StyleSheet.create({
     menuTrigger: {
       paddingHorizontal: 12,

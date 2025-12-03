@@ -291,11 +291,9 @@ function SectionCard({
               <Text style={[styles.sectionBadgeText, { color: colors.primary }]}>{badge}</Text>
             </View>
           ) : null}
-          <Feather
-            name={isOpen ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color={colors.mutedText}
-          />
+          <Text style={[styles.sectionChevron, { color: colors.mutedText }]}>
+            {isOpen ? '⌃' : '⌄'}
+          </Text>
         </View>
       </Pressable>
       {isOpen ? <View style={styles.sectionBody}>{children}</View> : null}
@@ -1683,6 +1681,11 @@ const styles = StyleSheet.create({
   sectionDescription: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  sectionChevron: {
+    fontSize: 18,
+    fontWeight: '700',
+    paddingLeft: 8,
   },
   sectionHeaderActions: {
     flexDirection: 'row',

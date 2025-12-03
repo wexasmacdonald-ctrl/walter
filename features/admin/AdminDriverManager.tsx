@@ -98,11 +98,11 @@ export function AdminDriverManager({
       typeof identifier === 'string'
         ? identifier
         : typeof (identifier as any)?.nativeEvent?.text === 'string'
-        ? (identifier as any).nativeEvent.text
-        : searchValue;
+          ? (identifier as any).nativeEvent.text
+          : searchValue;
     const trimmed = input?.trim?.() ?? '';
     if (!trimmed || !token) {
-      setSearchError('Enter an email or phone number.');
+      setSearchError('Enter a name, email, or phone number.');
       return;
     }
     if (isDevUser) {
@@ -114,23 +114,20 @@ export function AdminDriverManager({
     setSearchError(null);
     setLookupResult(null);
     try {
-      const result = await authApi.findDriverByIdentifier(token, trimmed, workspaceId ?? undefined);
-      setLookupResult(result);
+      const results = await authApi.searchDrivers(token, trimmed, workspaceId ?? undefined);
+      if (results.length === 0) {
+        setSearchError('No driver found with that query.');
+        return;
+      }
+      setLookupResult(results[0]);
+      setSuggestions(results);
     } catch (err) {
       setLookupResult(null);
-      const rawMessage =
-        (err as { message?: unknown })?.message && typeof (err as { message?: unknown }).message === 'string'
-          ? (err as { message: string }).message
-          : '';
-      if (rawMessage.includes('USER_NOT_FOUND')) {
-        setSearchError('No driver found with that contact.');
-      } else {
-        setSearchError(
-          getFriendlyError(err, {
-            fallback: 'No driver found with that contact.',
-          })
-        );
-      }
+      setSearchError(
+        getFriendlyError(err, {
+          fallback: 'No driver found with that query.',
+        })
+      );
     } finally {
       setSearching(false);
     }
