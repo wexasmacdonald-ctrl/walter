@@ -18,9 +18,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { useFonts } from 'expo-font';
-import FeatherFont from '@expo/vector-icons/build/Feather';
-import MaterialIconsFont from '@expo/vector-icons/build/MaterialIcons';
 
 import { LoginScreen } from '@/features/auth/LoginScreen';
 import { useAuth } from '@/features/auth/auth-context';
@@ -70,15 +67,7 @@ if (!TextComponent.defaultProps) {
 TextComponent.defaultProps.selectable = true;
 
 function PinPlannerApp() {
-  const [fontsLoaded] = useFonts({
-    Feather: FeatherFont.font,
-    MaterialIcons: MaterialIconsFont.font,
-  });
   const { status, user } = useAuth();
-
-  if (!fontsLoaded) {
-    return null;
-  }
 
   if (FORCE_DEV_MINIMAL_UI) {
     return (
