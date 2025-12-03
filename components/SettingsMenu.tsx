@@ -1164,8 +1164,8 @@ export function SettingsMenu({
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
   const isWeb = Platform.OS === 'web';
   const windowWidth = Dimensions.get('window').width;
-  const constrainedWidth = isWeb ? Math.min(840, windowWidth - 32) : undefined;
-  const horizontalGutter = isWeb ? 16 : 0;
+  const constrainedWidth = isWeb ? Math.min(1100, windowWidth - 64) : undefined;
+  const horizontalGutter = isWeb ? 24 : 0;
   return StyleSheet.create({
     menuTrigger: {
       paddingHorizontal: 12,
@@ -1247,7 +1247,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       padding: 24,
       gap: 24,
       backgroundColor: colors.background,
-      alignItems: 'stretch',
+      alignItems: isWeb ? 'center' : 'stretch',
     },
     confirmOverlay: {
       ...StyleSheet.absoluteFillObject,
@@ -1337,7 +1337,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       backgroundColor: colors.surface,
       padding: 20,
       gap: 6,
-      alignSelf: 'stretch',
+      alignSelf: 'center',
       width: '100%',
       maxWidth: constrainedWidth,
     },
@@ -1362,7 +1362,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     section: {
       gap: 12,
-      alignSelf: 'stretch',
+      alignSelf: 'center',
       width: '100%',
       maxWidth: constrainedWidth,
     },
@@ -1594,7 +1594,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderWidth: 1,
       borderColor: colors.border,
       gap: 4,
-      alignSelf: 'stretch',
+      alignSelf: 'center',
       width: '100%',
       maxWidth: constrainedWidth,
     },
@@ -1625,7 +1625,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderWidth: 1,
       borderColor: colors.danger,
       gap: 6,
-      alignSelf: 'stretch',
+      alignSelf: 'center',
       width: '100%',
       maxWidth: constrainedWidth,
     },
@@ -1648,7 +1648,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     legalFooter: {
       gap: 4,
       paddingTop: 8,
-      alignSelf: 'stretch',
+      alignSelf: 'center',
       width: '100%',
       maxWidth: constrainedWidth,
     },
@@ -1667,7 +1667,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     sheetGroup: {
       gap: 16,
-      alignSelf: 'stretch',
+      alignSelf: 'center',
       width: '100%',
       maxWidth: constrainedWidth,
     },
