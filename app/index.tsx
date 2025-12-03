@@ -36,6 +36,7 @@ import { SettingsMenu } from '@/components/SettingsMenu';
 import { useTheme } from '@/features/theme/theme-context';
 import { AppHeader } from '@/components/AppHeader';
 import { getFriendlyError } from '@/features/shared/get-friendly-error';
+import { ChevronIcon } from '@/components/icons/ChevronIcon';
 
 const SHOW_DEV_TEST_SCREEN = false;
 
@@ -300,10 +301,11 @@ function SectionCard({
               },
             ]}
           >
-            <Feather
-              name={isOpen ? 'chevron-up' : 'chevron-down'}
+            <ChevronIcon
               size={18}
               color={colors.mutedText}
+              strokeWidth={2}
+              rotation={isOpen ? 180 : 0}
             />
           </View>
         </View>
@@ -451,10 +453,11 @@ function CompanyShowcase({
                     </View>
                   </View>
                   <View style={styles.companyRowBadgeArea}>
-                    <Feather
-                      name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                    <ChevronIcon
                       size={18}
                       color={colors.mutedText}
+                      strokeWidth={2}
+                      rotation={isExpanded ? 180 : 0}
                     />
                   </View>
                 </Pressable>
