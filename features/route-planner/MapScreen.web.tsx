@@ -37,79 +37,6 @@ type MapPin = {
 const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 };
 const DEFAULT_ZOOM = 12;
 
-const GOOGLE_LIGHT_MAP_STYLE: google.maps.MapTypeStyle[] = [
-  { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
-  { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#616161' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#f5f5f5' }] },
-  {
-    featureType: 'poi',
-    elementType: 'geometry',
-    stylers: [{ color: '#eeeeee' }],
-  },
-  {
-    featureType: 'poi.park',
-    elementType: 'geometry',
-    stylers: [{ color: '#e5e5e5' }],
-  },
-  {
-    featureType: 'road',
-    elementType: 'geometry',
-    stylers: [{ color: '#ffffff' }],
-  },
-  {
-    featureType: 'road.highway',
-    elementType: 'geometry',
-    stylers: [{ color: '#dadada' }],
-  },
-  {
-    featureType: 'transit',
-    elementType: 'geometry',
-    stylers: [{ color: '#e5e5e5' }],
-  },
-];
-
-const GOOGLE_DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
-  { elementType: 'geometry', stylers: [{ color: '#0d1526' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#dbeafe' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#0d1526' }] },
-  {
-    featureType: 'administrative',
-    elementType: 'geometry.stroke',
-    stylers: [{ color: '#1f2937' }],
-  },
-  {
-    featureType: 'poi',
-    elementType: 'geometry',
-    stylers: [{ color: '#122033' }],
-  },
-  {
-    featureType: 'poi.park',
-    elementType: 'geometry',
-    stylers: [{ color: '#123026' }],
-  },
-  {
-    featureType: 'road',
-    elementType: 'geometry',
-    stylers: [{ color: '#1f2a3c' }],
-  },
-  {
-    featureType: 'road',
-    elementType: 'geometry.stroke',
-    stylers: [{ color: '#3b4a62' }],
-  },
-  {
-    featureType: 'transit',
-    elementType: 'geometry',
-    stylers: [{ color: '#1b2433' }],
-  },
-  {
-    featureType: 'water',
-    elementType: 'geometry',
-    stylers: [{ color: '#0b1220' }],
-  },
-];
-
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
 export function MapScreen({
   pins,
@@ -404,10 +331,8 @@ export function MapScreen({
   }
 
   const mapTypeId = mapType === 'satellite' ? 'satellite' : 'roadmap';
-  const mapStyle = useMemo<google.maps.MapTypeStyle[] | undefined>(
-    () => (mapType === 'standard' ? (isDark ? GOOGLE_DARK_MAP_STYLE : GOOGLE_LIGHT_MAP_STYLE) : undefined),
-    [isDark, mapType]
-  );
+  // Use default Google styling for standard maps so base layers/buildings remain visible.
+  const mapStyle = useMemo<google.maps.MapTypeStyle[] | undefined>(() => undefined, []);
   const mapOptions = useMemo<google.maps.MapOptions>(
     () => ({
       disableDefaultUI: true,
