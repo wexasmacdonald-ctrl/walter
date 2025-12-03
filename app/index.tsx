@@ -17,7 +17,6 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
 
 import { LoginScreen } from '@/features/auth/LoginScreen';
 import { useAuth } from '@/features/auth/auth-context';
@@ -37,6 +36,7 @@ import { useTheme } from '@/features/theme/theme-context';
 import { AppHeader } from '@/components/AppHeader';
 import { getFriendlyError } from '@/features/shared/get-friendly-error';
 import { ChevronIcon } from '@/components/icons/ChevronIcon';
+import { BriefcaseIcon } from '@/components/icons/BriefcaseIcon';
 
 const SHOW_DEV_TEST_SCREEN = false;
 
@@ -441,7 +441,7 @@ function CompanyShowcase({
                         },
                       ]}
                     >
-                      <Feather name="briefcase" size={18} color={colors.text} />
+                      <BriefcaseIcon size={18} color={colors.text} />
                     </View>
                     <View style={styles.companyRowText}>
                       <Text style={[styles.companyCardName, { color: colors.text }]}>
