@@ -291,9 +291,11 @@ function SectionCard({
               <Text style={[styles.sectionBadgeText, { color: colors.primary }]}>{badge}</Text>
             </View>
           ) : null}
-          <Text style={[styles.sectionChevron, { color: colors.mutedText }]}>
-            {isOpen ? '⌃' : '⌄'}
-          </Text>
+          <View style={[styles.sectionChevronContainer, { borderColor: colors.border }]}>
+            <Text style={[styles.sectionChevron, { color: colors.mutedText }]}>
+              {isOpen ? '▴' : '▾'}
+            </Text>
+          </View>
         </View>
       </Pressable>
       {isOpen ? <View style={styles.sectionBody}>{children}</View> : null}
@@ -1691,6 +1693,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  sectionChevronContainer: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionBadge: {
     borderRadius: 999,
