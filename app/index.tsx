@@ -291,10 +291,20 @@ function SectionCard({
               <Text style={[styles.sectionBadgeText, { color: colors.primary }]}>{badge}</Text>
             </View>
           ) : null}
-          <View style={[styles.sectionChevronContainer, { borderColor: colors.border }]}>
-            <Text style={[styles.sectionChevron, { color: colors.mutedText }]}>
-              {isOpen ? '▴' : '▾'}
-            </Text>
+          <View
+            style={[
+              styles.sectionChevronContainer,
+              {
+                borderColor: colors.border,
+                backgroundColor: isDark ? '#0f172a' : '#f8fafc',
+              },
+            ]}
+          >
+            <Feather
+              name={isOpen ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.mutedText}
+            />
           </View>
         </View>
       </Pressable>
