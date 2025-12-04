@@ -246,7 +246,10 @@ export function MapScreen({
   }, [pins]);
 
   const coordinates = useMemo<LatLng[]>(() => markers.map((marker) => marker.coordinate), [markers]);
-  const seedRegion = useMemo<Region>(() => {
+  const derivedRegion: Region = useMemo(() => {
+    if (cameraRegion) {
+      return cameraRegion;
+    }
     if (lastCameraRegion) {
       return lastCameraRegion;
     }
@@ -260,14 +263,7 @@ export function MapScreen({
       };
     }
     return { latitude: 0, longitude: 0, latitudeDelta: 0.5, longitudeDelta: 0.5 };
-  }, [coordinates]);
-
-  useEffect(() => {
-    if (!cameraRegion && seedRegion) {
-      setCameraRegion(seedRegion);
-      lastCameraRegion = seedRegion;
-    }
-  }, [cameraRegion, seedRegion]);
+  }, [cameraRegion, coordinates]);
 
   useEffect(() => {
     if (selectedId && !markers.some((marker) => marker.id === selectedId)) {
@@ -586,7 +582,7 @@ export function MapScreen({
           showsUserLocation
           showsCompass
           showsMyLocationButton
-          region={cameraRegion ?? undefined}
+          region={derivedRegion}
           onRegionChangeComplete={(region) => {
             setCameraRegion(region);
             lastCameraRegion = region;
@@ -627,7 +623,7 @@ export function MapScreen({
               showsUserLocation
               showsCompass
               showsMyLocationButton
-              region={cameraRegion ?? undefined}
+              region={derivedRegion}
               onRegionChangeComplete={(region) => {
                 setCameraRegion(region);
                 lastCameraRegion = region;
