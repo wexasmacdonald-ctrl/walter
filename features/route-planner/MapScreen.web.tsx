@@ -335,9 +335,14 @@ export function MapScreen({
   const mapStyle = useMemo<google.maps.MapTypeStyle[] | undefined>(() => undefined, []);
   const mapOptions = useMemo<google.maps.MapOptions>(
     () => ({
-      disableDefaultUI: true,
+      disableDefaultUI: false,
       clickableIcons: false,
       gestureHandling: 'greedy',
+      rotateControl: true,
+      fullscreenControl: false,
+      streetViewControl: false,
+      mapTypeControl: false,
+      tilt: 45,
       styles: mapStyle,
     }),
     [mapStyle]
