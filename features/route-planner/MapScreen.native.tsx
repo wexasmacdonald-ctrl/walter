@@ -14,8 +14,11 @@ import * as Location from 'expo-location';
 
 import { useTheme } from '@/features/theme/theme-context';
 import type MapView from 'react-native-maps';
-import type { LatLng, MapPressEvent } from 'react-native-maps';
+import type { LatLng, MapPressEvent, Region } from 'react-native-maps';
 import type { Stop } from './types';
+
+// Persist camera between remounts so user zoom stays sticky even if the component re-renders.
+let lastCameraRegion: Region | null = null;
 
 const GOOGLE_LIGHT_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
@@ -163,6 +166,7 @@ export function MapScreen({
   const [confirmed, setConfirmed] = useState<Record<string, number>>({});
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [actioningId, setActioningId] = useState<string | null>(null);
+  const [cameraRegion, setCameraRegion] = useState<Region | null>(lastCameraRegion);
 
   const mapRef = useRef<MapView | null>(null);
   const modalMapRef = useRef<MapView | null>(null);
@@ -245,7 +249,19 @@ export function MapScreen({
 
   useEffect(() => {
     // Intentionally no auto-fit; user controls the camera.
-  }, [coordinates]);
+    // If we have no camera yet and we have pins, seed from the first pin.
+    if (!cameraRegion && coordinates.length > 0) {
+      const first = coordinates[0];
+      const seed: Region = {
+        latitude: first.latitude,
+        longitude: first.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+      setCameraRegion(seed);
+      lastCameraRegion = seed;
+    }
+  }, [cameraRegion, coordinates]);
 
   useEffect(() => {
     if (selectedId && !markers.some((marker) => marker.id === selectedId)) {
@@ -564,6 +580,11 @@ export function MapScreen({
           showsUserLocation
           showsCompass
           showsMyLocationButton
+          initialRegion={cameraRegion ?? undefined}
+          onRegionChangeComplete={(region) => {
+            setCameraRegion(region);
+            lastCameraRegion = region;
+          }}
           rotateEnabled
           pitchEnabled
           zoomEnabled
@@ -600,6 +621,11 @@ export function MapScreen({
               showsUserLocation
               showsCompass
               showsMyLocationButton
+              initialRegion={cameraRegion ?? undefined}
+              onRegionChangeComplete={(region) => {
+                setCameraRegion(region);
+                lastCameraRegion = region;
+              }}
               rotateEnabled
               pitchEnabled
               zoomEnabled
