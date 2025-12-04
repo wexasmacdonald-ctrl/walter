@@ -316,7 +316,10 @@ export function MapScreen({
       tilt: 45,
       styles: mapStyle,
     };
-    return GOOGLE_MAP_ID ? { ...base, mapId: GOOGLE_MAP_ID } : base;
+    if (GOOGLE_MAP_ID) {
+      return { ...base, mapId: GOOGLE_MAP_ID };
+    }
+    return base;
   }, [mapStyle]);
 
   const handleMapLoad = (map: google.maps.Map) => {
@@ -339,10 +342,10 @@ export function MapScreen({
     return (
       <>
         <Pressable style={styles.fullScreenButton} onPress={() => applyHeading(-15)}>
-          <Text style={styles.fullScreenButtonText}>Rotate -15</Text>
+          <Text style={styles.fullScreenButtonText}>⟲</Text>
         </Pressable>
         <Pressable style={styles.fullScreenButton} onPress={() => applyHeading(15)}>
-          <Text style={styles.fullScreenButtonText}>Rotate +15</Text>
+          <Text style={styles.fullScreenButtonText}>⟳</Text>
         </Pressable>
       </>
     );
@@ -797,19 +800,19 @@ function mixHexColor(base: string, mix: string, ratio: number): string {
   const r = Math.round(br + (mr - br) * amount);
   const g = Math.round(bg + (mg - bg) * amount);
   const b = Math.round(bb + (mb - bb) * amount);
-  return `rgb(${r}, ${g}, ${b})`;
+  return gb(, , );
 }
 
 function hexToRgba(hex: string, alpha: number): string {
   const [r, g, b] = parseHex(hex);
   const clampedAlpha = Math.max(0, Math.min(1, alpha));
-  return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`;
+  return gba(, , , );
 }
 
 function parseHex(input: string): [number, number, number] {
   const value = input.trim().replace(/^#/, '');
   if (value.length !== 6) {
-    throw new Error(`Expected 6-digit hex color, received: ${input}`);
+    throw new Error(Expected 6-digit hex color, received: );
   }
   const r = Number.parseInt(value.slice(0, 2), 16);
   const g = Number.parseInt(value.slice(2, 4), 16);
