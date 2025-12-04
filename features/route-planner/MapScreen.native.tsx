@@ -163,7 +163,6 @@ export function MapScreen({
   const [confirmed, setConfirmed] = useState<Record<string, number>>({});
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [actioningId, setActioningId] = useState<string | null>(null);
-  const [userAdjustedCamera, setUserAdjustedCamera] = useState(false);
   const hasAutoFit = useRef(false);
 
   const mapRef = useRef<MapView | null>(null);
@@ -246,14 +245,14 @@ export function MapScreen({
   const coordinates = useMemo<LatLng[]>(() => markers.map((marker) => marker.coordinate), [markers]);
 
   useEffect(() => {
-    if (coordinates.length > 0 && !userAdjustedCamera && !hasAutoFit.current) {
+    if (coordinates.length > 0 && !hasAutoFit.current) {
       fitToMarkers(mapRef.current, coordinates);
       if (isFullScreen) {
         fitToMarkers(modalMapRef.current, coordinates);
       }
       hasAutoFit.current = true;
     }
-  }, [coordinates, isFullScreen, userAdjustedCamera]);
+  }, [coordinates, isFullScreen]);
 
   useEffect(() => {
     if (selectedId && !markers.some((marker) => marker.id === selectedId)) {
@@ -578,11 +577,6 @@ export function MapScreen({
               setSelectedId(null);
             }
           }}
-          onRegionChange={() => {
-            if (!userAdjustedCamera) {
-              setUserAdjustedCamera(true);
-            }
-          }}
         >
           {renderMarkers()}
         </MapViewComponent>
@@ -614,11 +608,6 @@ export function MapScreen({
               onPress={(event: MapPressEvent) => {
                 if (event.nativeEvent.action !== 'marker-press') {
                   setSelectedId(null);
-                }
-              }}
-              onRegionChange={() => {
-                if (!userAdjustedCamera) {
-                  setUserAdjustedCamera(true);
                 }
               }}
             >
