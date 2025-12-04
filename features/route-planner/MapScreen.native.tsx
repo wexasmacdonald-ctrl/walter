@@ -564,6 +564,9 @@ export function MapScreen({
           showsUserLocation
           showsCompass
           showsMyLocationButton
+          rotateEnabled
+          pitchEnabled
+          zoomEnabled
           customMapStyle={mapCustomStyle}
           userInterfaceStyle={isDark ? 'dark' : 'light'}
           onPress={(event: MapPressEvent) => {
@@ -597,6 +600,9 @@ export function MapScreen({
               showsUserLocation
               showsCompass
               showsMyLocationButton
+              rotateEnabled
+              pitchEnabled
+              zoomEnabled
               customMapStyle={mapCustomStyle}
               userInterfaceStyle={isDark ? 'dark' : 'light'}
               onPress={(event: MapPressEvent) => {
