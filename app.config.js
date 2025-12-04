@@ -53,7 +53,7 @@ export default ({ config }) => {
     },
     web: {
       output: 'static',
-      favicon: './assets/images/favicon.png?v=2',
+      favicon: './assets/images/favicon-v2.png',
       manifest: {
         icons: [
           {
