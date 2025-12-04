@@ -385,7 +385,6 @@ export function MapScreen({
             options={mapOptions}
             onClick={() => setSelectedId(null)}
           >
-            <BoundsController markers={mapPins} />
             {renderMarkers()}
           </Map>
           {renderOverlay()}
@@ -403,20 +402,19 @@ export function MapScreen({
               </View>
             </View>
             <View style={styles.modalMapWrapper}>
-              <Map
-                style={styles.mapCanvas}
-                defaultCenter={initialCenter}
-                defaultZoom={DEFAULT_ZOOM}
-                mapTypeId={mapTypeId}
-                options={mapOptions}
-                onClick={() => setSelectedId(null)}
-              >
-                <BoundsController markers={mapPins} />
-                {renderMarkers()}
-              </Map>
-              {renderOverlay()}
-              {renderToast('modal')}
-            </View>
+            <Map
+              style={styles.mapCanvas}
+              defaultCenter={initialCenter}
+              defaultZoom={DEFAULT_ZOOM}
+              mapTypeId={mapTypeId}
+              options={mapOptions}
+              onClick={() => setSelectedId(null)}
+            >
+              {renderMarkers()}
+            </Map>
+            {renderOverlay()}
+            {renderToast('modal')}
+          </View>
           </View>
         </Modal>
       </View>
@@ -522,33 +520,6 @@ function BadgeMarker({
       zIndex={visual.zIndex}
     />
   );
-}
-
-function BoundsController({ markers }: { markers: MapPin[] }) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!map || markers.length === 0) {
-      return;
-    }
-
-    const maps = (globalThis as any).google?.maps;
-    if (!maps) {
-      return;
-    }
-
-    if (markers.length === 1) {
-      map.setZoom(15);
-      map.panTo(markers[0].position);
-      return;
-    }
-
-    const bounds = new maps.LatLngBounds();
-    markers.forEach((marker) => bounds.extend(marker.position));
-    map.fitBounds(bounds, { top: 80, right: 40, bottom: 80, left: 40 });
-  }, [map, markers]);
-
-  return null;
 }
 
 function extractHouseNumber(address: string | null | undefined): string | null {
