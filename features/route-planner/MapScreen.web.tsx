@@ -316,39 +316,11 @@ export function MapScreen({
       tilt: 45,
       styles: mapStyle,
     };
-    if (GOOGLE_MAP_ID) {
-      return { ...base, mapId: GOOGLE_MAP_ID };
-    }
-    return base;
+    return GOOGLE_MAP_ID ? { ...base, mapId: GOOGLE_MAP_ID } : base;
   }, [mapStyle]);
 
   const handleMapLoad = (map: google.maps.Map) => {
     mapRef.current = map;
-  };
-
-  const applyHeading = (delta: number) => {
-    if (!GOOGLE_MAP_ID || !mapRef.current) {
-      return;
-    }
-    const current = mapRef.current.getHeading() ?? 0;
-    const next = (current + delta + 360) % 360;
-    mapRef.current.setHeading(next);
-  };
-
-  const renderRotateControls = () => {
-    if (!GOOGLE_MAP_ID) {
-      return null;
-    }
-    return (
-      <>
-        <Pressable style={styles.fullScreenButton} onPress={() => applyHeading(-15)}>
-          <Text style={styles.fullScreenButtonText}>⟲</Text>
-        </Pressable>
-        <Pressable style={styles.fullScreenButton} onPress={() => applyHeading(15)}>
-          <Text style={styles.fullScreenButtonText}>⟳</Text>
-        </Pressable>
-      </>
-    );
   };
 
   if (loading) {
@@ -378,7 +350,7 @@ export function MapScreen({
         <View style={styles.header}>
           <View style={styles.headerActions}>
             {renderMapTypeToggle()}
-            {renderRotateControls()}
+            
             <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
               <Text style={styles.fullScreenButtonText}>Full Screen</Text>
             </Pressable>
@@ -406,7 +378,7 @@ export function MapScreen({
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderActions}>
                 {renderMapTypeToggle()}
-                {renderRotateControls()}
+                
                 <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(false)}>
                   <Text style={styles.fullScreenButtonText}>Close</Text>
                 </Pressable>
@@ -800,19 +772,19 @@ function mixHexColor(base: string, mix: string, ratio: number): string {
   const r = Math.round(br + (mr - br) * amount);
   const g = Math.round(bg + (mg - bg) * amount);
   const b = Math.round(bb + (mb - bb) * amount);
-  return gb(, , );
+  return `rgb(${r}, ${g}, ${b})`;
 }
 
 function hexToRgba(hex: string, alpha: number): string {
   const [r, g, b] = parseHex(hex);
   const clampedAlpha = Math.max(0, Math.min(1, alpha));
-  return gba(, , , );
+  return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`;
 }
 
 function parseHex(input: string): [number, number, number] {
   const value = input.trim().replace(/^#/, '');
   if (value.length !== 6) {
-    throw new Error(Expected 6-digit hex color, received: );
+    throw new Error(`Expected 6-digit hex color, received: ${input}`);
   }
   const r = Number.parseInt(value.slice(0, 2), 16);
   const g = Number.parseInt(value.slice(2, 4), 16);
