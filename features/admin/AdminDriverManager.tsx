@@ -363,21 +363,22 @@ export function AdminDriverManager({
         <View style={styles.searchCard}>
           <Text style={styles.columnHeading}>Find a driver</Text>
           <Text style={styles.searchHint}>
-            Search by email or phone. Add them to your workspace or remove them if they already belong.
+            Type name, email, or phone. Suggestions appear as you type; select to fill and search.
           </Text>
           <View style={styles.searchRow}>
             <TextInput
               style={styles.searchInput}
-              placeholder="driver@example.com"
+              placeholder="Name, email, or phone"
               placeholderTextColor={colors.mutedText}
               value={searchValue}
               onChangeText={(text) => {
                 setSearchValue(text);
                 setSearchError(null);
+                void fetchSuggestions(text);
               }}
               autoCapitalize="none"
               autoCorrect={false}
-              keyboardType="email-address"
+              keyboardType="default"
               onSubmitEditing={({ nativeEvent }) => void handleSearch(nativeEvent.text)}
             />
             <Pressable
