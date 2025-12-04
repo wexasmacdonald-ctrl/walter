@@ -5434,7 +5434,7 @@ async function searchDriversByQuery(
   const escaped = query.replace(/[%_]/g, '\\$&');
   url.searchParams.set('select', 'id,full_name,email_or_phone,role,status,workspace_id');
   url.searchParams.set('role', 'eq.driver');
-  url.searchParams.set('or', `full_name.ilike.%${escaped}%,email_or_phone.ilike.%${escaped}%`);
+  url.searchParams.set('or', `(full_name.ilike.%${escaped}%,email_or_phone.ilike.%${escaped}%)`);
   url.searchParams.append('order', 'full_name.asc');
   url.searchParams.set('limit', '50');
   if (workspaceId) {
