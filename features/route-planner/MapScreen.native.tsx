@@ -14,7 +14,7 @@ import * as Location from 'expo-location';
 
 import { useTheme } from '@/features/theme/theme-context';
 import type MapView from 'react-native-maps';
-import type { LatLng, MapPressEvent } from 'react-native-maps';
+import type { LatLng, MapPressEvent, Region } from 'react-native-maps';
 import type { Stop } from './types';
 
 const GOOGLE_LIGHT_MAP_STYLE = [
@@ -164,6 +164,7 @@ export function MapScreen({
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [actioningId, setActioningId] = useState<string | null>(null);
   const hasAutoFit = useRef(false);
+  const lastRegionRef = useRef<Region | null>(null);
 
   const mapRef = useRef<MapView | null>(null);
   const modalMapRef = useRef<MapView | null>(null);
@@ -308,6 +309,16 @@ export function MapScreen({
     setSelectedId((prev) => (prev === id ? null : id));
   };
 
+  const restoreCamera = () => {
+    const region = lastRegionRef.current;
+    if (region) {
+      mapRef.current?.animateToRegion(region, 150);
+      if (isFullScreen) {
+        modalMapRef.current?.animateToRegion(region, 150);
+      }
+    }
+  };
+
   const handleConfirm = async (id: string) => {
     if (actioningId) {
       return;
@@ -327,6 +338,7 @@ export function MapScreen({
       setActioningId(null);
     }
     setSelectedId(null);
+    restoreCamera();
   };
 
   const handleUndo = (id: string) => {
@@ -577,6 +589,10 @@ export function MapScreen({
               setSelectedId(null);
             }
           }}
+          onRegionChangeComplete={(region) => {
+            lastRegionRef.current = region;
+            hasAutoFit.current = true;
+          }}
         >
           {renderMarkers()}
         </MapViewComponent>
@@ -609,6 +625,10 @@ export function MapScreen({
                 if (event.nativeEvent.action !== 'marker-press') {
                   setSelectedId(null);
                 }
+              }}
+              onRegionChangeComplete={(region) => {
+                lastRegionRef.current = region;
+                hasAutoFit.current = true;
               }}
             >
               {renderMarkers()}
