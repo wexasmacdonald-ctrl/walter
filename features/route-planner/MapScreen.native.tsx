@@ -17,6 +17,9 @@ import type MapView from 'react-native-maps';
 import type { LatLng, MapPressEvent, Region } from 'react-native-maps';
 import type { Stop } from './types';
 
+// Persist camera between remounts so user zoom stays sticky even if the component re-renders.
+let lastCameraRegion: Region | null = null;
+
 const GOOGLE_LIGHT_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
   { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
@@ -246,6 +249,16 @@ export function MapScreen({
   const coordinates = useMemo<LatLng[]>(() => markers.map((marker) => marker.coordinate), [markers]);
 
   useEffect(() => {
+    // If we have a remembered camera, restore it instead of fitting.
+    if (!hasAutoFit.current && lastCameraRegion) {
+      mapRef.current?.animateToRegion(lastCameraRegion, 0);
+      if (isFullScreen) {
+        modalMapRef.current?.animateToRegion(lastCameraRegion, 0);
+      }
+      hasAutoFit.current = true;
+      return;
+    }
+
     if (coordinates.length > 0 && !hasAutoFit.current) {
       fitToMarkers(mapRef.current, coordinates);
       if (isFullScreen) {
