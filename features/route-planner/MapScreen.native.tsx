@@ -13,7 +13,7 @@ import {
 import * as Location from 'expo-location';
 
 import { useTheme } from '@/features/theme/theme-context';
-import type MapView from 'react-native-maps';
+import type MapView, { Camera } from 'react-native-maps';
 import type { LatLng, MapPressEvent, Region } from 'react-native-maps';
 import type { Stop } from './types';
 
@@ -249,8 +249,11 @@ export function MapScreen({
   const coordinates = useMemo<LatLng[]>(() => markers.map((marker) => marker.coordinate), [markers]);
 
   useEffect(() => {
-    // If we have a remembered camera, restore it instead of fitting.
-    if (!hasAutoFit.current && lastCameraRegion) {
+    if (hasAutoFit.current) {
+      return;
+    }
+
+    if (lastCameraRegion) {
       mapRef.current?.animateToRegion(lastCameraRegion, 0);
       if (isFullScreen) {
         modalMapRef.current?.animateToRegion(lastCameraRegion, 0);
@@ -259,7 +262,7 @@ export function MapScreen({
       return;
     }
 
-    if (coordinates.length > 0 && !hasAutoFit.current) {
+    if (coordinates.length > 0) {
       fitToMarkers(mapRef.current, coordinates);
       if (isFullScreen) {
         fitToMarkers(modalMapRef.current, coordinates);
@@ -332,10 +335,41 @@ export function MapScreen({
     }
   };
 
+  const captureCameraRegion = async () => {
+    const map = mapRef.current;
+    if (!map || typeof (map as any).getCamera !== 'function') {
+      return;
+    }
+    try {
+      const camera = (await (map as any).getCamera()) as Camera;
+      const { center, zoom, pitch, heading, altitude } = camera;
+      // Approximate deltas from zoom if available; fallback to previous deltas or small window.
+      const latitudeDelta =
+        typeof zoom === 'number' && Number.isFinite(zoom)
+          ? Math.max(0.002, 0.02 * Math.pow(2, 12 - zoom))
+          : lastRegionRef.current?.latitudeDelta ?? 0.01;
+      const longitudeDelta =
+        typeof zoom === 'number' && Number.isFinite(zoom)
+          ? Math.max(0.002, 0.02 * Math.pow(2, 12 - zoom))
+          : lastRegionRef.current?.longitudeDelta ?? 0.01;
+      const region: Region = {
+        latitude: center.latitude,
+        longitude: center.longitude,
+        latitudeDelta,
+        longitudeDelta,
+      };
+      lastRegionRef.current = region;
+      lastCameraRegion = region;
+    } catch (error) {
+      console.warn('Unable to capture camera region', error);
+    }
+  };
+
   const handleConfirm = async (id: string) => {
     if (actioningId) {
       return;
     }
+    void captureCameraRegion();
     setActioningId(id);
     setConfirmed((prev) => ({ ...prev, [id]: Date.now() }));
     try {
