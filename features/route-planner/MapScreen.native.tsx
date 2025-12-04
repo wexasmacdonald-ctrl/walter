@@ -165,8 +165,6 @@ export function MapScreen({
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [userAdjustedCamera, setUserAdjustedCamera] = useState(false);
   const hasAutoFit = useRef(false);
-  const prevCoordSignature = useRef<string | null>(null);
-  const prevCoordCount = useRef<number>(0);
 
   const mapRef = useRef<MapView | null>(null);
   const modalMapRef = useRef<MapView | null>(null);
@@ -246,27 +244,16 @@ export function MapScreen({
   }, [pins]);
 
   const coordinates = useMemo<LatLng[]>(() => markers.map((marker) => marker.coordinate), [markers]);
-  const coordSignature = useMemo(
-    () => coordinates.map((c) => `${c.latitude.toFixed(6)},${c.longitude.toFixed(6)}`).join('|'),
-    [coordinates]
-  );
 
   useEffect(() => {
-    const hasChanged = coordSignature !== prevCoordSignature.current;
-    const countChanged = coordinates.length !== prevCoordCount.current;
-    if (
-      coordinates.length > 0 &&
-      (!userAdjustedCamera || !hasAutoFit.current || countChanged)
-    ) {
+    if (coordinates.length > 0 && !userAdjustedCamera && !hasAutoFit.current) {
       fitToMarkers(mapRef.current, coordinates);
       if (isFullScreen) {
         fitToMarkers(modalMapRef.current, coordinates);
       }
-      prevCoordSignature.current = coordSignature;
-      prevCoordCount.current = coordinates.length;
       hasAutoFit.current = true;
     }
-  }, [coordinates, coordSignature, isFullScreen, userAdjustedCamera]);
+  }, [coordinates, isFullScreen, userAdjustedCamera]);
 
   useEffect(() => {
     if (selectedId && !markers.some((marker) => marker.id === selectedId)) {
@@ -370,7 +357,16 @@ export function MapScreen({
           setSelectedId(null);
         },
       },
-    ]);
+      ]);
+    };
+
+  const handleResetCamera = () => {
+    hasAutoFit.current = false;
+    setUserAdjustedCamera(false);
+    fitToMarkers(mapRef.current, coordinates);
+    if (isFullScreen) {
+      fitToMarkers(modalMapRef.current, coordinates);
+    }
   };
 
   const renderMarkers = () => {
@@ -569,6 +565,9 @@ export function MapScreen({
       <View style={styles.header}>
         <View style={styles.headerActions}>
           {renderMapTypeToggle()}
+          <Pressable style={styles.fullScreenButton} onPress={handleResetCamera}>
+            <Text style={styles.fullScreenButtonText}>Re-center</Text>
+          </Pressable>
           <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
             <Text style={styles.fullScreenButtonText}>Full Screen</Text>
           </Pressable>
@@ -608,6 +607,9 @@ export function MapScreen({
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderActions}>
               {renderMapTypeToggle()}
+              <Pressable style={styles.fullScreenButton} onPress={handleResetCamera}>
+                <Text style={styles.fullScreenButtonText}>Re-center</Text>
+              </Pressable>
               <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(false)}>
                 <Text style={styles.fullScreenButtonText}>Close</Text>
               </Pressable>
