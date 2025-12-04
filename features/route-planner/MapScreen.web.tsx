@@ -306,21 +306,49 @@ export function MapScreen({
   const mapStyle = useMemo<google.maps.MapTypeStyle[] | undefined>(() => undefined, []);
   const mapOptions = useMemo<google.maps.MapOptions>(() => {
     const base: google.maps.MapOptions = {
-      disableDefaultUI: true,
+      disableDefaultUI: false,
       clickableIcons: false,
       gestureHandling: 'greedy',
-      rotateControl: false,
+      zoomControl: true,
+      rotateControl: true,
       fullscreenControl: false,
       streetViewControl: false,
       mapTypeControl: false,
+      keyboardShortcuts: false,
       tilt: 45,
+      heading: 0,
       styles: mapStyle,
     };
     return GOOGLE_MAP_ID ? { ...base, mapId: GOOGLE_MAP_ID } : base;
-  }, [mapStyle]);
+  }, [mapStyle, GOOGLE_MAP_ID]);
 
   const handleMapLoad = (map: google.maps.Map) => {
     mapRef.current = map;
+  };
+
+  const applyHeading = (delta: number) => {
+    if (!GOOGLE_MAP_ID || !mapRef.current) {
+      return;
+    }
+    const current = mapRef.current.getHeading() ?? 0;
+    const next = (current + delta + 360) % 360;
+    mapRef.current.setHeading(next);
+  };
+
+  const renderRotateControls = () => {
+    if (!GOOGLE_MAP_ID) {
+      return null;
+    }
+    return (
+      <>
+        <Pressable style={styles.fullScreenButton} onPress={() => applyHeading(-15)}>
+          <Text style={styles.fullScreenButtonText}>⟲</Text>
+        </Pressable>
+        <Pressable style={styles.fullScreenButton} onPress={() => applyHeading(15)}>
+          <Text style={styles.fullScreenButtonText}>⟳</Text>
+        </Pressable>
+      </>
+    );
   };
 
   if (loading) {
@@ -350,7 +378,7 @@ export function MapScreen({
         <View style={styles.header}>
           <View style={styles.headerActions}>
             {renderMapTypeToggle()}
-            
+            {renderRotateControls()}
             <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
               <Text style={styles.fullScreenButtonText}>Full Screen</Text>
             </Pressable>
@@ -378,7 +406,7 @@ export function MapScreen({
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderActions}>
                 {renderMapTypeToggle()}
-                
+                {renderRotateControls()}
                 <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(false)}>
                   <Text style={styles.fullScreenButtonText}>Close</Text>
                 </Pressable>
@@ -457,14 +485,14 @@ function BadgeMarker({
         url:
           'data:image/svg+xml;charset=UTF-8,' +
           encodeURIComponent(
-            <svg xmlns="http://www.w3.org/2000/svg" width="90" height="46" viewBox="0 0 90 46">
+            `<svg xmlns="http://www.w3.org/2000/svg" width="90" height="46" viewBox="0 0 90 46">
               <g fill="none" fill-rule="evenodd">
                 <g transform="translate(5 5)">
-                  <rect width="80" height="36" rx="10" fill="" stroke="" stroke-width="2"/>
-                  <text x="40" y="23" font-family="Arial, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill=""></text>
+                  <rect width="80" height="36" rx="10" fill="${fill}" stroke="${outlineColor}" stroke-width="2"/>
+                  <text x="40" y="23" font-family="Arial, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="${labelColor}">${safeGlyph}</text>
                 </g>
               </g>
-            </svg>
+            </svg>`
           ),
         scaledSize: new maps.Size(scaledSize, Math.round(scaledSize * (46 / 90))),
         anchor: new maps.Point(scaledSize / 2, Math.round(scaledSize * (40 / 90))),
