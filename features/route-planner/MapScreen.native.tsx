@@ -360,15 +360,6 @@ export function MapScreen({
       ]);
     };
 
-  const handleResetCamera = () => {
-    hasAutoFit.current = false;
-    setUserAdjustedCamera(false);
-    fitToMarkers(mapRef.current, coordinates);
-    if (isFullScreen) {
-      fitToMarkers(modalMapRef.current, coordinates);
-    }
-  };
-
   const renderMarkers = () => {
     if (!MarkerBadge) {
       return null;
@@ -565,9 +556,6 @@ export function MapScreen({
       <View style={styles.header}>
         <View style={styles.headerActions}>
           {renderMapTypeToggle()}
-          <Pressable style={styles.fullScreenButton} onPress={handleResetCamera}>
-            <Text style={styles.fullScreenButtonText}>Re-center</Text>
-          </Pressable>
           <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
             <Text style={styles.fullScreenButtonText}>Full Screen</Text>
           </Pressable>
@@ -607,9 +595,6 @@ export function MapScreen({
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderActions}>
               {renderMapTypeToggle()}
-              <Pressable style={styles.fullScreenButton} onPress={handleResetCamera}>
-                <Text style={styles.fullScreenButtonText}>Re-center</Text>
-              </Pressable>
               <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(false)}>
                 <Text style={styles.fullScreenButtonText}>Close</Text>
               </Pressable>
