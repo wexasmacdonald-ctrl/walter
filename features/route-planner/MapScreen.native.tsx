@@ -163,6 +163,7 @@ export function MapScreen({
   const [confirmed, setConfirmed] = useState<Record<string, number>>({});
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [actioningId, setActioningId] = useState<string | null>(null);
+  const [userAdjustedCamera, setUserAdjustedCamera] = useState(false);
 
   const mapRef = useRef<MapView | null>(null);
   const modalMapRef = useRef<MapView | null>(null);
@@ -242,13 +243,22 @@ export function MapScreen({
   }, [pins]);
 
   const coordinates = useMemo<LatLng[]>(() => markers.map((marker) => marker.coordinate), [markers]);
+  const coordSignature = useMemo(
+    () => coordinates.map((c) => `${c.latitude.toFixed(6)},${c.longitude.toFixed(6)}`).join('|'),
+    [coordinates]
+  );
+  const prevCoordSignature = useRef<string | null>(null);
 
   useEffect(() => {
-    fitToMarkers(mapRef.current, coordinates);
-    if (isFullScreen) {
-      fitToMarkers(modalMapRef.current, coordinates);
+    const hasChanged = coordSignature !== prevCoordSignature.current;
+    if (!userAdjustedCamera || hasChanged) {
+      fitToMarkers(mapRef.current, coordinates);
+      if (isFullScreen) {
+        fitToMarkers(modalMapRef.current, coordinates);
+      }
+      prevCoordSignature.current = coordSignature;
     }
-  }, [coordinates, isFullScreen]);
+  }, [coordinates, coordSignature, isFullScreen, userAdjustedCamera]);
 
   useEffect(() => {
     if (selectedId && !markers.some((marker) => marker.id === selectedId)) {
@@ -573,6 +583,11 @@ export function MapScreen({
               setSelectedId(null);
             }
           }}
+          onRegionChange={() => {
+            if (!userAdjustedCamera) {
+              setUserAdjustedCamera(true);
+            }
+          }}
         >
           {renderMarkers()}
         </MapViewComponent>
@@ -604,6 +619,11 @@ export function MapScreen({
               onPress={(event: MapPressEvent) => {
                 if (event.nativeEvent.action !== 'marker-press') {
                   setSelectedId(null);
+                }
+              }}
+              onRegionChange={() => {
+                if (!userAdjustedCamera) {
+                  setUserAdjustedCamera(true);
                 }
               }}
             >
