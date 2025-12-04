@@ -164,6 +164,9 @@ export function MapScreen({
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [userAdjustedCamera, setUserAdjustedCamera] = useState(false);
+  const hasAutoFit = useRef(false);
+  const prevCoordSignature = useRef<string | null>(null);
+  const prevCoordCount = useRef<number>(0);
 
   const mapRef = useRef<MapView | null>(null);
   const modalMapRef = useRef<MapView | null>(null);
@@ -247,16 +250,21 @@ export function MapScreen({
     () => coordinates.map((c) => `${c.latitude.toFixed(6)},${c.longitude.toFixed(6)}`).join('|'),
     [coordinates]
   );
-  const prevCoordSignature = useRef<string | null>(null);
 
   useEffect(() => {
     const hasChanged = coordSignature !== prevCoordSignature.current;
-    if (!userAdjustedCamera || hasChanged) {
+    const countChanged = coordinates.length !== prevCoordCount.current;
+    if (
+      coordinates.length > 0 &&
+      (!userAdjustedCamera || !hasAutoFit.current || countChanged)
+    ) {
       fitToMarkers(mapRef.current, coordinates);
       if (isFullScreen) {
         fitToMarkers(modalMapRef.current, coordinates);
       }
       prevCoordSignature.current = coordSignature;
+      prevCoordCount.current = coordinates.length;
+      hasAutoFit.current = true;
     }
   }, [coordinates, coordSignature, isFullScreen, userAdjustedCamera]);
 
