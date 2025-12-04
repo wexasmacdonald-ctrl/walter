@@ -98,8 +98,8 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
       opacity: 0.8,
     },
     logo: {
-      width: 96,
-      height: 96,
+      width: 82,
+      height: 82,
     },
     spacer: {
       flex: 1,
