@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -7,12 +7,20 @@ import {
   Text,
   View,
 } from 'react-native';
-import { APIProvider, Map, Marker, useMap } from '@vis.gl/react-google-maps';
+import { APIProvider, Map, Marker } from '@vis.gl/react-google-maps';
 
 import { useTheme } from '@/features/theme/theme-context';
 import { getGoogleMapsApiKey } from '@/features/route-planner/getGoogleMapsApiKey';
 
 import type { Stop } from './types';
+
+type MapPin = {
+  id: string;
+  position: google.maps.LatLngLiteral;
+  address: string | null | undefined;
+  label: string;
+  status: 'pending' | 'complete';
+};
 
 export type MapScreenProps = {
   pins: Stop[];
@@ -27,23 +35,19 @@ export type MapScreenProps = {
   exitFullScreenSignal?: number;
 };
 
-type MapPin = {
-  id: string;
-  position: google.maps.LatLngLiteral;
-  address: string | null | undefined;
-  label: string;
-  status: 'pending' | 'complete';
-};
 const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 };
 const DEFAULT_ZOOM = 12;
 
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
+const GOOGLE_MAP_ID = process.env.EXPO_PUBLIC_GOOGLE_MAP_ID;
+
 export function MapScreen({
   pins,
   loading = false,
   onCompleteStop,
   onUndoStop,
   onAdjustPin,
+  onAdjustPinDrag,
   exitFullScreenSignal,
 }: MapScreenProps) {
   const { colors, isDark } = useTheme();
@@ -54,6 +58,7 @@ export function MapScreen({
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [heading, setHeading] = useState(0);
+  const mapRef = useRef<google.maps.Map | null>(null);
 
   const mapPins = useMemo<MapPin[]>(() => {
     return pins
@@ -229,7 +234,7 @@ export function MapScreen({
             <Text style={styles.toastStatus}>
               {isConfirmed
                 ? 'Snow cleared. Tap undo to revert.'
-                : 'Tap “Snow cleared” once this stop is finished.'}
+                : 'Tap "Snow cleared" once this stop is finished.'}
             </Text>
             <View style={styles.toastActions}>
               {canAdjustPin ? (
@@ -253,7 +258,7 @@ export function MapScreen({
                   disabled={actioningId === selectedMarker.id}
                 >
                   <Text style={styles.toastButtonDangerText}>
-                    {actioningId === selectedMarker.id ? 'Updating…' : 'Undo'}
+                    {actioningId === selectedMarker.id ? 'Updating�' : 'Undo'}
                   </Text>
                 </Pressable>
               ) : (
@@ -263,7 +268,7 @@ export function MapScreen({
                   disabled={actioningId === selectedMarker.id}
                 >
                   <Text style={styles.toastButtonPrimaryText}>
-                    {actioningId === selectedMarker.id ? 'Updating…' : 'Snow cleared'}
+                    {actioningId === selectedMarker.id ? 'Updating�' : 'Snow cleared'}
                   </Text>
                 </Pressable>
               )}
@@ -274,14 +279,12 @@ export function MapScreen({
     );
   };
 
-  // renderSelectedCard was added accidentally and duplicated the existing toast UI; removed to avoid double overlays.
-
   const renderOverlay = () => {
     if (loading) {
       return (
         <View style={styles.mapOverlay}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.mapOverlayText}>Loading pins…</Text>
+          <Text style={styles.mapOverlayText}>Loading pins�</Text>
         </View>
       );
     }
@@ -332,9 +335,9 @@ export function MapScreen({
   }
 
   const mapTypeId = mapType === 'satellite' ? 'satellite' : 'roadmap';
-  // Use default Google styling for standard maps so base layers/buildings remain visible.
+  // Rotation requires vector map. If mapId is missing, fall back to classic with no heading.
   const mapStyle = useMemo<google.maps.MapTypeStyle[] | undefined>(() => undefined, []);
-  const mapOptions = useMemo<google.maps.MapOptions>(
+  const optionsBase: google.maps.MapOptions = useMemo(
     () => ({
       disableDefaultUI: true,
       clickableIcons: false,
@@ -349,11 +352,44 @@ export function MapScreen({
     [mapStyle]
   );
 
-  const rotate = (delta: number) => {
-    setHeading((prev) => {
-      const next = (prev + delta) % 360;
-      return next < 0 ? next + 360 : next;
-    });
+  const mapOptions = useMemo<google.maps.MapOptions>(() => {
+    if (!GOOGLE_MAP_ID) {
+      return optionsBase;
+    }
+    return {
+      ...optionsBase,
+      mapId: GOOGLE_MAP_ID,
+    };
+  }, [optionsBase]);
+
+  const handleMapLoad = (map: google.maps.Map) => {
+    mapRef.current = map;
+  };
+
+  const applyHeading = (delta: number) => {
+    if (!GOOGLE_MAP_ID || !mapRef.current) {
+      return;
+    }
+    const current = mapRef.current.getHeading() ?? 0;
+    const next = (current + delta + 360) % 360;
+    mapRef.current.setHeading(next);
+    setHeading(next);
+  };
+
+  const renderRotateControls = () => {
+    if (!GOOGLE_MAP_ID) {
+      return null;
+    }
+    return (
+      <>
+        <Pressable style={styles.fullScreenButton} onPress={() => applyHeading(-15)}>
+          <Text style={styles.fullScreenButtonText}>?</Text>
+        </Pressable>
+        <Pressable style={styles.fullScreenButton} onPress={() => applyHeading(15)}>
+          <Text style={styles.fullScreenButtonText}>?</Text>
+        </Pressable>
+      </>
+    );
   };
 
   if (loading) {
@@ -361,7 +397,7 @@ export function MapScreen({
       <View style={styles.container}>
         <View style={styles.loadingState}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.loadingText}>Geocoding addresses…</Text>
+          <Text style={styles.loadingText}>Geocoding addresses�</Text>
         </View>
       </View>
     );
@@ -383,12 +419,7 @@ export function MapScreen({
         <View style={styles.header}>
           <View style={styles.headerActions}>
             {renderMapTypeToggle()}
-            <Pressable style={styles.fullScreenButton} onPress={() => rotate(-15)}>
-              <Text style={styles.fullScreenButtonText}>⟲</Text>
-            </Pressable>
-            <Pressable style={styles.fullScreenButton} onPress={() => rotate(15)}>
-              <Text style={styles.fullScreenButtonText}>⟳</Text>
-            </Pressable>
+            {renderRotateControls()}
             <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
               <Text style={styles.fullScreenButtonText}>Full Screen</Text>
             </Pressable>
@@ -404,6 +435,7 @@ export function MapScreen({
             mapTypeId={mapTypeId}
             options={mapOptions}
             onClick={() => setSelectedId(null)}
+            onLoad={handleMapLoad}
           >
             {renderMarkers()}
           </Map>
@@ -416,26 +448,28 @@ export function MapScreen({
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderActions}>
                 {renderMapTypeToggle()}
+                {renderRotateControls()}
                 <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(false)}>
                   <Text style={styles.fullScreenButtonText}>Close</Text>
                 </Pressable>
               </View>
             </View>
             <View style={styles.modalMapWrapper}>
-            <Map
-              style={styles.mapCanvas}
-              defaultCenter={initialCenter}
-              defaultZoom={DEFAULT_ZOOM}
-              heading={heading}
-              mapTypeId={mapTypeId}
-              options={mapOptions}
-              onClick={() => setSelectedId(null)}
-            >
-              {renderMarkers()}
-            </Map>
-            {renderOverlay()}
-            {renderToast('modal')}
-          </View>
+              <Map
+                style={styles.mapCanvas}
+                defaultCenter={initialCenter}
+                defaultZoom={DEFAULT_ZOOM}
+                heading={heading}
+                mapTypeId={mapTypeId}
+                options={mapOptions}
+                onClick={() => setSelectedId(null)}
+                onLoad={handleMapLoad}
+              >
+                {renderMarkers()}
+              </Map>
+              {renderOverlay()}
+              {renderToast('modal')}
+            </View>
           </View>
         </Modal>
       </View>
@@ -443,388 +477,388 @@ export function MapScreen({
   );
 }
 
-type BadgeMarkerProps = {
-  label: string;
-  position: google.maps.LatLngLiteral;
-  fill: string;
-  labelColor: string;
-  outlineColor: string;
-  selected: boolean;
-  draggable?: boolean;
-  onPress: (event?: google.maps.MapMouseEvent) => void;
-  onDragEnd?: (event: google.maps.MapMouseEvent) => void;
-};
+ type BadgeMarkerProps = {
+   label: string;
+   position: google.maps.LatLngLiteral;
+   fill: string;
+   labelColor: string;
+   outlineColor: string;
+   selected: boolean;
+   draggable?: boolean;
+   onPress: (event?: google.maps.MapMouseEvent) => void;
+   onDragEnd?: (event: google.maps.MapMouseEvent) => void;
+ };
 
-type MarkerVisual = {
-  icon: google.maps.Icon;
-  zIndex: number;
-};
+ type MarkerVisual = {
+   icon: google.maps.Icon;
+   zIndex: number;
+ };
 
-function BadgeMarker({
-  label,
-  position,
-  fill,
-  labelColor,
-  outlineColor,
-  selected,
-  draggable = false,
-  onPress,
-  onDragEnd,
-}: BadgeMarkerProps) {
-  const [visual, setVisual] = useState<MarkerVisual | null>(null);
+ function BadgeMarker({
+   label,
+   position,
+   fill,
+   labelColor,
+   outlineColor,
+   selected,
+   draggable = false,
+   onPress,
+   onDragEnd,
+ }: BadgeMarkerProps) {
+   const [visual, setVisual] = useState<MarkerVisual | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timeoutId: number | null = null;
+   useEffect(() => {
+     let cancelled = false;
+     let timeoutId: number | null = null;
 
-    const configure = () => {
-      const maps = (globalThis as any).google?.maps;
-      if (!maps) {
-        if (!cancelled) {
-          timeoutId = window.setTimeout(configure, 100);
-        }
-        return;
-      }
+     const configure = () => {
+       const maps = (globalThis as any).google?.maps;
+       if (!maps) {
+         if (!cancelled) {
+           timeoutId = window.setTimeout(configure, 100);
+         }
+         return;
+       }
 
-      const glyph = label.trim().slice(0, 4);
-      const safeGlyph = glyph.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const scaledSize = selected ? 96 : 90;
+       const glyph = label.trim().slice(0, 4);
+       const safeGlyph = glyph.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+       const scaledSize = selected ? 96 : 90;
 
-      const icon = {
-        url:
-          'data:image/svg+xml;charset=UTF-8,' +
-          encodeURIComponent(
-            `<svg xmlns="http://www.w3.org/2000/svg" width="90" height="46" viewBox="0 0 90 46">
-              <g fill="none" fill-rule="evenodd">
-                <g transform="translate(5 5)">
-                  <rect width="80" height="36" rx="10" fill="${fill}" stroke="${outlineColor}" stroke-width="2"/>
-                  <text x="40" y="23" font-family="Arial, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="${labelColor}">${safeGlyph}</text>
-                </g>
-              </g>
-            </svg>`
-          ),
-        scaledSize: new maps.Size(scaledSize, Math.round(scaledSize * (46 / 90))),
-        anchor: new maps.Point(scaledSize / 2, Math.round(scaledSize * (40 / 90))),
-        };
+       const icon = {
+         url:
+           'data:image/svg+xml;charset=UTF-8,' +
+           encodeURIComponent(
+             <svg xmlns="http://www.w3.org/2000/svg" width="90" height="46" viewBox="0 0 90 46">
+               <g fill="none" fill-rule="evenodd">
+                 <g transform="translate(5 5)">
+                   <rect width="80" height="36" rx="10" fill="" stroke="" stroke-width="2"/>
+                   <text x="40" y="23" font-family="Arial, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill=""></text>
+                 </g>
+               </g>
+             </svg>
+           ),
+         scaledSize: new maps.Size(scaledSize, Math.round(scaledSize * (46 / 90))),
+         anchor: new maps.Point(scaledSize / 2, Math.round(scaledSize * (40 / 90))),
+         };
 
-        if (cancelled) {
-          return;
-        }
+         if (cancelled) {
+           return;
+         }
 
-        setVisual({
-          icon,
-          zIndex: selected ? 2 : 1,
-        });
-      };
+         setVisual({
+           icon,
+           zIndex: selected ? 2 : 1,
+         });
+       };
 
-    configure();
+     configure();
 
-    return () => {
-      cancelled = true;
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-      }
-    };
-  }, [fill, label, labelColor, outlineColor, selected]);
+     return () => {
+       cancelled = true;
+       if (timeoutId !== null) {
+         window.clearTimeout(timeoutId);
+       }
+     };
+   }, [fill, label, labelColor, outlineColor, selected]);
 
-  if (!visual) {
-    return null;
-  }
+   if (!visual) {
+     return null;
+   }
 
-  return (
-    <Marker
-      position={position}
-      onClick={onPress}
-      onDragEnd={onDragEnd}
-      draggable={draggable}
-      icon={visual.icon}
-      zIndex={visual.zIndex}
-    />
-  );
-}
+   return (
+     <Marker
+       position={position}
+       onClick={onPress}
+       onDragEnd={onDragEnd}
+       draggable={draggable}
+       icon={visual.icon}
+       zIndex={visual.zIndex}
+     />
+   );
+ }
 
-function extractHouseNumber(address: string | null | undefined): string | null {
-  if (!address) {
-    return null;
-  }
-  const match = address.trim().match(/^(\d+[A-Za-z0-9-]*)\b/);
-  return match ? match[1] : null;
-}
+ function extractHouseNumber(address: string | null | undefined): string | null {
+   if (!address) {
+     return null;
+   }
+   const match = address.trim().match(/^(\d+[A-Za-z0-9-]*)\b/);
+   return match ? match[1] : null;
+ }
 
-function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
-  const onPrimary = isDark ? colors.background : colors.surface;
-  const overlayBackground = hexToRgba(colors.surface, isDark ? 0.88 : 0.92);
-  const toastBackground = hexToRgba(colors.surface, isDark ? 0.9 : 0.96);
-  return StyleSheet.create({
-    container: {
-      marginTop: 48,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'flex-end',
-      marginBottom: 12,
-      gap: 16,
-    },
-    headerActions: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    fullScreenButton: {
-      paddingHorizontal: 14,
-      paddingVertical: 6,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.primary,
-      backgroundColor: colors.surface,
-    },
-    fullScreenButtonText: {
-      color: colors.primary,
-      fontWeight: '600',
-    },
-    mapWrapper: {
-      position: 'relative',
-      height: 320,
-      borderRadius: 16,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    mapCanvas: {
-      flex: 1,
-    },
-    mapOverlay: {
-      position: 'absolute',
-      inset: 0,
-      backgroundColor: overlayBackground,
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: 24,
-      gap: 12,
-    },
-    mapOverlayText: {
-      color: colors.text,
-      textAlign: 'center',
-    },
-    notice: {
-      position: 'absolute',
-      left: 16,
-      right: 16,
-      bottom: 16,
-      padding: 12,
-      borderRadius: 8,
-      backgroundColor: colors.primaryMuted,
-      borderWidth: 1,
-      borderColor: colors.primary,
-    },
-    noticeStandalone: {
-      marginTop: 16,
-      marginHorizontal: 16,
-      padding: 16,
-      borderRadius: 8,
-      backgroundColor: colors.primaryMuted,
-      borderWidth: 1,
-      borderColor: colors.primary,
-    },
-    noticeText: {
-      color: colors.primary,
-      textAlign: 'center',
-    },
-    mapTypeToggle: {
-      flexDirection: 'row',
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: 'hidden',
-      width: 160,
-    },
-    mapTypeOption: {
-      flex: 1,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      backgroundColor: colors.surface,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    mapTypeOptionActive: {
-      backgroundColor: colors.primary,
-    },
-    mapTypeOptionText: {
-      fontWeight: '600',
-      color: colors.mutedText,
-    },
-    mapTypeOptionTextActive: {
-      color: onPrimary,
-    },
-    banner: {
-      padding: 16,
-      borderRadius: 8,
-      backgroundColor: colors.primaryMuted,
-      borderWidth: 1,
-      borderColor: colors.primary,
-    },
-    bannerText: {
-      color: colors.primary,
-    },
-    loadingState: {
-      marginTop: 16,
-      marginHorizontal: 16,
-      padding: 24,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 16,
-    },
-    loadingText: {
-      fontSize: 16,
-      color: colors.text,
-    },
-    toastOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      pointerEvents: 'box-none',
-    },
-    toastContainer: {
-      position: 'absolute',
-      left: 16,
-      right: 16,
-      top: 16,
-      alignItems: 'flex-end',
-    },
-    toastContainerFullScreen: {
-      position: 'absolute',
-      left: 24,
-      right: 24,
-      top: 24,
-      alignItems: 'flex-end',
-    },
-    toastCard: {
-      padding: 16,
-      borderRadius: 16,
-      backgroundColor: toastBackground,
-      borderWidth: 1,
-      borderColor: colors.border,
-      gap: 12,
-      maxWidth: 360,
-    },
-    toastLabel: {
-      fontSize: 12,
-      fontWeight: '700',
-      color: colors.primary,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-    },
-    toastTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    toastStatus: {
-      fontSize: 13,
-      color: colors.mutedText,
-    },
-    toastActions: {
-      flexDirection: 'row',
-      justifyContent: 'flex-end',
-      flexWrap: 'wrap',
-      gap: 12,
-    },
-    toastButton: {
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      borderRadius: 999,
-      borderWidth: 1,
-    },
-    toastButtonGhost: {
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-    },
-    toastButtonGhostText: {
-      color: colors.mutedText,
-      fontWeight: '600',
-    },
-    toastButtonPrimary: {
-      borderColor: colors.primary,
-      backgroundColor: colors.primary,
-    },
-    toastButtonPrimaryText: {
-      color: onPrimary,
-      fontWeight: '600',
-    },
-    toastButtonSecondary: {
-      borderColor: colors.primary,
-      backgroundColor: colors.surface,
-    },
-    toastButtonSecondaryText: {
-      color: colors.primary,
-      fontWeight: '600',
-    },
-    toastButtonDanger: {
-      borderColor: colors.danger,
-      backgroundColor: colors.dangerMuted,
-    },
-    toastButtonDangerText: {
-      color: colors.danger,
-      fontWeight: '600',
-    },
-    modalContent: {
-      flex: 1,
-      backgroundColor: colors.surface,
-    },
-    modalHeader: {
-      paddingTop: 48,
-      paddingHorizontal: 24,
-      paddingBottom: 16,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'flex-end',
-      gap: 16,
-    },
-    modalHeaderActions: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    modalMapWrapper: {
-      flex: 1,
-      margin: 24,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: 'hidden',
-      position: 'relative',
-    },
-  });
-}
+ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
+   const onPrimary = isDark ? colors.background : colors.surface;
+   const overlayBackground = hexToRgba(colors.surface, isDark ? 0.88 : 0.92);
+   const toastBackground = hexToRgba(colors.surface, isDark ? 0.9 : 0.96);
+   return StyleSheet.create({
+     container: {
+       marginTop: 48,
+     },
+     header: {
+       flexDirection: 'row',
+       alignItems: 'center',
+       justifyContent: 'flex-end',
+       marginBottom: 12,
+       gap: 16,
+     },
+     headerActions: {
+       flexDirection: 'row',
+       alignItems: 'center',
+       gap: 8,
+     },
+     fullScreenButton: {
+       paddingHorizontal: 14,
+       paddingVertical: 6,
+       borderRadius: 999,
+       borderWidth: 1,
+       borderColor: colors.primary,
+       backgroundColor: colors.surface,
+     },
+     fullScreenButtonText: {
+       color: colors.primary,
+       fontWeight: '600',
+     },
+     mapWrapper: {
+       position: 'relative',
+       height: 320,
+       borderRadius: 16,
+       overflow: 'hidden',
+       borderWidth: 1,
+       borderColor: colors.border,
+     },
+     mapCanvas: {
+       flex: 1,
+     },
+     mapOverlay: {
+       position: 'absolute',
+       inset: 0,
+       backgroundColor: overlayBackground,
+       alignItems: 'center',
+       justifyContent: 'center',
+       padding: 24,
+       gap: 12,
+     },
+     mapOverlayText: {
+       color: colors.text,
+       textAlign: 'center',
+     },
+     notice: {
+       position: 'absolute',
+       left: 16,
+       right: 16,
+       bottom: 16,
+       padding: 12,
+       borderRadius: 8,
+       backgroundColor: colors.primaryMuted,
+       borderWidth: 1,
+       borderColor: colors.primary,
+     },
+     noticeStandalone: {
+       marginTop: 16,
+       marginHorizontal: 16,
+       padding: 16,
+       borderRadius: 8,
+       backgroundColor: colors.primaryMuted,
+       borderWidth: 1,
+       borderColor: colors.primary,
+     },
+     noticeText: {
+       color: colors.primary,
+       textAlign: 'center',
+     },
+     mapTypeToggle: {
+       flexDirection: 'row',
+       borderRadius: 999,
+       borderWidth: 1,
+       borderColor: colors.border,
+       overflow: 'hidden',
+       width: 160,
+     },
+     mapTypeOption: {
+       flex: 1,
+       paddingHorizontal: 12,
+       paddingVertical: 6,
+       backgroundColor: colors.surface,
+       alignItems: 'center',
+       justifyContent: 'center',
+     },
+     mapTypeOptionActive: {
+       backgroundColor: colors.primary,
+     },
+     mapTypeOptionText: {
+       fontWeight: '600',
+       color: colors.mutedText,
+     },
+     mapTypeOptionTextActive: {
+       color: onPrimary,
+     },
+     banner: {
+       padding: 16,
+       borderRadius: 8,
+       backgroundColor: colors.primaryMuted,
+       borderWidth: 1,
+       borderColor: colors.primary,
+     },
+     bannerText: {
+       color: colors.primary,
+     },
+     loadingState: {
+       marginTop: 16,
+       marginHorizontal: 16,
+       padding: 24,
+       borderRadius: 12,
+       borderWidth: 1,
+       borderColor: colors.border,
+       backgroundColor: colors.surface,
+       flexDirection: 'row',
+       alignItems: 'center',
+       gap: 16,
+     },
+     loadingText: {
+       fontSize: 16,
+       color: colors.text,
+     },
+     toastOverlay: {
+       ...StyleSheet.absoluteFillObject,
+       pointerEvents: 'box-none',
+     },
+     toastContainer: {
+       position: 'absolute',
+       left: 16,
+       right: 16,
+       top: 16,
+       alignItems: 'flex-end',
+     },
+     toastContainerFullScreen: {
+       position: 'absolute',
+       left: 24,
+       right: 24,
+       top: 24,
+       alignItems: 'flex-end',
+     },
+     toastCard: {
+       padding: 16,
+       borderRadius: 16,
+       backgroundColor: toastBackground,
+       borderWidth: 1,
+       borderColor: colors.border,
+       gap: 12,
+       maxWidth: 360,
+     },
+     toastLabel: {
+       fontSize: 12,
+       fontWeight: '700',
+       color: colors.primary,
+       textTransform: 'uppercase',
+       letterSpacing: 0.5,
+     },
+     toastTitle: {
+       fontSize: 16,
+       fontWeight: '600',
+       color: colors.text,
+     },
+     toastStatus: {
+       fontSize: 13,
+       color: colors.mutedText,
+     },
+     toastActions: {
+       flexDirection: 'row',
+       justifyContent: 'flex-end',
+       flexWrap: 'wrap',
+       gap: 12,
+     },
+     toastButton: {
+       paddingHorizontal: 16,
+       paddingVertical: 10,
+       borderRadius: 999,
+       borderWidth: 1,
+     },
+     toastButtonGhost: {
+       borderColor: colors.border,
+       backgroundColor: colors.surface,
+     },
+     toastButtonGhostText: {
+       color: colors.mutedText,
+       fontWeight: '600',
+     },
+     toastButtonPrimary: {
+       borderColor: colors.primary,
+       backgroundColor: colors.primary,
+     },
+     toastButtonPrimaryText: {
+       color: onPrimary,
+       fontWeight: '600',
+     },
+     toastButtonSecondary: {
+       borderColor: colors.primary,
+       backgroundColor: colors.surface,
+     },
+     toastButtonSecondaryText: {
+       color: colors.primary,
+       fontWeight: '600',
+     },
+     toastButtonDanger: {
+       borderColor: colors.danger,
+       backgroundColor: colors.dangerMuted,
+     },
+     toastButtonDangerText: {
+       color: colors.danger,
+       fontWeight: '600',
+     },
+     modalContent: {
+       flex: 1,
+       backgroundColor: colors.surface,
+     },
+     modalHeader: {
+       paddingTop: 48,
+       paddingHorizontal: 24,
+       paddingBottom: 16,
+       borderBottomWidth: 1,
+       borderColor: colors.border,
+       flexDirection: 'row',
+       alignItems: 'center',
+       justifyContent: 'flex-end',
+       gap: 16,
+     },
+     modalHeaderActions: {
+       flexDirection: 'row',
+       alignItems: 'center',
+       gap: 8,
+     },
+     modalMapWrapper: {
+       flex: 1,
+       margin: 24,
+       borderRadius: 20,
+       borderWidth: 1,
+       borderColor: colors.border,
+       overflow: 'hidden',
+       position: 'relative',
+     },
+   });
+ }
 
-function mixHexColor(base: string, mix: string, ratio: number): string {
-  const amount = Math.max(0, Math.min(1, ratio));
-  const [br, bg, bb] = parseHex(base);
-  const [mr, mg, mb] = parseHex(mix);
-  const r = Math.round(br + (mr - br) * amount);
-  const g = Math.round(bg + (mg - bg) * amount);
-  const b = Math.round(bb + (mb - bb) * amount);
-  return `rgb(${r}, ${g}, ${b})`;
-}
+ function mixHexColor(base: string, mix: string, ratio: number): string {
+   const amount = Math.max(0, Math.min(1, ratio));
+   const [br, bg, bb] = parseHex(base);
+   const [mr, mg, mb] = parseHex(mix);
+   const r = Math.round(br + (mr - br) * amount);
+   const g = Math.round(bg + (mg - bg) * amount);
+   const b = Math.round(bb + (mb - bb) * amount);
+   return gb(, , );
+ }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const [r, g, b] = parseHex(hex);
-  const clampedAlpha = Math.max(0, Math.min(1, alpha));
-  return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`;
-}
+ function hexToRgba(hex: string, alpha: number): string {
+   const [r, g, b] = parseHex(hex);
+   const clampedAlpha = Math.max(0, Math.min(1, alpha));
+   return gba(, , , );
+ }
 
-function parseHex(input: string): [number, number, number] {
-  const value = input.trim().replace(/^#/, '');
-  if (value.length !== 6) {
-    throw new Error(`Expected 6-digit hex color, received: ${input}`);
-  }
-  const r = Number.parseInt(value.slice(0, 2), 16);
-  const g = Number.parseInt(value.slice(2, 4), 16);
-  const b = Number.parseInt(value.slice(4, 6), 16);
-  return [r, g, b];
-}
+ function parseHex(input: string): [number, number, number] {
+   const value = input.trim().replace(/^#/, '');
+   if (value.length !== 6) {
+     throw new Error(Expected 6-digit hex color, received: );
+   }
+   const r = Number.parseInt(value.slice(0, 2), 16);
+   const g = Number.parseInt(value.slice(2, 4), 16);
+   const b = Number.parseInt(value.slice(4, 6), 16);
+   return [r, g, b];
+ }
