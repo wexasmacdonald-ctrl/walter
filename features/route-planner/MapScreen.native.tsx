@@ -13,12 +13,9 @@ import {
 import * as Location from 'expo-location';
 
 import { useTheme } from '@/features/theme/theme-context';
-import type MapView, { Camera } from 'react-native-maps';
-import type { LatLng, MapPressEvent, Region } from 'react-native-maps';
+import type MapView from 'react-native-maps';
+import type { LatLng, MapPressEvent } from 'react-native-maps';
 import type { Stop } from './types';
-
-// Persist camera between remounts so user zoom stays sticky even if the component re-renders.
-let lastCameraRegion: Region | null = null;
 
 const GOOGLE_LIGHT_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
@@ -166,8 +163,6 @@ export function MapScreen({
   const [confirmed, setConfirmed] = useState<Record<string, number>>({});
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [actioningId, setActioningId] = useState<string | null>(null);
-  const hasAutoFit = useRef(false);
-  const lastRegionRef = useRef<Region | null>(null);
 
   const mapRef = useRef<MapView | null>(null);
   const modalMapRef = useRef<MapView | null>(null);
@@ -249,27 +244,8 @@ export function MapScreen({
   const coordinates = useMemo<LatLng[]>(() => markers.map((marker) => marker.coordinate), [markers]);
 
   useEffect(() => {
-    if (hasAutoFit.current) {
-      return;
-    }
-
-    if (lastCameraRegion) {
-      mapRef.current?.animateToRegion(lastCameraRegion, 0);
-      if (isFullScreen) {
-        modalMapRef.current?.animateToRegion(lastCameraRegion, 0);
-      }
-      hasAutoFit.current = true;
-      return;
-    }
-
-    if (coordinates.length > 0) {
-      fitToMarkers(mapRef.current, coordinates);
-      if (isFullScreen) {
-        fitToMarkers(modalMapRef.current, coordinates);
-      }
-      hasAutoFit.current = true;
-    }
-  }, [coordinates, isFullScreen]);
+    // Intentionally no auto-fit; user controls the camera.
+  }, [coordinates]);
 
   useEffect(() => {
     if (selectedId && !markers.some((marker) => marker.id === selectedId)) {
@@ -325,51 +301,10 @@ export function MapScreen({
     setSelectedId((prev) => (prev === id ? null : id));
   };
 
-  const restoreCamera = () => {
-    const region = lastRegionRef.current;
-    if (region) {
-      mapRef.current?.animateToRegion(region, 150);
-      if (isFullScreen) {
-        modalMapRef.current?.animateToRegion(region, 150);
-      }
-    }
-  };
-
-  const captureCameraRegion = async () => {
-    const map = mapRef.current;
-    if (!map || typeof (map as any).getCamera !== 'function') {
-      return;
-    }
-    try {
-      const camera = (await (map as any).getCamera()) as Camera;
-      const { center, zoom, pitch, heading, altitude } = camera;
-      // Approximate deltas from zoom if available; fallback to previous deltas or small window.
-      const latitudeDelta =
-        typeof zoom === 'number' && Number.isFinite(zoom)
-          ? Math.max(0.002, 0.02 * Math.pow(2, 12 - zoom))
-          : lastRegionRef.current?.latitudeDelta ?? 0.01;
-      const longitudeDelta =
-        typeof zoom === 'number' && Number.isFinite(zoom)
-          ? Math.max(0.002, 0.02 * Math.pow(2, 12 - zoom))
-          : lastRegionRef.current?.longitudeDelta ?? 0.01;
-      const region: Region = {
-        latitude: center.latitude,
-        longitude: center.longitude,
-        latitudeDelta,
-        longitudeDelta,
-      };
-      lastRegionRef.current = region;
-      lastCameraRegion = region;
-    } catch (error) {
-      console.warn('Unable to capture camera region', error);
-    }
-  };
-
   const handleConfirm = async (id: string) => {
     if (actioningId) {
       return;
     }
-    void captureCameraRegion();
     setActioningId(id);
     setConfirmed((prev) => ({ ...prev, [id]: Date.now() }));
     try {
@@ -636,10 +571,6 @@ export function MapScreen({
               setSelectedId(null);
             }
           }}
-          onRegionChangeComplete={(region) => {
-            lastRegionRef.current = region;
-            hasAutoFit.current = true;
-          }}
         >
           {renderMarkers()}
         </MapViewComponent>
@@ -672,10 +603,6 @@ export function MapScreen({
                 if (event.nativeEvent.action !== 'marker-press') {
                   setSelectedId(null);
                 }
-              }}
-              onRegionChangeComplete={(region) => {
-                lastRegionRef.current = region;
-                hasAutoFit.current = true;
               }}
             >
               {renderMarkers()}
