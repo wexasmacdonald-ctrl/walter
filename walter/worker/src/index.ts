@@ -476,6 +476,12 @@ export default {
       );
     }
 
+    if (request.method === 'GET' && url.pathname === '/admin/driver-search') {
+      return requireAuth(routeContext, respond, ['admin', 'dev'], () =>
+        handleAdminSearchDrivers(request, env, respond, routeContext)
+      );
+    }
+
     if (request.method === 'GET' && url.pathname === '/admin/driver-stops') {
       return requireAuth(routeContext, respond, ['admin'], () =>
         handleAdminGetDriverStops(request, env, respond, routeContext)
@@ -2743,6 +2749,52 @@ async function handleAdminListDrivers(
   } catch (error) {
     console.error('Failed to list drivers', error);
     return respond({ error: 'DRIVER_LIST_FAILED' }, 500);
+  }
+}
+
+async function handleAdminSearchDrivers(
+  request: Request,
+  env: Env,
+  respond: (data: unknown, status?: number) => Response,
+  context: RouteContext
+): Promise<Response> {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE)) {
+    return respond(
+      {
+        error: 'CONFIG_ERROR',
+        message: 'Supabase configuration is incomplete.',
+      },
+      500
+    );
+  }
+
+  const url = new URL(request.url);
+  const query = url.searchParams.get('query')?.trim() ?? '';
+  if (query.length < 2) {
+    return respond(
+      { error: 'INVALID_QUERY', message: 'Enter at least 2 characters to search.' },
+      400
+    );
+  }
+
+  const workspaceId = resolveWorkspaceId(context, request);
+  const isDev = context.authUser?.role === 'dev';
+  if (!isDev && !workspaceId) {
+    return respond(
+      {
+        error: 'WORKSPACE_REQUIRED',
+        message: 'Select a workspace to search drivers.',
+      },
+      400
+    );
+  }
+
+  try {
+    const drivers = await searchDriversByQuery(env, query, workspaceId, isDev);
+    return respond({ drivers });
+  } catch (error) {
+    console.error('Failed to search drivers', error);
+    return respond({ error: 'DRIVER_SEARCH_FAILED' }, 500);
   }
 }
 
@@ -5305,6 +5357,14 @@ async function fetchUserById(env: Env, userId: string): Promise<SupabaseUserRow 
 
 type UserSummary = { id: string; fullName: string | null; emailOrPhone: string; workspaceId?: string | null };
 
+type DriverLookupResult = {
+  id: string;
+  fullName: string | null;
+  emailOrPhone: string;
+  workspaceId: string | null;
+  workspaceName: string | null;
+};
+
 async function fetchUsersByRole(
   env: Env,
   role: UserRole,
@@ -5362,6 +5422,69 @@ async function fetchUsersByRole(
 
 async function fetchDrivers(env: Env, workspaceId?: string | null): Promise<UserSummary[]> {
   return fetchUsersByRole(env, 'driver', workspaceId);
+}
+
+async function searchDriversByQuery(
+  env: Env,
+  query: string,
+  workspaceId: string | null,
+  allowGlobalSearch: boolean
+): Promise<DriverLookupResult[]> {
+  const url = new URL('/rest/v1/users', normalizeSupabaseUrl(env.SUPABASE_URL!));
+  const escaped = query.replace(/[%_]/g, '\\$&');
+  url.searchParams.set('select', 'id,full_name,email_or_phone,role,status,workspace_id');
+  url.searchParams.set('role', 'eq.driver');
+  url.searchParams.set('or', `full_name.ilike.%${escaped}%,email_or_phone.ilike.%${escaped}%`);
+  url.searchParams.append('order', 'full_name.asc');
+  url.searchParams.set('limit', '50');
+  if (workspaceId) {
+    url.searchParams.set('workspace_id', `eq.${workspaceId}`);
+  }
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: supabaseHeaders(env),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Supabase driver search failed (${response.status}): ${errorBody}`);
+  }
+
+  const rows = (await response.json()) as Array<{
+    id: string;
+    full_name: string | null;
+    email_or_phone: string;
+    role?: string | null;
+    status?: string | null;
+    workspace_id?: string | null;
+  }>;
+
+  const filtered = rows.filter(
+    (row) => row.role === 'driver' && !isDevStatus(row.status)
+  );
+
+  let workspaceNameLookup: Record<string, string | null> = {};
+  if (allowGlobalSearch) {
+    try {
+      const all = await listWorkspaces(env);
+      workspaceNameLookup = all.reduce<Record<string, string | null>>((acc, ws) => {
+        acc[ws.id] = ws.name ?? null;
+        return acc;
+      }, {});
+    } catch (error) {
+      console.warn('Failed to load workspace names for driver search', error);
+    }
+  }
+
+  return filtered.map((row) => ({
+    id: row.id,
+    fullName: row.full_name,
+    emailOrPhone: row.email_or_phone,
+    workspaceId: row.workspace_id ?? null,
+    workspaceName:
+      workspaceNameLookup[row.workspace_id ?? ''] ?? (workspaceId ? null : null),
+  }));
 }
 
 async function fetchAdmins(env: Env, workspaceId?: string | null): Promise<UserSummary[]> {
