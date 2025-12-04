@@ -1,10 +1,10 @@
-Blow-Grid – Terms of Use
+Blow-Grid — Terms of Use
 
 Effective date: December 2, 2025  
 Owner: MacDonald AI, Ottawa, Ontario, Canada  
 Contact: campbell@macdonaldautomation.com
 
-These Terms of Use (the “Terms”) govern your access to and use of the Blow-Grid application and related services (the “App”). “We”, “us”, and “our” mean MacDonald AI. “You” means the individual or entity using the App. By installing, accessing, or using the App, you agree to these Terms. If you do not agree, do not use the App.
+These Terms of Use (the "Terms") govern your access to and use of the Blow-Grid application and related services (the "App"). "We," "us," and "our" mean MacDonald AI. "You" means the individual or entity using the App. By installing, accessing, or using the App, you agree to these Terms. If you do not agree, do not use the App.
 
 ## 1. Acceptance
 Installing, accessing, or using the App means you accept and agree to be bound by these Terms. If you do not agree, you must not use the App.
@@ -33,7 +33,7 @@ Addresses, stops, and similar records belong to the account holder or whoever su
 Our Privacy Policy explains what we collect and how we use it. It forms part of these Terms. You can review, correct, or delete your account and data inside the App (password confirmation is required). When deletion is confirmed:
 - Data is removed from active systems promptly; and
 - Data is removed from backups on the next scheduled purge cycle.
-The App does not capture your precise GPS location and does not serve advertising. For security and troubleshooting, we log sign-in times and similar “last active” information.
+The App requests your foreground device location (GPS) to show your current position on the map. You can deny the permission; if you do, the App will not show your location dot and some map features may be limited. The App does not serve advertising. For security and troubleshooting, we log sign-in times and similar "last active" information.
 
 ## 8. Third-Party Services
 The App relies on service providers such as:
@@ -54,7 +54,7 @@ Support is provided on a reasonable-efforts basis only. We do not guarantee any 
 The App may offer a free tier and paid business tiers. Billing and subscription upgrades are managed on the web (including via Stripe Checkout). The iOS companion app does not process in-app purchases. Pricing, plans, and limits may change at any time to the fullest extent permitted by law. Any applicable taxes are your responsibility unless we state otherwise.
 
 ## 12. Disclaimers
-To the maximum extent permitted by law, the App and related services are provided “as is” and “as available,” without warranties of any kind, whether express, implied, or statutory, including warranties of merchantability, fitness for a particular purpose, non-infringement, accuracy, reliability, completeness, or continuous availability. You use the App at your own risk.
+To the maximum extent permitted by law, the App and related services are provided "as is" and "as available," without warranties of any kind, whether express, implied, or statutory, including warranties of merchantability, fitness for a particular purpose, non-infringement, accuracy, reliability, completeness, or continuous availability. You use the App at your own risk.
 
 ## 13. Limitation of Liability
 To the maximum extent permitted by law, MacDonald AI and its officers, employees, and agents are not liable for:
@@ -70,7 +70,7 @@ You agree to defend, indemnify, and hold harmless MacDonald AI and its officers,
 You may stop using the App at any time. We may suspend or terminate your access to the App immediately, with or without notice, if you violate these Terms, if a third-party provider requires it, or if we are required to do so by law or legal process. Upon termination, your license to use the App ends and you must stop using and uninstall the App. In-app tools let you request deletion of your account or data, subject to Section 6.
 
 ## 16. App Store Terms
-If you downloaded the App from Apple’s App Store or Google Play: (a) the applicable store’s terms also apply to your use of the App; and (b) where those store terms impose additional requirements, you agree to comply with them. Apple and Google are not responsible for providing support for the App unless required by their own terms.
+If you downloaded the App from Apple's App Store or Google Play: (a) the applicable store's terms also apply to your use of the App; and (b) where those store terms impose additional requirements, you agree to comply with them. Apple and Google are not responsible for providing support for the App unless required by their own terms.
 
 ## 17. Governing Law and Venue
 These Terms are governed by the laws of the Province of Ontario and the federal laws of Canada applicable there, without regard to conflict-of-laws principles. You agree that courts located in Ottawa, Ontario, Canada have exclusive jurisdiction over any dispute arising out of or relating to the App or these Terms, and you consent to personal jurisdiction in those courts.

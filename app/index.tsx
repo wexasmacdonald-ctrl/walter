@@ -1555,7 +1555,8 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   containerDesktop: {
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    paddingHorizontal: 32,
   },
   workspaceForm: {
     gap: 12,
@@ -1664,8 +1665,8 @@ const styles = StyleSheet.create({
   },
   sectionCard: {
     width: '100%',
-    alignSelf: Platform.OS === 'web' ? 'flex-start' : 'stretch',
-    maxWidth: Platform.OS === 'web' ? 960 : undefined,
+    alignSelf: Platform.OS === 'web' ? 'center' : 'stretch',
+    maxWidth: Platform.OS === 'web' ? 1200 : undefined,
     borderRadius: 20,
     borderWidth: 1,
     paddingHorizontal: 20,
