@@ -246,22 +246,28 @@ export function MapScreen({
   }, [pins]);
 
   const coordinates = useMemo<LatLng[]>(() => markers.map((marker) => marker.coordinate), [markers]);
-
-  useEffect(() => {
-    // Intentionally no auto-fit; user controls the camera.
-    // If we have no camera yet and we have pins, seed from the first pin.
-    if (!cameraRegion && coordinates.length > 0) {
-      const first = coordinates[0];
-      const seed: Region = {
+  const seedRegion = useMemo<Region>(() => {
+    if (lastCameraRegion) {
+      return lastCameraRegion;
+    }
+    const first = coordinates[0];
+    if (first) {
+      return {
         latitude: first.latitude,
         longitude: first.longitude,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
       };
-      setCameraRegion(seed);
-      lastCameraRegion = seed;
     }
-  }, [cameraRegion, coordinates]);
+    return { latitude: 0, longitude: 0, latitudeDelta: 0.5, longitudeDelta: 0.5 };
+  }, [coordinates]);
+
+  useEffect(() => {
+    if (!cameraRegion && seedRegion) {
+      setCameraRegion(seedRegion);
+      lastCameraRegion = seedRegion;
+    }
+  }, [cameraRegion, seedRegion]);
 
   useEffect(() => {
     if (selectedId && !markers.some((marker) => marker.id === selectedId)) {
@@ -580,7 +586,7 @@ export function MapScreen({
           showsUserLocation
           showsCompass
           showsMyLocationButton
-          initialRegion={cameraRegion ?? undefined}
+          region={cameraRegion ?? undefined}
           onRegionChangeComplete={(region) => {
             setCameraRegion(region);
             lastCameraRegion = region;
@@ -621,7 +627,7 @@ export function MapScreen({
               showsUserLocation
               showsCompass
               showsMyLocationButton
-              initialRegion={cameraRegion ?? undefined}
+              region={cameraRegion ?? undefined}
               onRegionChangeComplete={(region) => {
                 setCameraRegion(region);
                 lastCameraRegion = region;
