@@ -516,13 +516,15 @@ function BadgeMarker({
         return;
       }
 
+      const size = selected ? 22 : 20;
       const icon: google.maps.Symbol = {
         path: maps.SymbolPath.CIRCLE,
-        scale: selected ? 18 : 16,
+        scale: size,
         fillColor: fill,
         fillOpacity: 1,
         strokeColor: outlineColor,
         strokeWeight: 2,
+        labelOrigin: new maps.Point(0, -size * 0.6),
       };
 
       if (cancelled) {
