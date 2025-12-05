@@ -563,7 +563,7 @@ function BadgeMarker({
 
       const baseWidth = 90;
       const baseHeight = 46;
-      const width = selected ? 96 : 90;
+      const width = selected ? 82 : 78; // slightly thinner to probe clipping issues
       const height = Math.round(width * (baseHeight / baseWidth));
 
       const icon = {
