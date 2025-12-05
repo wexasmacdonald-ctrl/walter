@@ -76,23 +76,27 @@ function MarkerBadgeComponent({
       <View
         collapsable={false}
         renderToHardwareTextureAndroid={Platform.OS === 'android'}
-        style={[
-          styles.badge,
-          isAndroid ? styles.badgeAndroid : null,
-          { backgroundColor, borderColor: resolvedOutlineColor },
-          selected ? (isAndroid ? styles.badgeSelectedAndroid : styles.badgeSelected) : null,
-          selected ? { shadowColor: resolvedShadowColor } : null,
-        ]}
+        style={[styles.container, isAndroid ? styles.containerAndroid : null]}
       >
-        <Text
+        <View
           style={[
-            styles.badgeLabel,
-            isAndroid ? styles.badgeLabelAndroid : null,
-            { color: resolvedLabelColor },
+            styles.badge,
+            isAndroid ? styles.badgeAndroid : null,
+            { backgroundColor, borderColor: resolvedOutlineColor },
+            selected ? (isAndroid ? styles.badgeSelectedAndroid : styles.badgeSelected) : null,
+            selected ? { shadowColor: resolvedShadowColor } : null,
           ]}
         >
-          {label}
-        </Text>
+          <Text
+            style={[
+              styles.badgeLabel,
+              isAndroid ? styles.badgeLabelAndroid : null,
+              { color: resolvedLabelColor },
+            ]}
+          >
+            {label}
+          </Text>
+        </View>
       </View>
     </Marker>
   );
@@ -101,6 +105,18 @@ function MarkerBadgeComponent({
 export const MarkerBadge = memo(MarkerBadgeComponent);
 
 const styles = StyleSheet.create({
+  container: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Android-only root container so react-native-maps snapshots a generously sized bitmap.
+  containerAndroid: {
+    width: 120,
+    height: 80,
+    backgroundColor: 'rgba(255, 0, 0, 0.25)',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
   badge: {
     minWidth: 38,
     paddingHorizontal: 10,
