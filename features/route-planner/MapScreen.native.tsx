@@ -355,17 +355,20 @@ export function MapScreen({
         : pinColor;
 
       return (
-        <MarkerBadge
+        <MarkerComponent
           key={`${marker.id}-${backgroundColor}`}
-          MarkerComponent={MarkerComponent}
-          id={marker.id}
           coordinate={marker.coordinate}
-          label={marker.label}
-          backgroundColor={backgroundColor}
-          labelColor={badgeLabelColor}
-          borderColor={badgeBorderColor}
+          anchor={{ x: 0.5, y: 0.5 }}
+          calloutAnchor={{ x: 0.5, y: 0 }}
+          tracksViewChanges
           onPress={() => handleSelect(marker.id)}
-        />
+        >
+          <View style={[styles.inlineMarker, { backgroundColor }]}>
+            <Text style={styles.inlineMarkerText} numberOfLines={1} ellipsizeMode="tail">
+              {marker.label}
+            </Text>
+          </View>
+        </MarkerComponent>
       );
     });
   };
@@ -774,6 +777,20 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     toastButtonDangerText: {
       color: colors.danger,
       fontWeight: '600',
+    },
+    inlineMarker: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      borderWidth: 2,
+      borderColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    inlineMarkerText: {
+      color: colors.surface,
+      fontWeight: '700',
+      fontSize: 12,
     },
     modalContent: {
       flex: 1,
