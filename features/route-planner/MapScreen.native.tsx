@@ -231,7 +231,11 @@ export function MapScreen({
   const coordinates = useMemo<LatLng[]>(() => markers.map((marker) => marker.coordinate), [markers]);
 
   useEffect(() => {
-    // Intentionally no auto-fit; user controls the camera.
+    if (coordinates.length === 0) {
+      return;
+    }
+    fitToMarkers(mapRef.current, coordinates);
+    fitToMarkers(modalMapRef.current, coordinates);
   }, [coordinates]);
 
   useEffect(() => {
