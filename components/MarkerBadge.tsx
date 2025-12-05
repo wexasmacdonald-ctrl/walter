@@ -32,7 +32,6 @@ function MarkerBadgeComponent({
   selected = false,
   onPress,
 }: MarkerBadgeProps) {
-  const isAndroid = Platform.OS === 'android';
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
   const latestVisualState = useRef<string>('');
   const { colors, isDark } = useTheme();
@@ -76,33 +75,23 @@ function MarkerBadgeComponent({
       <View
         collapsable={false}
         renderToHardwareTextureAndroid={Platform.OS === 'android'}
-        style={[styles.container, isAndroid ? styles.containerAndroid : null]}
+        style={styles.rootBox}
       >
-        {isAndroid ? (
-          <View style={styles.androidSimplePill}>
-            <Text style={styles.androidSimplePillText}>{label}</Text>
-          </View>
-        ) : (
-          <View
-            style={[
-              styles.badge,
-              isAndroid ? styles.badgeAndroid : null,
-              { backgroundColor, borderColor: resolvedOutlineColor },
-              selected ? (isAndroid ? styles.badgeSelectedAndroid : styles.badgeSelected) : null,
-              selected ? { shadowColor: resolvedShadowColor } : null,
-            ]}
+        <View
+          style={[
+            styles.pill,
+            { backgroundColor, borderColor: resolvedOutlineColor },
+            selected ? { shadowColor: resolvedShadowColor, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 } : null,
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={[styles.pillText, { color: resolvedLabelColor }]}
           >
-            <Text
-              style={[
-                styles.badgeLabel,
-                isAndroid ? styles.badgeLabelAndroid : null,
-                { color: resolvedLabelColor },
-              ]}
-            >
-              {label}
-            </Text>
-          </View>
-        )}
+            {label}
+          </Text>
+        </View>
       </View>
     </Marker>
   );
@@ -111,86 +100,24 @@ function MarkerBadgeComponent({
 export const MarkerBadge = memo(MarkerBadgeComponent);
 
 const styles = StyleSheet.create({
-  container: {
+  rootBox: {
+    width: 44,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'visible',
   },
-  // Android-only root container so react-native-maps snapshots a generously sized bitmap.
-  containerAndroid: {
-    width: 120,
-    height: 80,
-    backgroundColor: 'rgba(255, 0, 0, 0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'visible',
-  },
-  androidSimplePill: {
-    width: 90,
-    height: 40,
-    borderRadius: 16,
-    backgroundColor: '#0d6efd',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'visible',
-  },
-  androidSimplePillText: {
-    color: 'white',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  badge: {
-    minWidth: 38,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
+  pill: {
+    minWidth: 32,
+    maxWidth: 44,
+    height: 24,
+    paddingHorizontal: 6,
+    borderRadius: 12,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'visible',
   },
-  // Android-only: deliberately oversized with thick border to verify this component is used and
-  // to give react-native-maps a generous snapshot box (prevents clipped edges).
-  badgeAndroid: {
-    width: 90,
-    minWidth: 90,
-    height: 48,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 8,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'visible',
-  },
-  badgeSelected: {
-    transform: [{ scale: 1.1 }],
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  badgeSelectedAndroid: {
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  badgeLabel: {
+  pillText: {
     fontWeight: '700',
-  },
-  badgeLabelAndroid: {
-    fontSize: 18,
-  },
-  androidProbe: {
-    width: 54,
-    height: 54,
-    backgroundColor: 'black',
-    borderRadius: 27,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  androidProbeText: {
-    color: 'white',
-    fontSize: 28,
-    fontWeight: '800',
+    fontSize: 13,
   },
 });
