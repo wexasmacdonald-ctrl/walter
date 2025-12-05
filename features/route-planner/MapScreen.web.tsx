@@ -82,6 +82,16 @@ export function MapScreen({
       .filter((pin): pin is MapPin => pin !== null);
   }, [pins]);
 
+  // Debug: surface pins that were dropped so we can trace missing markers quickly.
+  useEffect(() => {
+    const dropped = pins.filter((pin) => toNumber(pin.lat) === null || toNumber(pin.lng) === null);
+    if (dropped.length > 0) {
+      // eslint-disable-next-line no-console
+      console.warn('Dropped pins missing lat/lng', dropped.map((pin) => ({ id: pin.id, lat: pin.lat, lng: pin.lng, label: pin.label })));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pins]);
+
   const selectedMarker = useMemo(
     () => mapPins.find((marker) => marker.id === selectedId) ?? null,
     [mapPins, selectedId]
