@@ -11,6 +11,7 @@ import { APIProvider, Map, Marker } from '@vis.gl/react-google-maps';
 
 import { useTheme } from '@/features/theme/theme-context';
 import { getGoogleMapsApiKey } from '@/features/route-planner/getGoogleMapsApiKey';
+import pinImage from '@/assets/images/pin.png';
 
 import type { Stop } from './types';
 
@@ -523,29 +524,24 @@ function BadgeMarker({
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
-      const baseWidth = 90;
-      const baseHeight = 46;
-      const scaledWidth = selected ? 96 : 90;
+      const baseWidth = 80;
+      const baseHeight = 80;
+      const scaledWidth = selected ? 84 : 80;
       const scaledHeight = Math.round(scaledWidth * (baseHeight / baseWidth));
 
       const icon = {
-        url:
-          'data:image/svg+xml;charset=UTF-8,' +
-          encodeURIComponent(
-            `<svg xmlns="http://www.w3.org/2000/svg" width="${baseWidth}" height="${baseHeight}" viewBox="0 0 ${baseWidth} ${baseHeight}">
-              <g fill="none" fill-rule="evenodd">
-                <g transform="translate(5 5)">
-                  <rect width="80" height="36" rx="10" fill="${fill}" stroke="${outlineColor}" stroke-width="2"/>
-                  <text x="40" y="23" font-family="Arial, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="${labelColor}">${safeGlyph}</text>
-                </g>
-              </g>
-            </svg>`
-          ),
+        url: pinImage as unknown as string,
         size: new maps.Size(baseWidth, baseHeight),
         scaledSize: new maps.Size(scaledWidth, scaledHeight),
-        anchor: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * (40 / baseHeight))),
-        labelOrigin: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * 0.5)),
-        };
+        anchor: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * 0.92)),
+        labelOrigin: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * 0.55)),
+        label: {
+          text: safeGlyph,
+          color: labelColor,
+          fontSize: '14px',
+          fontWeight: '700',
+        },
+      };
 
         if (cancelled) {
           return;
@@ -578,6 +574,7 @@ function BadgeMarker({
       onDragEnd={onDragEnd}
       draggable={draggable}
       icon={visual.icon}
+      label={visual.icon.label}
       zIndex={visual.zIndex}
     />
   );
