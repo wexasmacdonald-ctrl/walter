@@ -108,14 +108,16 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'visible',
   },
   // Android-only root container so react-native-maps snapshots a generously sized bitmap.
   containerAndroid: {
     width: 120,
     height: 80,
     backgroundColor: 'rgba(255, 0, 0, 0.25)',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible',
   },
   badge: {
     minWidth: 38,
@@ -125,17 +127,21 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'visible',
   },
   // Android-only: deliberately oversized with thick border to verify this component is used and
   // to give react-native-maps a generous snapshot box (prevents clipped edges).
   badgeAndroid: {
-    width: 84,
-    minWidth: 84,
-    height: 44,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    width: 90,
+    minWidth: 90,
+    height: 48,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderWidth: 8,
-    borderRadius: 18,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible',
   },
   badgeSelected: {
     transform: [{ scale: 1.1 }],
