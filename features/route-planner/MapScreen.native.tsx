@@ -320,7 +320,6 @@ export function MapScreen({
       setActioningId(null);
     }
     setSelectedId(null);
-    restoreCamera();
   };
 
   const handleUndo = (id: string) => {
