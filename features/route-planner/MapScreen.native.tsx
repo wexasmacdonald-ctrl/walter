@@ -13,6 +13,7 @@ import {
 import * as Location from 'expo-location';
 
 import { useTheme } from '@/features/theme/theme-context';
+import { MarkerBadge } from '@/components/MarkerBadge';
 import type MapView from 'react-native-maps';
 import type { LatLng, MapPressEvent } from 'react-native-maps';
 import type { Stop } from './types';
@@ -138,7 +139,6 @@ export function MapScreen({
   }, []);
 
   const MapViewComponent = mapModule?.default ?? null;
-  // For now, bypass custom MarkerBadge and use default markers to validate native rendering.
   const MarkerComponent = mapModule?.Marker ?? null;
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -343,22 +343,31 @@ export function MapScreen({
     if (!MarkerComponent) {
       return null;
     }
-    return markers.map((marker) => (
-      <MarkerComponent
-        key={marker.id}
-        coordinate={marker.coordinate}
-        anchor={{ x: 0.5, y: 0.5 }}
-        calloutAnchor={{ x: 0.5, y: 0 }}
-        tracksViewChanges
-        onPress={() => handleSelect(marker.id)}
-      >
-        <View style={styles.inlineMarker}>
-          <Text style={styles.inlineMarkerText} numberOfLines={1} ellipsizeMode="tail">
-            {marker.label}
-          </Text>
-        </View>
-      </MarkerComponent>
-    ));
+    return markers.map((marker) => {
+      const isSelected = marker.id === selectedId;
+      const isConfirmed = marker.status === 'complete' || Boolean(confirmed[marker.id]);
+      const backgroundColor = isSelected
+        ? isConfirmed
+          ? selectedConfirmedPinColor
+          : selectedPinColor
+        : isConfirmed
+        ? confirmedColor
+        : pinColor;
+
+      return (
+        <MarkerBadge
+          key={marker.id}
+          MarkerComponent={MarkerComponent}
+          id={marker.id}
+          coordinate={marker.coordinate}
+          label={marker.label}
+          backgroundColor={backgroundColor}
+          labelColor={badgeLabelColor}
+          borderColor={badgeBorderColor}
+          onPress={() => handleSelect(marker.id)}
+        />
+      );
+    });
   };
 
   const canAdjustPin = typeof onAdjustPin === 'function';
@@ -765,21 +774,6 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     toastButtonDangerText: {
       color: colors.danger,
       fontWeight: '600',
-    },
-    inlineMarker: {
-      width: 32,
-      height: 32,
-      borderRadius: 8,
-      backgroundColor: colors.primary,
-      borderWidth: 2,
-      borderColor: colors.surface,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    inlineMarkerText: {
-      color: colors.surface,
-      fontWeight: '700',
-      fontSize: 12,
     },
     modalContent: {
       flex: 1,
