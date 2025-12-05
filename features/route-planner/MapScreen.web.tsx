@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -11,7 +11,6 @@ import { APIProvider, Map, Marker } from '@vis.gl/react-google-maps';
 
 import { useTheme } from '@/features/theme/theme-context';
 import { getGoogleMapsApiKey } from '@/features/route-planner/getGoogleMapsApiKey';
-import pinImage from '@/assets/images/pin.png';
 
 import type { Stop } from './types';
 
@@ -39,6 +38,7 @@ const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 }
 const DEFAULT_ZOOM = 12;
 
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
+const GOOGLE_MAP_ID = process.env.EXPO_PUBLIC_GOOGLE_MAP_ID;
 export function MapScreen({
   pins,
   loading = false,
@@ -55,6 +55,7 @@ export function MapScreen({
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [heading, setHeading] = useState(0);
+  const mapRef = useRef<google.maps.Map | null>(null);
 
   const mapPins = useMemo<MapPin[]>(() => {
     return pins
@@ -346,6 +347,7 @@ export function MapScreen({
       mapTypeControl: false,
       tilt: 45,
       styles: mapStyle,
+      ...(GOOGLE_MAP_ID ? { mapId: GOOGLE_MAP_ID } : {}),
     }),
     [mapStyle]
   );
@@ -356,6 +358,15 @@ export function MapScreen({
       return next < 0 ? next + 360 : next;
     });
   };
+
+  useEffect(() => {
+    if (!mapRef.current || mapPins.length === 0) {
+      return;
+    }
+    const bounds = new google.maps.LatLngBounds();
+    mapPins.forEach((pin) => bounds.extend(pin.position));
+    mapRef.current.fitBounds(bounds);
+  }, [mapPins]);
 
   if (loading) {
     return (
@@ -405,6 +416,9 @@ export function MapScreen({
             mapTypeId={mapTypeId}
             options={mapOptions}
             onClick={() => setSelectedId(null)}
+            onLoad={(map) => {
+              mapRef.current = map;
+            }}
           >
             {renderMarkers()}
           </Map>
@@ -431,6 +445,9 @@ export function MapScreen({
               mapTypeId={mapTypeId}
               options={mapOptions}
               onClick={() => setSelectedId(null)}
+              onLoad={(map) => {
+                mapRef.current = map;
+              }}
             >
               {renderMarkers()}
             </Map>
@@ -488,23 +505,35 @@ function BadgeMarker({
       }
 
       const glyph = label.trim().slice(0, 4);
-      const scaledSize = selected ? 76 : 72;
+      const safeGlyph = glyph.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const scaledSize = selected ? 96 : 90;
 
-      const icon: google.maps.Icon = {
-        url: pinImage as unknown as string,
-        scaledSize: new maps.Size(scaledSize, scaledSize),
-        anchor: new maps.Point(scaledSize / 2, scaledSize / 1.05),
+      const icon = {
+        url:
+          'data:image/svg+xml;charset=UTF-8,' +
+          encodeURIComponent(
+            `<svg xmlns="http://www.w3.org/2000/svg" width="90" height="46" viewBox="0 0 90 46">
+              <g fill="none" fill-rule="evenodd">
+                <g transform="translate(5 5)">
+                  <rect width="80" height="36" rx="10" fill="${fill}" stroke="${outlineColor}" stroke-width="2"/>
+                  <text x="40" y="23" font-family="Arial, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="${labelColor}">${safeGlyph}</text>
+                </g>
+              </g>
+            </svg>`
+          ),
+        scaledSize: new maps.Size(scaledSize, Math.round(scaledSize * (46 / 90))),
+        anchor: new maps.Point(scaledSize / 2, Math.round(scaledSize * (40 / 90))),
+        };
+
+        if (cancelled) {
+          return;
+        }
+
+        setVisual({
+          icon,
+          zIndex: selected ? 2 : 1,
+        });
       };
-
-      if (cancelled) {
-        return;
-      }
-
-      setVisual({
-        icon,
-        zIndex: selected ? 2 : 1,
-      });
-    };
 
     configure();
 
@@ -514,7 +543,7 @@ function BadgeMarker({
         window.clearTimeout(timeoutId);
       }
     };
-  }, [label, selected]);
+  }, [fill, label, labelColor, outlineColor, selected]);
 
   if (!visual) {
     return null;
@@ -528,15 +557,10 @@ function BadgeMarker({
       draggable={draggable}
       icon={visual.icon}
       zIndex={visual.zIndex}
-      label={{
-        text: label,
-        color: labelColor,
-        fontSize: '14px',
-        fontWeight: '700',
-      }}
     />
   );
 }
+
 
 function extractHouseNumber(address: string | null | undefined): string | null {
   if (!address) {
