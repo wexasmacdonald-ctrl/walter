@@ -79,8 +79,14 @@ function MarkerBadgeComponent({
         style={[styles.container, isAndroid ? styles.containerAndroid : null]}
       >
         {isAndroid ? (
-          <View style={styles.androidProbe}>
-            <Text style={styles.androidProbeText}>X</Text>
+          <View style={styles.androidLayer1}>
+            <View style={styles.androidLayer2}>
+              <View style={styles.androidLayer3}>
+                <View style={styles.androidProbe}>
+                  <Text style={styles.androidProbeText}>X</Text>
+                </View>
+              </View>
+            </View>
           </View>
         ) : (
           <View
@@ -125,6 +131,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'visible',
   },
+  // Android debug layers to visualize clipping through the hierarchy.
+  androidLayer1: {
+    width: 100,
+    height: 70,
+    backgroundColor: 'rgba(0, 255, 0, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  androidLayer2: {
+    width: 90,
+    height: 60,
+    backgroundColor: 'rgba(255, 255, 0, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  androidLayer3: {
+    width: 80,
+    height: 50,
+    backgroundColor: 'rgba(0, 0, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   badge: {
     minWidth: 38,
     paddingHorizontal: 10,
@@ -167,10 +195,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   androidProbe: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 54,
+    height: 54,
     backgroundColor: 'black',
+    borderRadius: 27,
     alignItems: 'center',
     justifyContent: 'center',
   },
