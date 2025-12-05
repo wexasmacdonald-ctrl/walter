@@ -20,6 +20,9 @@ If we handle push notifications, we store the device token only to deliver messa
 Purposes of Processing  
 We handle information to create and manage accounts, authenticate access, display and synchronize assigned stops, support administrators, secure the App, prevent abuse (including rate limits and deduplication), diagnose issues, fulfill subscription billing via the web, and satisfy legal requirements.
 
+Workspace Confidentiality  
+Workspace data (including routes, addresses, customer information, and operational details) must be kept confidential and used only for internal business purposes. You must not export, forward, screenshot, or otherwise share workspace information outside your organization or with unauthorized recipients unless you have explicit written permission from your administrator or manager. Unauthorized disclosure may violate your employment or contractor obligations and may lead to discipline by your organization, suspension or termination of access to the App, and potential legal claims. We may suspend accounts and notify the applicable administrator if we believe workspace data has been misused or shared without authorization.
+
 Legal or Contractual Basis  
 Processing is necessary to perform agreements with users, to pursue our legitimate interests in delivering and safeguarding the App, and to meet applicable legal obligations.
 

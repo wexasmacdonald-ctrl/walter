@@ -29,6 +29,9 @@ You agree that you will not:
 ## 6. Stored Data
 Addresses, stops, and similar records belong to the account holder or whoever supplied them. We may normalize, deduplicate, or geocode addresses to operate and improve the service. Removing an individual account does not automatically delete data that another user or organization still needs, but you can request deletion of your own account and associated data through in-app tools, subject to those shared-use constraints.
 
+## 7. Workspace Confidentiality
+You must treat all workspace data (including routes, addresses, customer information, and operational details) as confidential and use it only for the internal business purposes of the workspace that provided it. You must not export, forward, screenshot, or otherwise share workspace information outside your organization or with unauthorized recipients unless you have explicit written permission from your administrator or manager. Your use of the App does not waive or alter any confidentiality, employment, or contractor obligations you owe to your organization. Unauthorized disclosure may expose you to disciplinary action by your organization, termination of access to the App, and legal claims by your organization or us. We may suspend or disable accounts and notify the applicable administrator if we believe workspace data has been misused or shared without authorization.
+
 ## 7. Your Data and Privacy
 Our Privacy Policy explains what we collect and how we use it. It forms part of these Terms. You can review, correct, or delete your account and data inside the App (password confirmation is required). When deletion is confirmed:
 - Data is removed from active systems promptly; and

@@ -347,7 +347,6 @@ export function MapScreen({
       mapTypeControl: false,
       tilt: 45,
       styles: mapStyle,
-      ...(GOOGLE_MAP_ID ? { mapId: GOOGLE_MAP_ID } : {}),
     }),
     [mapStyle]
   );
