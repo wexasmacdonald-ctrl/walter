@@ -59,11 +59,13 @@ export function MapScreen({
 
   const mapPins = useMemo<MapPin[]>(() => {
     return pins
-      .filter(
-        (pin): pin is Stop & { lat: number; lng: number } =>
-          typeof pin.lat === 'number' && typeof pin.lng === 'number'
-      )
       .map((pin, index) => {
+        const lat = toNumber(pin.lat);
+        const lng = toNumber(pin.lng);
+        if (lat === null || lng === null) {
+          return null;
+        }
+
         const label =
           typeof pin.label === 'string' && pin.label.trim().length > 0
             ? pin.label.trim()
@@ -71,12 +73,13 @@ export function MapScreen({
 
         return {
           id: pin.id ?? String(index),
-          position: { lat: pin.lat, lng: pin.lng },
+          position: { lat, lng },
           address: pin.address,
           label,
           status: pin.status === 'complete' ? 'complete' : 'pending',
         };
-      });
+      })
+      .filter((pin): pin is MapPin => pin !== null);
   }, [pins]);
 
   const selectedMarker = useMemo(
@@ -504,7 +507,12 @@ function BadgeMarker({
       }
 
       const glyph = label.trim().slice(0, 4);
-      const safeGlyph = glyph.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeGlyph = glyph
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
       const scaledSize = selected ? 96 : 90;
 
       const icon = {
@@ -845,4 +853,15 @@ function parseHex(input: string): [number, number, number] {
   const g = Number.parseInt(value.slice(2, 4), 16);
   const b = Number.parseInt(value.slice(4, 6), 16);
   return [r, g, b];
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
