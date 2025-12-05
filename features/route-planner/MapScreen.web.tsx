@@ -389,6 +389,25 @@ export function MapScreen({
     });
   };
 
+  // Some global CSS (e.g., img { max-width: 100% }) can distort Google marker sprites.
+  // Ensure map images use their native sizing so pins are not clipped.
+  useEffect(() => {
+    const id = 'google-maps-image-reset';
+    if (document.getElementById(id)) {
+      return;
+    }
+    const style = document.createElement('style');
+    style.id = id;
+    style.innerHTML = `
+      .gm-style img { max-width: none !important; transform: none !important; }
+      .gm-style label, .gm-style span, .gm-style div { transform: none !important; }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      style.remove();
+    };
+  }, []);
+
   useEffect(() => {
     if (!mapRef.current || mapPins.length === 0) {
       return;
