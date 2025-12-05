@@ -150,6 +150,8 @@ export function MapScreen({
   const [confirmed, setConfirmed] = useState<Record<string, number>>({});
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [actioningId, setActioningId] = useState<string | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [modalMapReady, setModalMapReady] = useState(false);
 
   const mapRef = useRef<MapView | null>(null);
   const modalMapRef = useRef<MapView | null>(null);
@@ -234,9 +236,13 @@ export function MapScreen({
     if (coordinates.length === 0) {
       return;
     }
-    fitToMarkers(mapRef.current, coordinates);
-    fitToMarkers(modalMapRef.current, coordinates);
-  }, [coordinates]);
+    if (mapReady) {
+      fitToMarkers(mapRef.current, coordinates);
+    }
+    if (modalMapReady) {
+      fitToMarkers(modalMapRef.current, coordinates);
+    }
+  }, [coordinates, mapReady, modalMapReady]);
 
   useEffect(() => {
     if (selectedId && !markers.some((marker) => marker.id === selectedId)) {
@@ -558,6 +564,12 @@ export function MapScreen({
           showsMyLocationButton
           customMapStyle={mapCustomStyle}
           userInterfaceStyle={isDark ? 'dark' : 'light'}
+          onMapReady={() => {
+            setMapReady(true);
+            if (coordinates.length > 0) {
+              fitToMarkers(mapRef.current, coordinates);
+            }
+          }}
           onPress={(event: MapPressEvent) => {
             if (event.nativeEvent.action !== 'marker-press') {
               setSelectedId(null);
@@ -591,6 +603,12 @@ export function MapScreen({
               showsMyLocationButton
               customMapStyle={mapCustomStyle}
               userInterfaceStyle={isDark ? 'dark' : 'light'}
+              onMapReady={() => {
+                setModalMapReady(true);
+                if (coordinates.length > 0) {
+                  fitToMarkers(modalMapRef.current, coordinates);
+                }
+              }}
               onPress={(event: MapPressEvent) => {
                 if (event.nativeEvent.action !== 'marker-press') {
                   setSelectedId(null);
