@@ -78,25 +78,31 @@ function MarkerBadgeComponent({
         renderToHardwareTextureAndroid={Platform.OS === 'android'}
         style={[styles.container, isAndroid ? styles.containerAndroid : null]}
       >
-        <View
-          style={[
-            styles.badge,
-            isAndroid ? styles.badgeAndroid : null,
-            { backgroundColor, borderColor: resolvedOutlineColor },
-            selected ? (isAndroid ? styles.badgeSelectedAndroid : styles.badgeSelected) : null,
-            selected ? { shadowColor: resolvedShadowColor } : null,
-          ]}
-        >
-          <Text
+        {isAndroid ? (
+          <View style={styles.androidProbe}>
+            <Text style={styles.androidProbeText}>X</Text>
+          </View>
+        ) : (
+          <View
             style={[
-              styles.badgeLabel,
-              isAndroid ? styles.badgeLabelAndroid : null,
-              { color: resolvedLabelColor },
+              styles.badge,
+              isAndroid ? styles.badgeAndroid : null,
+              { backgroundColor, borderColor: resolvedOutlineColor },
+              selected ? (isAndroid ? styles.badgeSelectedAndroid : styles.badgeSelected) : null,
+              selected ? { shadowColor: resolvedShadowColor } : null,
             ]}
           >
-            {label}
-          </Text>
-        </View>
+            <Text
+              style={[
+                styles.badgeLabel,
+                isAndroid ? styles.badgeLabelAndroid : null,
+                { color: resolvedLabelColor },
+              ]}
+            >
+              {label}
+            </Text>
+          </View>
+        )}
       </View>
     </Marker>
   );
@@ -159,5 +165,18 @@ const styles = StyleSheet.create({
   },
   badgeLabelAndroid: {
     fontSize: 18,
+  },
+  androidProbe: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'black',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  androidProbeText: {
+    color: 'white',
+    fontSize: 28,
+    fontWeight: '800',
   },
 });
