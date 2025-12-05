@@ -524,23 +524,17 @@ function BadgeMarker({
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
-      const baseWidth = 80;
+      const baseWidth = 173;
       const baseHeight = 80;
-      const scaledWidth = selected ? 84 : 80;
+      const scaledWidth = selected ? 86 : 82;
       const scaledHeight = Math.round(scaledWidth * (baseHeight / baseWidth));
 
       const icon = {
         url: pinImage as unknown as string,
         size: new maps.Size(baseWidth, baseHeight),
         scaledSize: new maps.Size(scaledWidth, scaledHeight),
-        anchor: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * 0.92)),
-        labelOrigin: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * 0.55)),
-        label: {
-          text: safeGlyph,
-          color: labelColor,
-          fontSize: '14px',
-          fontWeight: '700',
-        },
+        anchor: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * 0.9)),
+        labelOrigin: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * 0.52)),
       };
 
         if (cancelled) {
