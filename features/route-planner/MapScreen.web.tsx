@@ -11,7 +11,6 @@ import { APIProvider, Map, Marker } from '@vis.gl/react-google-maps';
 
 import { useTheme } from '@/features/theme/theme-context';
 import { getGoogleMapsApiKey } from '@/features/route-planner/getGoogleMapsApiKey';
-import pinImage from '@/assets/images/pin.png';
 
 import type { Stop } from './types';
 
@@ -517,35 +516,24 @@ function BadgeMarker({
         return;
       }
 
-      const glyph = label.trim().slice(0, 4);
-      const safeGlyph = glyph
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-      const baseWidth = 173;
-      const baseHeight = 80;
-      const scaledWidth = selected ? 86 : 82;
-      const scaledHeight = Math.round(scaledWidth * (baseHeight / baseWidth));
-
-      const icon = {
-        url: pinImage as unknown as string,
-        size: new maps.Size(baseWidth, baseHeight),
-        scaledSize: new maps.Size(scaledWidth, scaledHeight),
-        anchor: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * 0.9)),
-        labelOrigin: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * 0.52)),
+      const icon: google.maps.Symbol = {
+        path: maps.SymbolPath.CIRCLE,
+        scale: selected ? 18 : 16,
+        fillColor: fill,
+        fillOpacity: 1,
+        strokeColor: outlineColor,
+        strokeWeight: 2,
       };
 
-        if (cancelled) {
-          return;
-        }
+      if (cancelled) {
+        return;
+      }
 
-        setVisual({
-          icon,
-          zIndex: selected ? 2 : 1,
-        });
-      };
+      setVisual({
+        icon,
+        zIndex: selected ? 2 : 1,
+      });
+    };
 
     configure();
 
@@ -568,7 +556,12 @@ function BadgeMarker({
       onDragEnd={onDragEnd}
       draggable={draggable}
       icon={visual.icon}
-      label={visual.icon.label}
+      label={{
+        text: label,
+        color: labelColor,
+        fontSize: '14px',
+        fontWeight: '700',
+      }}
       zIndex={visual.zIndex}
     />
   );
