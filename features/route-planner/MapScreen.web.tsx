@@ -523,13 +523,16 @@ function BadgeMarker({
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
-      const scaledSize = selected ? 96 : 90;
+      const baseWidth = 90;
+      const baseHeight = 46;
+      const scaledWidth = selected ? 96 : 90;
+      const scaledHeight = Math.round(scaledWidth * (baseHeight / baseWidth));
 
       const icon = {
         url:
           'data:image/svg+xml;charset=UTF-8,' +
           encodeURIComponent(
-            `<svg xmlns="http://www.w3.org/2000/svg" width="90" height="46" viewBox="0 0 90 46">
+            `<svg xmlns="http://www.w3.org/2000/svg" width="${baseWidth}" height="${baseHeight}" viewBox="0 0 ${baseWidth} ${baseHeight}">
               <g fill="none" fill-rule="evenodd">
                 <g transform="translate(5 5)">
                   <rect width="80" height="36" rx="10" fill="${fill}" stroke="${outlineColor}" stroke-width="2"/>
@@ -538,8 +541,10 @@ function BadgeMarker({
               </g>
             </svg>`
           ),
-        scaledSize: new maps.Size(scaledSize, Math.round(scaledSize * (46 / 90))),
-        anchor: new maps.Point(scaledSize / 2, Math.round(scaledSize * (40 / 90))),
+        size: new maps.Size(baseWidth, baseHeight),
+        scaledSize: new maps.Size(scaledWidth, scaledHeight),
+        anchor: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * (40 / baseHeight))),
+        labelOrigin: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * 0.5)),
         };
 
         if (cancelled) {
