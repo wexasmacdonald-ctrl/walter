@@ -32,6 +32,7 @@ function MarkerBadgeComponent({
   selected = false,
   onPress,
 }: MarkerBadgeProps) {
+  const isAndroid = Platform.OS === 'android';
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
   const latestVisualState = useRef<string>('');
   const { colors, isDark } = useTheme();
@@ -77,12 +78,21 @@ function MarkerBadgeComponent({
         renderToHardwareTextureAndroid={Platform.OS === 'android'}
         style={[
           styles.badge,
+          isAndroid ? styles.badgeAndroid : null,
           { backgroundColor, borderColor: resolvedOutlineColor },
-          selected ? styles.badgeSelected : null,
+          selected ? (isAndroid ? styles.badgeSelectedAndroid : styles.badgeSelected) : null,
           selected ? { shadowColor: resolvedShadowColor } : null,
         ]}
       >
-        <Text style={[styles.badgeLabel, { color: resolvedLabelColor }]}>{label}</Text>
+        <Text
+          style={[
+            styles.badgeLabel,
+            isAndroid ? styles.badgeLabelAndroid : null,
+            { color: resolvedLabelColor },
+          ]}
+        >
+          {label}
+        </Text>
       </View>
     </Marker>
   );
@@ -100,13 +110,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Android-only: deliberately oversized with thick border to verify this component is used and
+  // to give react-native-maps a generous snapshot box (prevents clipped edges).
+  badgeAndroid: {
+    width: 84,
+    minWidth: 84,
+    height: 44,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderWidth: 8,
+    borderRadius: 18,
+  },
   badgeSelected: {
     transform: [{ scale: 1.1 }],
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 3,
   },
+  badgeSelectedAndroid: {
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
+  },
   badgeLabel: {
     fontWeight: '700',
+  },
+  badgeLabelAndroid: {
+    fontSize: 18,
   },
 });
