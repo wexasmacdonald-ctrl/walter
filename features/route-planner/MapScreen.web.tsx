@@ -38,7 +38,6 @@ const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 }
 const DEFAULT_ZOOM = 12;
 
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
-const GOOGLE_MAP_ID = process.env.EXPO_PUBLIC_GOOGLE_MAP_ID;
 export function MapScreen({
   pins,
   loading = false,
@@ -87,10 +86,29 @@ export function MapScreen({
     const dropped = pins.filter((pin) => toNumber(pin.lat) === null || toNumber(pin.lng) === null);
     if (dropped.length > 0) {
       // eslint-disable-next-line no-console
-      console.warn('Dropped pins missing lat/lng', dropped.map((pin) => ({ id: pin.id, lat: pin.lat, lng: pin.lng, label: pin.label })));
+      console.warn(
+        'Dropped pins missing lat/lng',
+        dropped.map((pin) => ({ id: pin.id, lat: pin.lat, lng: pin.lng, label: pin.label }))
+      );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pins]);
+
+  useEffect(() => {
+    const onError = (ev: ErrorEvent) => {
+      // eslint-disable-next-line no-console
+      console.error('Window error', ev.error || ev.message, ev.filename, ev.lineno, ev.colno);
+    };
+    const onRejection = (ev: PromiseRejectionEvent) => {
+      // eslint-disable-next-line no-console
+      console.error('Unhandled rejection', ev.reason);
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, []);
 
   const selectedMarker = useMemo(
     () => mapPins.find((marker) => marker.id === selectedId) ?? null,
@@ -408,10 +426,10 @@ export function MapScreen({
           <View style={styles.headerActions}>
             {renderMapTypeToggle()}
             <Pressable style={styles.fullScreenButton} onPress={() => rotate(-15)}>
-              <Text style={styles.fullScreenButtonText}>Γƒ▓</Text>
+              <Text style={styles.fullScreenButtonText}>Rotate -15</Text>
             </Pressable>
             <Pressable style={styles.fullScreenButton} onPress={() => rotate(15)}>
-              <Text style={styles.fullScreenButtonText}>Γƒ│</Text>
+              <Text style={styles.fullScreenButtonText}>Rotate +15</Text>
             </Pressable>
             <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
               <Text style={styles.fullScreenButtonText}>Full Screen</Text>
@@ -501,70 +519,14 @@ function BadgeMarker({
   onPress,
   onDragEnd,
 }: BadgeMarkerProps) {
-  const [visual, setVisual] = useState<MarkerVisual | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    let timeoutId: number | null = null;
-
-    const configure = () => {
-      const maps = (globalThis as any).google?.maps;
-      if (!maps) {
-        if (!cancelled) {
-          timeoutId = window.setTimeout(configure, 100);
-        }
-        return;
-      }
-
-      const size = selected ? 22 : 20;
-      const icon: google.maps.Symbol = {
-        path: maps.SymbolPath.CIRCLE,
-        scale: size,
-        fillColor: fill,
-        fillOpacity: 1,
-        strokeColor: outlineColor,
-        strokeWeight: 2,
-        labelOrigin: new maps.Point(0, -size * 0.6),
-      };
-
-      if (cancelled) {
-        return;
-      }
-
-      setVisual({
-        icon,
-        zIndex: selected ? 2 : 1,
-      });
-    };
-
-    configure();
-
-    return () => {
-      cancelled = true;
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-      }
-    };
-  }, [fill, label, labelColor, outlineColor, selected]);
-
-  if (!visual) {
-    return null;
-  }
-
   return (
     <Marker
       position={position}
       onClick={onPress}
       onDragEnd={onDragEnd}
       draggable={draggable}
-      icon={visual.icon}
-      label={{
-        text: label,
-        color: labelColor,
-        fontSize: '14px',
-        fontWeight: '700',
-      }}
-      zIndex={visual.zIndex}
+      title={label}
+      zIndex={selected ? 2 : 1}
     />
   );
 }
