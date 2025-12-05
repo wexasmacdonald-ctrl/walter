@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -231,7 +231,7 @@ export function MapScreen({
             <Text style={styles.toastStatus}>
               {isConfirmed
                 ? 'Snow cleared. Tap undo to revert.'
-                : 'Tap ΓÇ£Snow clearedΓÇ¥ once this stop is finished.'}
+                : 'Tap "Snow cleared" once this stop is finished.'}
             </Text>
             <View style={styles.toastActions}>
               {canAdjustPin ? (
@@ -255,7 +255,7 @@ export function MapScreen({
                   disabled={actioningId === selectedMarker.id}
                 >
                   <Text style={styles.toastButtonDangerText}>
-                    {actioningId === selectedMarker.id ? 'UpdatingΓÇª' : 'Undo'}
+                    {actioningId === selectedMarker.id ? 'Updating...' : 'Undo'}
                   </Text>
                 </Pressable>
               ) : (
@@ -265,7 +265,7 @@ export function MapScreen({
                   disabled={actioningId === selectedMarker.id}
                 >
                   <Text style={styles.toastButtonPrimaryText}>
-                    {actioningId === selectedMarker.id ? 'UpdatingΓÇª' : 'Snow cleared'}
+                    {actioningId === selectedMarker.id ? 'Updating...' : 'Snow cleared'}
                   </Text>
                 </Pressable>
               )}
@@ -283,7 +283,7 @@ export function MapScreen({
       return (
         <View style={styles.mapOverlay}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.mapOverlayText}>Loading pinsΓÇª</Text>
+          <Text style={styles.mapOverlayText}>Loading pins...</Text>
         </View>
       );
     }
@@ -373,7 +373,7 @@ export function MapScreen({
       <View style={styles.container}>
         <View style={styles.loadingState}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.loadingText}>Geocoding addressesΓÇª</Text>
+          <Text style={styles.loadingText}>Geocoding addresses...</Text>
         </View>
       </View>
     );
