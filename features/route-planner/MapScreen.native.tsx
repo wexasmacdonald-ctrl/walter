@@ -347,7 +347,9 @@ export function MapScreen({
       <MarkerComponent
         key={marker.id}
         coordinate={marker.coordinate}
-        tracksViewChanges={false}
+        anchor={{ x: 0.5, y: 0.5 }}
+        calloutAnchor={{ x: 0.5, y: 0 }}
+        tracksViewChanges
         onPress={() => handleSelect(marker.id)}
       >
         <View style={styles.inlineMarker}>
@@ -765,10 +767,12 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       fontWeight: '600',
     },
     inlineMarker: {
-      width: 28,
-      height: 28,
-      borderRadius: 4,
+      width: 32,
+      height: 32,
+      borderRadius: 8,
       backgroundColor: colors.primary,
+      borderWidth: 2,
+      borderColor: colors.surface,
       alignItems: 'center',
       justifyContent: 'center',
     },
