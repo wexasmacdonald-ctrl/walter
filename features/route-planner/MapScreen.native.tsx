@@ -347,11 +347,15 @@ export function MapScreen({
       <MarkerComponent
         key={marker.id}
         coordinate={marker.coordinate}
-        title={marker.label}
-        description={marker.address ?? undefined}
         tracksViewChanges={false}
         onPress={() => handleSelect(marker.id)}
-      />
+      >
+        <View style={styles.inlineMarker}>
+          <Text style={styles.inlineMarkerText} numberOfLines={1} ellipsizeMode="tail">
+            {marker.label}
+          </Text>
+        </View>
+      </MarkerComponent>
     ));
   };
 
@@ -759,6 +763,19 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     toastButtonDangerText: {
       color: colors.danger,
       fontWeight: '600',
+    },
+    inlineMarker: {
+      width: 28,
+      height: 28,
+      borderRadius: 4,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    inlineMarkerText: {
+      color: colors.surface,
+      fontWeight: '700',
+      fontSize: 12,
     },
     modalContent: {
       flex: 1,
