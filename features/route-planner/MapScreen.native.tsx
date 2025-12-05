@@ -138,21 +138,8 @@ export function MapScreen({
   }, []);
 
   const MapViewComponent = mapModule?.default ?? null;
-  const MarkerBadge = useMemo(() => {
-    if (!mapModule) {
-      return null;
-    }
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const badge = require('@/components/MarkerBadge').MarkerBadge as
-        | typeof import('@/components/MarkerBadge').MarkerBadge
-        | undefined;
-      return badge ?? null;
-    } catch (error) {
-      console.warn('MarkerBadge unavailable; falling back to simple markers', error);
-      return null;
-    }
-  }, [mapModule]);
+  // For now, bypass custom MarkerBadge and use default markers to validate native rendering.
+  const MarkerComponent = mapModule?.Marker ?? null;
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [location, setLocation] = useState<UserLocation | null>(null);
@@ -353,35 +340,19 @@ export function MapScreen({
     };
 
   const renderMarkers = () => {
-    if (!MarkerBadge) {
+    if (!MarkerComponent) {
       return null;
     }
-    return markers.map((marker) => {
-      const isSelected = marker.id === selectedId;
-      const isConfirmed = marker.status === 'complete' || Boolean(confirmed[marker.id]);
-      const backgroundColor = isSelected
-        ? isConfirmed
-          ? selectedConfirmedPinColor
-          : selectedPinColor
-        : isConfirmed
-        ? confirmedColor
-        : pinColor;
-
-      return (
-        <MarkerBadge
-          key={marker.id}
-          id={marker.id}
-          coordinate={marker.coordinate}
-          label={marker.label}
-          backgroundColor={backgroundColor}
-          labelColor={badgeLabelColor}
-          outlineColor={badgeBorderColor}
-          shadowColor={colors.text}
-          selected={isSelected}
-          onPress={() => handleSelect(marker.id)}
-        />
-      );
-    });
+    return markers.map((marker) => (
+      <MarkerComponent
+        key={marker.id}
+        coordinate={marker.coordinate}
+        title={marker.label}
+        description={marker.address ?? undefined}
+        tracksViewChanges={false}
+        onPress={() => handleSelect(marker.id)}
+      />
+    ));
   };
 
   const canAdjustPin = typeof onAdjustPin === 'function';
