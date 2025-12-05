@@ -356,7 +356,7 @@ export function MapScreen({
 
       return (
         <MarkerBadge
-          key={marker.id}
+          key={`${marker.id}-${backgroundColor}`}
           MarkerComponent={MarkerComponent}
           id={marker.id}
           coordinate={marker.coordinate}

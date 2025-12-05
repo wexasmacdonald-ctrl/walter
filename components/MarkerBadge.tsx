@@ -34,7 +34,8 @@ function MarkerBadgeComponent({
       coordinate={coordinate}
       anchor={{ x: 0.5, y: 0.5 }}
       calloutAnchor={{ x: 0.5, y: 0 }}
-      tracksViewChanges={false}
+      // Keep view changes on so color/label updates appear immediately when status changes.
+      tracksViewChanges
       onPress={onPress}
     >
       <View style={styles.rootBox}>
