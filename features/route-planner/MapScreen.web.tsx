@@ -563,8 +563,8 @@ function BadgeMarker({
 
       const baseWidth = 90;
       const baseHeight = 46;
-      const scaledWidth = selected ? 96 : 90;
-      const scaledHeight = Math.round(scaledWidth * (baseHeight / baseWidth));
+      const width = selected ? 96 : 90;
+      const height = Math.round(width * (baseHeight / baseWidth));
 
       const icon = {
         url:
@@ -580,8 +580,9 @@ function BadgeMarker({
             </svg>`
           ),
         size: new maps.Size(baseWidth, baseHeight),
-        scaledSize: new maps.Size(scaledWidth, scaledHeight),
-        anchor: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * (40 / baseHeight))),
+        scaledSize: new maps.Size(width, height),
+        origin: new maps.Point(0, 0),
+        anchor: new maps.Point(width / 2, Math.round(height * (40 / baseHeight))),
       };
 
       if (cancelled) {
