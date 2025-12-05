@@ -538,14 +538,84 @@ function BadgeMarker({
   onPress,
   onDragEnd,
 }: BadgeMarkerProps) {
+  const [visual, setVisual] = useState<MarkerVisual | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timeoutId: number | null = null;
+
+    const configure = () => {
+      const maps = (globalThis as any).google?.maps;
+      if (!maps) {
+        if (!cancelled) {
+          timeoutId = window.setTimeout(configure, 100);
+        }
+        return;
+      }
+
+      const glyph = label.trim().slice(0, 4);
+      const safeGlyph = glyph
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+      const baseWidth = 90;
+      const baseHeight = 46;
+      const scaledWidth = selected ? 96 : 90;
+      const scaledHeight = Math.round(scaledWidth * (baseHeight / baseWidth));
+
+      const icon = {
+        url:
+          'data:image/svg+xml;charset=UTF-8,' +
+          encodeURIComponent(
+            `<svg xmlns="http://www.w3.org/2000/svg" width="${baseWidth}" height="${baseHeight}" viewBox="0 0 ${baseWidth} ${baseHeight}">
+              <g fill="none" fill-rule="evenodd">
+                <g transform="translate(5 5)">
+                  <rect width="80" height="36" rx="10" fill="${fill}" stroke="${outlineColor}" stroke-width="2"/>
+                  <text x="40" y="23" font-family="Arial, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="${labelColor}">${safeGlyph}</text>
+                </g>
+              </g>
+            </svg>`
+          ),
+        size: new maps.Size(baseWidth, baseHeight),
+        scaledSize: new maps.Size(scaledWidth, scaledHeight),
+        anchor: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * (40 / baseHeight))),
+      };
+
+      if (cancelled) {
+        return;
+      }
+
+      setVisual({
+        icon,
+        zIndex: selected ? 2 : 1,
+      });
+    };
+
+    configure();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [fill, label, labelColor, outlineColor, selected]);
+
+  if (!visual) {
+    return null;
+  }
+
   return (
     <Marker
       position={position}
       onClick={onPress}
       onDragEnd={onDragEnd}
       draggable={draggable}
-      title={label}
-      zIndex={selected ? 2 : 1}
+      icon={visual.icon}
+      zIndex={visual.zIndex}
     />
   );
 }
