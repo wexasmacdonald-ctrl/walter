@@ -53,7 +53,6 @@ export function MapScreen({
   const [confirmed, setConfirmed] = useState<Record<string, number>>({});
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
-  const [heading, setHeading] = useState(0);
   const mapRef = useRef<google.maps.Map | null>(null);
 
   const mapPins = useMemo<MapPin[]>(() => {
@@ -382,13 +381,6 @@ export function MapScreen({
     [mapStyle]
   );
 
-  const rotate = (delta: number) => {
-    setHeading((prev) => {
-      const next = (prev + delta) % 360;
-      return next < 0 ? next + 360 : next;
-    });
-  };
-
   // Some global CSS (e.g., img { max-width: 100% }) can distort Google marker sprites.
   // Ensure map images use their native sizing so pins are not clipped.
   useEffect(() => {
@@ -443,12 +435,6 @@ export function MapScreen({
         <View style={styles.header}>
           <View style={styles.headerActions}>
             {renderMapTypeToggle()}
-            <Pressable style={styles.fullScreenButton} onPress={() => rotate(-15)}>
-              <Text style={styles.fullScreenButtonText}>Rotate -15</Text>
-            </Pressable>
-            <Pressable style={styles.fullScreenButton} onPress={() => rotate(15)}>
-              <Text style={styles.fullScreenButtonText}>Rotate +15</Text>
-            </Pressable>
             <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
               <Text style={styles.fullScreenButtonText}>Full Screen</Text>
             </Pressable>
@@ -460,7 +446,6 @@ export function MapScreen({
             style={styles.mapCanvas}
             defaultCenter={initialCenter}
             defaultZoom={DEFAULT_ZOOM}
-            heading={heading}
             mapTypeId={mapTypeId}
             options={mapOptions}
             onClick={() => setSelectedId(null)}
@@ -489,7 +474,6 @@ export function MapScreen({
               style={styles.mapCanvas}
               defaultCenter={initialCenter}
               defaultZoom={DEFAULT_ZOOM}
-              heading={heading}
               mapTypeId={mapTypeId}
               options={mapOptions}
               onClick={() => setSelectedId(null)}
