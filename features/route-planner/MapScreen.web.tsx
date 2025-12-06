@@ -400,7 +400,6 @@ export function MapScreen({
     style.id = id;
     style.innerHTML = `
       .gm-style img { max-width: none !important; transform: none !important; }
-      .gm-style label, .gm-style span, .gm-style div { transform: none !important; }
     `;
     document.head.appendChild(style);
     return () => {
