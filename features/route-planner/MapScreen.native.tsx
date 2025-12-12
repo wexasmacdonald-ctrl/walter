@@ -805,9 +805,8 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     inlineMarkerAndroid: {
       width: undefined,
-      minWidth: 56,
-      maxWidth: 80,
-      paddingHorizontal: 12,
+      minWidth: 64,
+      paddingHorizontal: 14,
       height: 32,
       borderRadius: 10,
       borderWidth: 2,
