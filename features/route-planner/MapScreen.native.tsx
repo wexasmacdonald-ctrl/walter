@@ -358,26 +358,32 @@ export function MapScreen({
         tracksViewChanges
         onPress={() => handleSelect(marker.id)}
       >
-        <View
-          style={[
-            styles.inlineMarker,
-            USE_ANDROID_WIDE_PIN &&
-              Platform.OS === 'android' && {
-                ...styles.inlineMarkerAndroid,
-                minWidth: Math.max(
-                  56,
-                  Math.min(96, 20 + (marker.label?.length ?? 0) * 8)
-                ),
+        <View style={styles.inlineMarkerOuter}>
+          <View
+            style={[
+              styles.inlineMarker,
+              USE_ANDROID_WIDE_PIN &&
+                Platform.OS === 'android' && {
+                  ...styles.inlineMarkerAndroid,
+                  minWidth: Math.max(56, Math.min(96, 20 + (marker.label?.length ?? 0) * 8)),
+                },
+              {
+                backgroundColor:
+                  marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
               },
-            {
-              backgroundColor:
-                marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
-            },
-          ]}
-        >
-          <Text style={styles.inlineMarkerText} numberOfLines={1} ellipsizeMode="tail">
-            {marker.label}
-          </Text>
+            ]}
+          >
+            <Text
+              style={[
+                styles.inlineMarkerText,
+                Platform.OS === 'android' && styles.inlineMarkerTextAndroid,
+              ]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {Platform.OS === 'android' ? (marker.label ?? '').slice(0, 4) : marker.label}
+            </Text>
+          </View>
         </View>
       </MarkerComponent>
     ));
@@ -810,12 +816,20 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       alignItems: 'center',
       justifyContent: 'center',
     },
+    inlineMarkerOuter: {
+      overflow: 'visible',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     inlineMarkerAndroid: {
       width: undefined,
       paddingHorizontal: 12,
       height: 32,
       borderRadius: 10,
       borderWidth: 2,
+    },
+    inlineMarkerTextAndroid: {
+      fontSize: 11,
     },
     inlineMarkerComplete: {
       backgroundColor: colors.success,
