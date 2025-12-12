@@ -365,7 +365,7 @@ export function MapScreen({
         onPress={() => handleSelect(marker.id)}
       >
         {USE_NATIVE_ANDROID_PIN && Platform.OS === 'android' ? null : (
-          <View style={styles.inlineMarkerOuter}>
+          <View style={styles.inlineMarkerOuter} collapsable={false}>
             <View
               style={[
                 styles.inlineMarker,
@@ -820,7 +820,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
         alignItems: 'center',
         justifyContent: 'center',
         width: undefined,
-        minWidth: 72,
+        minWidth: 80,
         paddingHorizontal: 12,
       },
       default: {
