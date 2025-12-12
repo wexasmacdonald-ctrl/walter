@@ -286,7 +286,7 @@ export function MapScreen({
     () => mixHexColor(confirmedColor, selectedMixTarget, selectedMixAmount),
     [confirmedColor, selectedMixTarget, selectedMixAmount]
   );
-  const USE_NATIVE_ANDROID_PIN = true;
+  const USE_NATIVE_ANDROID_PIN = false;
   const badgeLabelColor = isDark ? colors.text : colors.surface;
   const badgeBorderColor = isDark ? colors.text : colors.surface;
 
@@ -811,7 +811,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       fontWeight: '600',
     },
     inlineMarker: {
-      width: 40,
+      width: Platform.select({ android: undefined, default: 40 }),
       height: 32,
       borderRadius: 10,
       backgroundColor: colors.primary,
@@ -826,8 +826,8 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       justifyContent: 'center',
     },
     inlineMarkerAndroid: {
-      width: 'auto',
-      minWidth: 64,
+      width: undefined,
+      minWidth: 72,
       paddingHorizontal: 12,
       height: 32,
       borderRadius: 10,
