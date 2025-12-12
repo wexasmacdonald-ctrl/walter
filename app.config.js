@@ -12,6 +12,7 @@ export default ({ config }) => {
     icon: './assets/images/icon.png',
     scheme: 'myapp',
     userInterfaceStyle: 'automatic',
+    // Align with Expo Go (always New Architecture); keep enabled so native builds match runtime behavior.
     newArchEnabled: true,
     ios: {
       bundleIdentifier: 'com.macdonaldautomation.blowpin',
@@ -101,7 +102,6 @@ export default ({ config }) => {
     ],
     experiments: {
       typedRoutes: true,
-      reactCompiler: true,
     },
     extra: {
       router: {},

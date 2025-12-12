@@ -646,7 +646,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     mapWrapper: {
       position: 'relative',
-      height: 320,
+      height: 280,
       borderRadius: 16,
       overflow: 'hidden',
       borderWidth: 1,

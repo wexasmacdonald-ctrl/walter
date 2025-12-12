@@ -13,7 +13,6 @@ import {
 import * as Location from 'expo-location';
 
 import { useTheme } from '@/features/theme/theme-context';
-import { MarkerBadge } from '@/components/MarkerBadge';
 import type MapView from 'react-native-maps';
 import type { LatLng, MapPressEvent } from 'react-native-maps';
 import type { Stop } from './types';
@@ -139,6 +138,7 @@ export function MapScreen({
   }, []);
 
   const MapViewComponent = mapModule?.default ?? null;
+  // For now, bypass custom MarkerBadge and use default markers to validate native rendering.
   const MarkerComponent = mapModule?.Marker ?? null;
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -233,16 +233,11 @@ export function MapScreen({
   const coordinates = useMemo<LatLng[]>(() => markers.map((marker) => marker.coordinate), [markers]);
 
   useEffect(() => {
-    if (coordinates.length === 0) {
+    if (!mapReady || coordinates.length === 0) {
       return;
     }
-    if (mapReady) {
-      fitToMarkers(mapRef.current, coordinates);
-    }
-    if (modalMapReady) {
-      fitToMarkers(modalMapRef.current, coordinates);
-    }
-  }, [coordinates, mapReady, modalMapReady]);
+    fitToMarkers(mapRef.current, coordinates);
+  }, [coordinates, mapReady]);
 
   useEffect(() => {
     if (selectedId && !markers.some((marker) => marker.id === selectedId)) {
@@ -353,34 +348,30 @@ export function MapScreen({
     if (!MarkerComponent) {
       return null;
     }
-    return markers.map((marker) => {
-      const isSelected = marker.id === selectedId;
-      const isConfirmed = marker.status === 'complete' || Boolean(confirmed[marker.id]);
-      const backgroundColor = isSelected
-        ? isConfirmed
-          ? selectedConfirmedPinColor
-          : selectedPinColor
-        : isConfirmed
-        ? confirmedColor
-        : pinColor;
-
-      return (
-        <MarkerComponent
-          key={`${marker.id}-${backgroundColor}`}
-          coordinate={marker.coordinate}
-          anchor={{ x: 0.5, y: 0.5 }}
-          calloutAnchor={{ x: 0.5, y: 0 }}
-          tracksViewChanges
-          onPress={() => handleSelect(marker.id)}
+    return markers.map((marker) => (
+      <MarkerComponent
+        key={marker.id}
+        coordinate={marker.coordinate}
+        anchor={{ x: 0.5, y: 0.5 }}
+        calloutAnchor={{ x: 0.5, y: 0 }}
+        tracksViewChanges
+        onPress={() => handleSelect(marker.id)}
+      >
+        <View
+          style={[
+            styles.inlineMarker,
+            {
+              backgroundColor:
+                marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
+            },
+          ]}
         >
-          <View style={[styles.inlineMarker, { backgroundColor }]}>
-            <Text style={styles.inlineMarkerText} numberOfLines={1} ellipsizeMode="tail">
-              {marker.label}
-            </Text>
-          </View>
-        </MarkerComponent>
-      );
-    });
+          <Text style={styles.inlineMarkerText} numberOfLines={1} ellipsizeMode="tail">
+            {marker.label}
+          </Text>
+        </View>
+      </MarkerComponent>
+    ));
   };
 
   const canAdjustPin = typeof onAdjustPin === 'function';
@@ -426,7 +417,7 @@ export function MapScreen({
                   disabled={actioningId === selectedMarker.id}
                 >
                   <Text style={styles.toastButtonDangerText}>
-                    {actioningId === selectedMarker.id ? 'Updating…' : 'Undo'}
+                    {actioningId === selectedMarker.id ? 'Updating???' : 'Undo'}
                   </Text>
                 </Pressable>
               ) : (
@@ -436,7 +427,7 @@ export function MapScreen({
                   disabled={actioningId === selectedMarker.id}
                 >
                   <Text style={styles.toastButtonPrimaryText}>
-                    {actioningId === selectedMarker.id ? 'Updating…' : 'Snow cleared'}
+                    {actioningId === selectedMarker.id ? 'Updating???' : 'Snow cleared'}
                   </Text>
                 </Pressable>
               )}
@@ -452,7 +443,7 @@ export function MapScreen({
       return (
         <View style={styles.mapOverlay}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.mapOverlayText}>Loading pins…</Text>
+          <Text style={styles.mapOverlayText}>Loading pins???</Text>
         </View>
       );
     }
@@ -461,7 +452,7 @@ export function MapScreen({
       return (
         <View style={styles.mapOverlay}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.mapOverlayText}>Fetching your location…</Text>
+          <Text style={styles.mapOverlayText}>Fetching your location???</Text>
         </View>
       );
     }
@@ -801,13 +792,17 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       fontWeight: '600',
     },
     inlineMarker: {
-      width: 32,
+      width: 40,
       height: 32,
-      borderRadius: 8,
+      borderRadius: 10,
+      backgroundColor: colors.primary,
       borderWidth: 2,
       borderColor: colors.surface,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    inlineMarkerComplete: {
+      backgroundColor: colors.success,
     },
     inlineMarkerText: {
       color: colors.surface,
