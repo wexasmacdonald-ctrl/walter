@@ -360,7 +360,6 @@ export function MapScreen({
         <View
           style={[
             styles.inlineMarker,
-            Platform.OS === 'android' && styles.inlineMarkerAndroid,
             {
               backgroundColor:
                 marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
@@ -801,11 +800,6 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderColor: colors.surface,
       alignItems: 'center',
       justifyContent: 'center',
-    },
-    inlineMarkerAndroid: {
-      width: undefined,
-      minWidth: 48,
-      paddingHorizontal: 10,
     },
     inlineMarkerComplete: {
       backgroundColor: colors.success,
