@@ -360,14 +360,22 @@ export function MapScreen({
         <View
           style={[
             styles.inlineMarker,
+            Platform.OS === 'android' && styles.inlineMarkerAndroid,
             {
               backgroundColor:
                 marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
             },
           ]}
         >
-          <Text style={styles.inlineMarkerText} numberOfLines={1} ellipsizeMode="tail">
-            {marker.label}
+          <Text
+            style={[
+              styles.inlineMarkerText,
+              Platform.OS === 'android' && styles.inlineMarkerTextAndroid,
+            ]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {Platform.OS === 'android' ? (marker.label ?? '').slice(0, 4) : marker.label}
           </Text>
         </View>
       </MarkerComponent>
@@ -801,6 +809,14 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       alignItems: 'center',
       justifyContent: 'center',
     },
+    inlineMarkerAndroid: {
+      width: undefined,
+      minWidth: 56,
+      paddingHorizontal: 10,
+      height: 32,
+      borderRadius: 10,
+      borderWidth: 2,
+    },
     inlineMarkerComplete: {
       backgroundColor: colors.success,
     },
@@ -808,6 +824,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.surface,
       fontWeight: '700',
       fontSize: 12,
+    },
+    inlineMarkerTextAndroid: {
+      fontSize: 11,
     },
     modalContent: {
       flex: 1,
