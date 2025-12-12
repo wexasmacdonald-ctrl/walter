@@ -356,15 +356,16 @@ export function MapScreen({
         calloutAnchor={{ x: 0.5, y: 0 }}
         tracksViewChanges
         onPress={() => handleSelect(marker.id)}
-      >
-        <View
-          style={[
-            styles.inlineMarker,
-            {
-              backgroundColor:
-                marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
-            },
-          ]}
+        >
+          <View
+            style={[
+              styles.inlineMarker,
+              styles.inlineMarkerPlatform,
+              {
+                backgroundColor:
+                  marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
+              },
+            ]}
         >
           <Text style={styles.inlineMarkerText} numberOfLines={1} ellipsizeMode="tail">
             {marker.label}
@@ -804,6 +805,15 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     inlineMarkerComplete: {
       backgroundColor: colors.success,
     },
+    inlineMarkerPlatform: Platform.select({
+      android: {
+        width: 36,
+        height: 28,
+        borderRadius: 8,
+        borderWidth: 2,
+      },
+      default: {},
+    }),
     inlineMarkerText: {
       color: colors.surface,
       fontWeight: '700',
