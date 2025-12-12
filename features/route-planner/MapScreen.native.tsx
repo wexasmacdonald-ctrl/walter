@@ -361,14 +361,7 @@ export function MapScreen({
         <View
           style={[
             styles.inlineMarker,
-            USE_ANDROID_WIDE_PIN &&
-              Platform.OS === 'android' && {
-                ...styles.inlineMarkerAndroid,
-                minWidth: Math.max(
-                  56,
-                  Math.min(96, 20 + (marker.label?.length ?? 0) * 8)
-                ),
-              },
+            USE_ANDROID_WIDE_PIN && Platform.OS === 'android' && styles.inlineMarkerAndroid,
             {
               backgroundColor:
                 marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
@@ -812,7 +805,8 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     inlineMarkerAndroid: {
       width: undefined,
-      paddingHorizontal: 12,
+      minWidth: 64,
+      paddingHorizontal: 14,
       height: 32,
       borderRadius: 10,
       borderWidth: 2,
