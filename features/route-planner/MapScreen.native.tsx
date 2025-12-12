@@ -807,12 +807,10 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     inlineMarkerPlatform: Platform.select({
       android: {
-        minWidth: 44,
-        maxWidth: 72,
+        width: 44,
         height: 28,
         borderRadius: 9,
         borderWidth: 2,
-        paddingHorizontal: 6,
       },
       default: {},
     }),
