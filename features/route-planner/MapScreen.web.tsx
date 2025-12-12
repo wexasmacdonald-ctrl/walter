@@ -544,9 +544,10 @@ function BadgeMarker({
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 
-      const baseWidth = 90;
-      const baseHeight = 46;
-      const scaledWidth = selected ? 96 : 90;
+      // Smaller, proportionally scaled badge to avoid cropping while reducing footprint.
+      const baseWidth = 72;
+      const baseHeight = 36;
+      const scaledWidth = selected ? 78 : 72;
       const scaledHeight = Math.round(scaledWidth * (baseHeight / baseWidth));
 
       const icon = {
@@ -555,16 +556,16 @@ function BadgeMarker({
           encodeURIComponent(
             `<svg xmlns="http://www.w3.org/2000/svg" width="${baseWidth}" height="${baseHeight}" viewBox="0 0 ${baseWidth} ${baseHeight}">
               <g fill="none" fill-rule="evenodd">
-                <g transform="translate(5 5)">
-                  <rect width="80" height="36" rx="10" fill="${fill}" stroke="${outlineColor}" stroke-width="2"/>
-                  <text x="40" y="23" font-family="Arial, sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="${labelColor}">${safeGlyph}</text>
+                <g transform="translate(4 4)">
+                  <rect width="64" height="28" rx="9" fill="${fill}" stroke="${outlineColor}" stroke-width="1.8"/>
+                  <text x="32" y="18" font-family="Arial, sans-serif" font-size="14" font-weight="700" text-anchor="middle" fill="${labelColor}">${safeGlyph}</text>
                 </g>
               </g>
             </svg>`
           ),
         size: new maps.Size(baseWidth, baseHeight),
         scaledSize: new maps.Size(scaledWidth, scaledHeight),
-        anchor: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * (40 / baseHeight))),
+        anchor: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * (30 / baseHeight))),
       };
 
       if (cancelled) {
