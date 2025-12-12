@@ -286,6 +286,7 @@ export function MapScreen({
     () => mixHexColor(confirmedColor, selectedMixTarget, selectedMixAmount),
     [confirmedColor, selectedMixTarget, selectedMixAmount]
   );
+  const USE_NATIVE_ANDROID_PIN = true;
   const badgeLabelColor = isDark ? colors.text : colors.surface;
   const badgeBorderColor = isDark ? colors.text : colors.surface;
 
@@ -354,32 +355,40 @@ export function MapScreen({
         coordinate={marker.coordinate}
         anchor={{ x: 0.5, y: 0.5 }}
         calloutAnchor={{ x: 0.5, y: 0 }}
-        tracksViewChanges
+        {...(USE_NATIVE_ANDROID_PIN && Platform.OS === 'android'
+          ? {
+              pinColor:
+                marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
+              tracksViewChanges: false,
+            }
+          : { tracksViewChanges: true })}
         onPress={() => handleSelect(marker.id)}
       >
-        <View style={styles.inlineMarkerOuter}>
-          <View
-            style={[
-              styles.inlineMarker,
-              Platform.OS === 'android' && styles.inlineMarkerAndroid,
-              {
-                backgroundColor:
-                  marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
-              },
-            ]}
-          >
-            <Text
+        {USE_NATIVE_ANDROID_PIN && Platform.OS === 'android' ? null : (
+          <View style={styles.inlineMarkerOuter}>
+            <View
               style={[
-                styles.inlineMarkerText,
-                Platform.OS === 'android' && styles.inlineMarkerTextAndroid,
+                styles.inlineMarker,
+                Platform.OS === 'android' && styles.inlineMarkerAndroid,
+                {
+                  backgroundColor:
+                    marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
+                },
               ]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
             >
-              {Platform.OS === 'android' ? (marker.label ?? '').slice(0, 4) : marker.label}
-            </Text>
+              <Text
+                style={[
+                  styles.inlineMarkerText,
+                  Platform.OS === 'android' && styles.inlineMarkerTextAndroid,
+                ]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {Platform.OS === 'android' ? (marker.label ?? '').slice(0, 4) : marker.label}
+              </Text>
+            </View>
           </View>
-        </View>
+        )}
       </MarkerComponent>
     ));
   };
