@@ -544,9 +544,9 @@ function BadgeMarker({
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 
-      const baseWidth = 72;
-      const baseHeight = 36;
-      const scaledWidth = selected ? 78 : 72;
+      const baseWidth = 90;
+      const baseHeight = 46;
+      const scaledWidth = selected ? 96 : 90;
       const scaledHeight = Math.round(scaledWidth * (baseHeight / baseWidth));
 
       const icon = {
