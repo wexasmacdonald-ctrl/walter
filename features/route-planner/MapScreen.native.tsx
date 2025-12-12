@@ -288,6 +288,7 @@ export function MapScreen({
   );
   const badgeLabelColor = isDark ? colors.text : colors.surface;
   const badgeBorderColor = isDark ? colors.text : colors.surface;
+  const USE_ANDROID_WIDE_PIN = true;
 
   const handleSelect = (id: string) => {
     setSelectedId((prev) => (prev === id ? null : id));
@@ -360,6 +361,7 @@ export function MapScreen({
         <View
           style={[
             styles.inlineMarker,
+            USE_ANDROID_WIDE_PIN && Platform.OS === 'android' && styles.inlineMarkerAndroid,
             {
               backgroundColor:
                 marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
@@ -800,6 +802,15 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderColor: colors.surface,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    inlineMarkerAndroid: {
+      width: undefined,
+      minWidth: 56,
+      maxWidth: 80,
+      paddingHorizontal: 12,
+      height: 32,
+      borderRadius: 10,
+      borderWidth: 2,
     },
     inlineMarkerComplete: {
       backgroundColor: colors.success,
