@@ -13,6 +13,7 @@ import {
 import * as Location from 'expo-location';
 
 import { useTheme } from '@/features/theme/theme-context';
+import { encode as btoa } from 'base-64';
 import type MapView from 'react-native-maps';
 import type { LatLng, MapPressEvent } from 'react-native-maps';
 import type { Stop } from './types';
@@ -159,6 +160,7 @@ export function MapScreen({
     () => (mapModule && supportsGoogleMapsProvider(mapModule) ? mapModule.PROVIDER_GOOGLE : undefined),
     [mapModule]
   );
+  const markerIconCache = useRef<Map<string, string>>(new Map());
 
   const resolvedMapType = mapType === 'satellite' ? 'satellite' : isDark ? 'mutedStandard' : 'standard';
   const mapCustomStyle = useMemo(() => {
@@ -287,6 +289,7 @@ export function MapScreen({
     [confirmedColor, selectedMixTarget, selectedMixAmount]
   );
   const USE_NATIVE_ANDROID_PIN = false;
+  const USE_ANDROID_SVG_ICON = true;
   const badgeLabelColor = isDark ? colors.text : colors.surface;
   const badgeBorderColor = isDark ? colors.text : colors.surface;
 
@@ -345,6 +348,32 @@ export function MapScreen({
       ]);
     };
 
+  const getAndroidMarkerIcon = (label: string, fill: string, textColor: string) => {
+    const glyph = label.trim().slice(0, 4);
+    const cacheKey = `${glyph}-${fill}-${textColor}`;
+    const cached = markerIconCache.current.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    const width = 100;
+    const height = 36;
+    const rectWidth = 88;
+    const rectHeight = 28;
+    const rectX = (width - rectWidth) / 2;
+    const rectY = (height - rectHeight) / 2;
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+        <g fill="none">
+          <rect x="${rectX}" y="${rectY}" width="${rectWidth}" height="${rectHeight}" rx="10" fill="${fill}" stroke="${colors.surface}" stroke-width="2"/>
+          <text x="${width / 2}" y="${height / 2}" text-anchor="middle" dominant-baseline="middle" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="${textColor}">${glyph}</text>
+        </g>
+      </svg>
+    `;
+    const uri = `data:image/svg+xml;base64,${btoa(svg)}`;
+    markerIconCache.current.set(cacheKey, uri);
+    return uri;
+  };
+
   const renderMarkers = () => {
     if (!MarkerComponent) {
       return null;
@@ -361,10 +390,21 @@ export function MapScreen({
                 marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
               tracksViewChanges: false,
             }
+          : USE_ANDROID_SVG_ICON && Platform.OS === 'android'
+          ? {
+              tracksViewChanges: false,
+              icon: {
+                uri: getAndroidMarkerIcon(
+                  (marker.label ?? '').slice(0, 4),
+                  marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
+                  colors.surface
+                ),
+              },
+            }
           : { tracksViewChanges: true })}
         onPress={() => handleSelect(marker.id)}
       >
-        {USE_NATIVE_ANDROID_PIN && Platform.OS === 'android' ? null : (
+        {USE_NATIVE_ANDROID_PIN || (USE_ANDROID_SVG_ICON && Platform.OS === 'android') ? null : (
           <View style={styles.inlineMarkerOuter} collapsable={false}>
             <View
               style={[
