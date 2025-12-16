@@ -16,7 +16,6 @@ import { useTheme } from '@/features/theme/theme-context';
 import type MapView from 'react-native-maps';
 import type { LatLng, MapPressEvent } from 'react-native-maps';
 import type { Stop } from './types';
-import { Platform } from 'react-native';
 import { Buffer } from 'buffer';
 
 const GOOGLE_LIGHT_MAP_STYLE = [
