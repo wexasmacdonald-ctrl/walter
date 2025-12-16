@@ -13,10 +13,11 @@ import {
 import * as Location from 'expo-location';
 
 import { useTheme } from '@/features/theme/theme-context';
-import { encode as btoa } from 'base-64';
 import type MapView from 'react-native-maps';
 import type { LatLng, MapPressEvent } from 'react-native-maps';
 import type { Stop } from './types';
+import { Platform } from 'react-native';
+import { Buffer } from 'buffer';
 
 const GOOGLE_LIGHT_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
@@ -369,7 +370,7 @@ export function MapScreen({
         </g>
       </svg>
     `;
-    const uri = `data:image/svg+xml;base64,${btoa(svg)}`;
+    const uri = `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
     markerIconCache.current.set(cacheKey, uri);
     return uri;
   };
