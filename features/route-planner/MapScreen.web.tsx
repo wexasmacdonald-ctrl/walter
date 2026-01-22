@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -60,6 +60,9 @@ export function MapScreen({
   const mapRef = useRef<google.maps.Map | null>(null);
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [locationPermissionDenied, setLocationPermissionDenied] = useState(false);
+  const [locationRequesting, setLocationRequesting] = useState(false);
+  const watchIdRef = useRef<number | null>(null);
+  const isMountedRef = useRef(true);
 
   const mapPins = useMemo<MapPin[]>(() => {
     return pins
@@ -116,46 +119,70 @@ export function MapScreen({
   }, []);
 
   useEffect(() => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      return;
-    }
-
-    let cancelled = false;
-    const onSuccess = (position: GeolocationPosition) => {
-      if (cancelled) {
-        return;
-      }
-      setUserLocation({
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-      });
-      setLocationPermissionDenied(false);
-    };
-    const onError = (error: GeolocationPositionError) => {
-      if (cancelled) {
-        return;
-      }
-      if (error.code === error.PERMISSION_DENIED) {
-        setLocationPermissionDenied(true);
-      }
-    };
-
-    navigator.geolocation.getCurrentPosition(onSuccess, onError, {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 15000,
-    });
-
-    const watchId = navigator.geolocation.watchPosition(onSuccess, onError, {
-      enableHighAccuracy: true,
-      maximumAge: 5000,
-    });
-
     return () => {
-      cancelled = true;
-      navigator.geolocation.clearWatch(watchId);
+      isMountedRef.current = false;
     };
   }, []);
+
+  const handleLocationSuccess = useCallback((position: GeolocationPosition) => {
+    if (!isMountedRef.current) {
+      return;
+    }
+    setUserLocation({
+      lat: position.coords.latitude,
+      lng: position.coords.longitude,
+    });
+    setLocationPermissionDenied(false);
+    setLocationRequesting(false);
+  }, []);
+
+  const handleLocationError = useCallback((error: GeolocationPositionError) => {
+    if (!isMountedRef.current) {
+      return;
+    }
+    if (error.code === error.PERMISSION_DENIED) {
+      setLocationPermissionDenied(true);
+    }
+    setLocationRequesting(false);
+  }, []);
+
+  const requestUserLocation = useCallback(
+    (startWatch: boolean) => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        return;
+      }
+
+      setLocationRequesting(true);
+      navigator.geolocation.getCurrentPosition(handleLocationSuccess, handleLocationError, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      });
+
+      if (startWatch) {
+        if (watchIdRef.current !== null) {
+          navigator.geolocation.clearWatch(watchIdRef.current);
+        }
+        watchIdRef.current = navigator.geolocation.watchPosition(handleLocationSuccess, handleLocationError, {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+        });
+      }
+    },
+    [handleLocationError, handleLocationSuccess]
+  );
+
+  useEffect(() => {
+    requestUserLocation(true);
+    return () => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        return;
+      }
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+  }, [requestUserLocation]);
 
   const selectedMarker = useMemo(
     () => mapPins.find((marker) => marker.id === selectedId) ?? null,
@@ -377,17 +404,38 @@ export function MapScreen({
       );
     }
 
-    if (locationPermissionDenied) {
-      return (
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>
-            Location permission denied. Enable it in your browser to show your position.
-          </Text>
-        </View>
-      );
+    return null;
+  };
+
+  const renderLocationPrompt = () => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      return null;
+    }
+    if (userLocation) {
+      return null;
     }
 
-    return null;
+    return (
+      <View style={styles.locationPrompt}>
+        <Text style={styles.locationPromptText}>
+          {locationPermissionDenied
+            ? 'Location access is blocked. Enable it to show your position.'
+            : 'Show your live position on the map.'}
+        </Text>
+        <Pressable
+          style={[
+            styles.locationPromptButton,
+            locationRequesting && styles.locationPromptButtonDisabled,
+          ]}
+          onPress={() => requestUserLocation(true)}
+          disabled={locationRequesting}
+        >
+          <Text style={styles.locationPromptButtonText}>
+            {locationRequesting ? 'Requesting...' : 'Enable location'}
+          </Text>
+        </Pressable>
+      </View>
+    );
   };
 
   const renderMapTypeToggle = () => (
@@ -536,6 +584,7 @@ export function MapScreen({
           </Map>
           {renderOverlay()}
           {renderToast('primary')}
+          {renderLocationPrompt()}
         </View>
 
         <Modal visible={isFullScreen} animationType="slide" onRequestClose={() => setIsFullScreen(false)}>
@@ -567,6 +616,7 @@ export function MapScreen({
             </Map>
             {renderOverlay()}
             {renderToast('modal')}
+            {renderLocationPrompt()}
           </View>
           </View>
         </Modal>
@@ -913,6 +963,39 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     toastButtonDangerText: {
       color: colors.danger,
       fontWeight: '600',
+    },
+    locationPrompt: {
+      position: 'absolute',
+      left: 16,
+      bottom: 16,
+      maxWidth: 240,
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: 8,
+    },
+    locationPromptText: {
+      color: colors.text,
+      fontSize: 13,
+    },
+    locationPromptButton: {
+      alignSelf: 'flex-start',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.primary,
+    },
+    locationPromptButtonDisabled: {
+      opacity: 0.6,
+    },
+    locationPromptButtonText: {
+      color: onPrimary,
+      fontWeight: '600',
+      fontSize: 13,
     },
     modalContent: {
       flex: 1,
