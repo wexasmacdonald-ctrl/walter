@@ -34,6 +34,10 @@ type MapPin = {
   label: string;
   status: 'pending' | 'complete';
 };
+type UserLocation = {
+  lat: number;
+  lng: number;
+};
 const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 };
 const DEFAULT_ZOOM = 12;
 
@@ -54,6 +58,8 @@ export function MapScreen({
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const mapRef = useRef<google.maps.Map | null>(null);
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
+  const [locationPermissionDenied, setLocationPermissionDenied] = useState(false);
 
   const mapPins = useMemo<MapPin[]>(() => {
     return pins
@@ -109,6 +115,48 @@ export function MapScreen({
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      return;
+    }
+
+    let cancelled = false;
+    const onSuccess = (position: GeolocationPosition) => {
+      if (cancelled) {
+        return;
+      }
+      setUserLocation({
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      });
+      setLocationPermissionDenied(false);
+    };
+    const onError = (error: GeolocationPositionError) => {
+      if (cancelled) {
+        return;
+      }
+      if (error.code === error.PERMISSION_DENIED) {
+        setLocationPermissionDenied(true);
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 15000,
+    });
+
+    const watchId = navigator.geolocation.watchPosition(onSuccess, onError, {
+      enableHighAccuracy: true,
+      maximumAge: 5000,
+    });
+
+    return () => {
+      cancelled = true;
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, []);
+
   const selectedMarker = useMemo(
     () => mapPins.find((marker) => marker.id === selectedId) ?? null,
     [mapPins, selectedId]
@@ -121,8 +169,11 @@ export function MapScreen({
     if (mapPins.length > 0) {
       return mapPins[0].position;
     }
+    if (userLocation) {
+      return userLocation;
+    }
     return DEFAULT_CENTER;
-  }, [mapPins, selectedMarker]);
+  }, [mapPins, selectedMarker, userLocation]);
 
   const selectedMixTarget = isDark ? colors.text : colors.surface;
   const selectedMixAmount = isDark ? 0.35 : 0.55;
@@ -326,6 +377,16 @@ export function MapScreen({
       );
     }
 
+    if (locationPermissionDenied) {
+      return (
+        <View style={styles.notice}>
+          <Text style={styles.noticeText}>
+            Location permission denied. Enable it in your browser to show your position.
+          </Text>
+        </View>
+      );
+    }
+
     return null;
   };
 
@@ -380,6 +441,21 @@ export function MapScreen({
     }),
     [mapStyle]
   );
+
+  const userMarkerIcon = useMemo(() => {
+    const maps = (globalThis as any).google?.maps as typeof google.maps | undefined;
+    if (!maps) {
+      return undefined;
+    }
+    return {
+      path: maps.SymbolPath.CIRCLE,
+      scale: 7,
+      fillColor: colors.primary,
+      fillOpacity: 1,
+      strokeColor: colors.surface,
+      strokeWeight: 2,
+    };
+  }, [colors.primary, colors.surface]);
 
   // Some global CSS (e.g., img { max-width: 100% }) can distort Google marker sprites.
   // Ensure map images use their native sizing so pins are not clipped.
@@ -454,6 +530,9 @@ export function MapScreen({
             }}
           >
             {renderMarkers()}
+            {userLocation ? (
+              <Marker position={userLocation} icon={userMarkerIcon} title="Your location" />
+            ) : null}
           </Map>
           {renderOverlay()}
           {renderToast('primary')}
@@ -482,6 +561,9 @@ export function MapScreen({
               }}
             >
               {renderMarkers()}
+              {userLocation ? (
+                <Marker position={userLocation} icon={userMarkerIcon} title="Your location" />
+              ) : null}
             </Map>
             {renderOverlay()}
             {renderToast('modal')}
