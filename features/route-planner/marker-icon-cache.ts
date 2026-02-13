@@ -1,3 +1,5 @@
+import { Buffer } from 'buffer';
+
 export type MarkerStatus = 'pending' | 'complete';
 
 type MarkerIconParams = {
@@ -64,7 +66,7 @@ function buildDescriptor(key: MarkerVisualKey, uri: string): MarkerIconDescripto
 }
 
 function encodeSvg(svg: string): string {
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  return `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
 }
 
 function createSvgMarker(label: string, status: MarkerStatus): string {

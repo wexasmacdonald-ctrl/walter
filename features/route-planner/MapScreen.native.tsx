@@ -362,8 +362,12 @@ export function MapScreen({
       const descriptor = getDescriptor(marker.label, status);
       const fallbackImage = status === 'complete' ? pinGreen : pinBlue;
       const dynamicIconSource = descriptor ? { uri: descriptor.uri } : undefined;
-      const markerImageSource = Platform.OS === 'android' ? fallbackImage : dynamicIconSource;
-      const markerIconSource = Platform.OS === 'android' ? dynamicIconSource : undefined;
+      const markerProps =
+        Platform.OS === 'android'
+          ? dynamicIconSource
+            ? { icon: dynamicIconSource }
+            : { image: fallbackImage }
+          : { image: dynamicIconSource };
 
       return (
         <Marker
@@ -372,8 +376,7 @@ export function MapScreen({
           anchor={{ x: MARKER_ANCHOR_X, y: MARKER_ANCHOR_Y }}
           calloutAnchor={{ x: MARKER_CALLOUT_ANCHOR_X, y: MARKER_CALLOUT_ANCHOR_Y }}
           onPress={() => handleSelect(marker.id)}
-          image={markerImageSource}
-          icon={markerIconSource}
+          {...markerProps}
           title={marker.label}
           description={marker.address ?? undefined}
         />
