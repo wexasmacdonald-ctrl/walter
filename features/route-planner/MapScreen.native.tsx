@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -22,89 +23,74 @@ import {
   MARKER_ANCHOR_Y,
   MARKER_CALLOUT_ANCHOR_X,
   MARKER_CALLOUT_ANCHOR_Y,
+  normalizeMarkerLabel,
+  type AndroidPinTheme,
 } from './marker-icon-cache';
-import { useMarkerIconRegistry } from './useMarkerIconRegistry';
+import { useAndroidPinIconRegistry } from './useAndroidPinIconRegistry';
 
-const GOOGLE_LIGHT_MAP_STYLE = [
-  { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
-  { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#616161' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#f5f5f5' }] },
+const GOOGLE_DARK_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#0b1220' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#d1d5db' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#0b1220' }] },
   {
-    featureType: 'poi',
+    featureType: 'administrative',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#334155' }],
+  },
+  {
+    featureType: 'landscape.man_made',
     elementType: 'geometry',
-    stylers: [{ color: '#eeeeee' }],
+    stylers: [{ color: '#172033' }],
   },
   {
     featureType: 'poi',
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#757575' }],
+    elementType: 'geometry',
+    stylers: [{ color: '#111827' }],
   },
   {
     featureType: 'poi.park',
     elementType: 'geometry',
-    stylers: [{ color: '#e5e5e5' }],
+    stylers: [{ color: '#132235' }],
   },
   {
     featureType: 'road',
     elementType: 'geometry',
-    stylers: [{ color: '#ffffff' }],
+    stylers: [{ color: '#1f2937' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#374151' }],
   },
   {
     featureType: 'road.arterial',
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#757575' }],
+    elementType: 'geometry',
+    stylers: [{ color: '#273449' }],
   },
   {
     featureType: 'road.highway',
     elementType: 'geometry',
-    stylers: [{ color: '#dadada' }],
+    stylers: [{ color: '#334155' }],
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#475569' }],
+  },
+  {
+    featureType: 'road.local',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#e5e7eb' }],
   },
   {
     featureType: 'transit',
     elementType: 'geometry',
-    stylers: [{ color: '#e5e5e5' }],
-  },
-];
-
-const GOOGLE_DARK_MAP_STYLE = [
-  { elementType: 'geometry', stylers: [{ color: '#1f2933' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#cbd5f5' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#0f172a' }] },
-  {
-    featureType: 'administrative',
-    elementType: 'geometry.stroke',
-    stylers: [{ color: '#2a3646' }],
-  },
-  {
-    featureType: 'poi',
-    elementType: 'geometry',
-    stylers: [{ color: '#243040' }],
-  },
-  {
-    featureType: 'poi.park',
-    elementType: 'geometry',
-    stylers: [{ color: '#1b2a3c' }],
-  },
-  {
-    featureType: 'road',
-    elementType: 'geometry',
-    stylers: [{ color: '#1f2933' }],
-  },
-  {
-    featureType: 'road',
-    elementType: 'geometry.stroke',
-    stylers: [{ color: '#111827' }],
-  },
-  {
-    featureType: 'transit',
-    elementType: 'geometry',
-    stylers: [{ color: '#1f2933' }],
+    stylers: [{ color: '#1e293b' }],
   },
   {
     featureType: 'water',
     elementType: 'geometry',
-    stylers: [{ color: '#0f172a' }],
+    stylers: [{ color: '#0b2545' }],
   },
 ];
 
@@ -163,10 +149,10 @@ export function MapScreen({
     return isDark ? 'mutedStandard' : 'standard';
   }, [isDark, mapType]);
   const mapCustomStyle = useMemo(() => {
-    if (!mapProvider || mapType !== 'standard') {
+    if (!mapProvider || mapType !== 'standard' || !isDark) {
       return undefined;
     }
-    return isDark ? GOOGLE_DARK_MAP_STYLE : GOOGLE_LIGHT_MAP_STYLE;
+    return GOOGLE_DARK_MAP_STYLE;
   }, [isDark, mapProvider, mapType]);
 
   useEffect(() => {
@@ -218,7 +204,7 @@ export function MapScreen({
         const label =
           typeof pin.label === 'string' && pin.label.trim().length > 0
             ? pin.label.trim()
-            : extractHouseNumber(pin.address) ?? String(index + 1);
+            : extractAddressToken(pin.address) ?? String(index + 1);
 
         return {
           id: pin.id ?? String(index),
@@ -288,12 +274,23 @@ export function MapScreen({
     [confirmed]
   );
 
-  const markerVisuals = useMemo(
-    () => markers.map((marker) => ({ label: marker.label, status: getMarkerStatus(marker) })),
-    [getMarkerStatus, markers]
+  const androidTheme: AndroidPinTheme = isDark ? 'dark' : 'light';
+  const androidVisuals = useMemo(
+    () =>
+      Platform.OS === 'android'
+        ? markers.map((marker) => ({
+            label: marker.label,
+            status: getMarkerStatus(marker),
+            theme: androidTheme,
+          }))
+        : [],
+    [androidTheme, getMarkerStatus, markers]
   );
-
-  const { isPrewarming: isMarkerIconsLoading, getDescriptor } = useMarkerIconRegistry(markerVisuals, {
+  const {
+    isPrewarming: isAndroidPinPrewarming,
+    getIconUri,
+  } = useAndroidPinIconRegistry(androidVisuals, {
+    concurrency: 3,
     debug: __DEV__,
   });
 
@@ -353,33 +350,49 @@ export function MapScreen({
     };
 
   const renderMarkers = () => {
-    if (isMarkerIconsLoading) {
+    if (Platform.OS === 'android' && isAndroidPinPrewarming) {
       return null;
     }
 
     return markers.map((marker) => {
       const status = getMarkerStatus(marker);
-      const descriptor = getDescriptor(marker.label, status);
-      const fallbackImage = status === 'complete' ? pinGreen : pinBlue;
-      const dynamicIconSource = descriptor ? { uri: descriptor.uri } : undefined;
-      const markerProps =
-        Platform.OS === 'android'
-          ? dynamicIconSource
-            ? { icon: dynamicIconSource }
-            : { image: fallbackImage }
-          : { image: dynamicIconSource };
+      const label = normalizeMarkerLabel(marker.label) || marker.label;
+      const pinSource = status === 'complete' ? pinGreen : pinBlue;
+      const iconUri = getIconUri(marker.label, status, androidTheme);
+
+      if (Platform.OS === 'android') {
+        return (
+          <Marker
+            key={`${marker.id}:${status}`}
+            coordinate={marker.coordinate}
+            anchor={{ x: MARKER_ANCHOR_X, y: MARKER_ANCHOR_Y }}
+            calloutAnchor={{ x: MARKER_CALLOUT_ANCHOR_X, y: MARKER_CALLOUT_ANCHOR_Y }}
+            onPress={() => handleSelect(marker.id)}
+            image={iconUri ? { uri: iconUri } : pinSource}
+            title={marker.label}
+            description={marker.address ?? undefined}
+          />
+        );
+      }
 
       return (
         <Marker
-          key={marker.id}
+          key={`${marker.id}:${status}`}
           coordinate={marker.coordinate}
           anchor={{ x: MARKER_ANCHOR_X, y: MARKER_ANCHOR_Y }}
           calloutAnchor={{ x: MARKER_CALLOUT_ANCHOR_X, y: MARKER_CALLOUT_ANCHOR_Y }}
           onPress={() => handleSelect(marker.id)}
-          {...markerProps}
+          tracksViewChanges={false}
           title={marker.label}
           description={marker.address ?? undefined}
-        />
+        >
+          <View style={styles.markerContainer} collapsable={false}>
+            <Image source={pinSource} style={styles.markerImage} resizeMode="contain" />
+            <Text style={styles.markerLabel} numberOfLines={1}>
+              {label}
+            </Text>
+          </View>
+        </Marker>
       );
     });
   };
@@ -458,7 +471,7 @@ export function MapScreen({
       );
     }
 
-    if (isMarkerIconsLoading && markers.length > 0) {
+    if (Platform.OS === 'android' && isAndroidPinPrewarming && markers.length > 0) {
       return (
         <View style={styles.mapOverlay}>
           <ActivityIndicator color={colors.primary} />
@@ -527,6 +540,7 @@ export function MapScreen({
           showsUserLocation={locationPermissionGranted}
           showsCompass
           showsMyLocationButton={locationPermissionGranted}
+          showsBuildings
           customMapStyle={mapCustomStyle}
           userInterfaceStyle={isDark ? 'dark' : 'light'}
           onMapReady={() => {
@@ -567,6 +581,7 @@ export function MapScreen({
               showsUserLocation={locationPermissionGranted}
               showsCompass
               showsMyLocationButton={locationPermissionGranted}
+              showsBuildings
               customMapStyle={mapCustomStyle}
               userInterfaceStyle={isDark ? 'dark' : 'light'}
               onMapReady={() => {
@@ -592,7 +607,7 @@ export function MapScreen({
   );
 }
 
-function extractHouseNumber(address: string | null | undefined): string | null {
+function extractAddressToken(address: string | null | undefined): string | null {
   if (!address) {
     return null;
   }
@@ -820,6 +835,27 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     mapTypeOptionTextActive: {
       color: onPrimary,
+    },
+    markerContainer: {
+      width: 44,
+      height: 56,
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+    },
+    markerImage: {
+      width: 44,
+      height: 56,
+    },
+    markerLabel: {
+      position: 'absolute',
+      top: 13,
+      width: 30,
+      textAlign: 'center',
+      color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '700',
+      includeFontPadding: false,
+      lineHeight: 14,
     },
   });
 }
