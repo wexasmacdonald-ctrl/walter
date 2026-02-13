@@ -1,14 +1,3 @@
-import { Asset } from 'expo-asset';
-
-import {
-  COMPLETE_MARKER_ASSETS,
-  MAX_BUNDLED_MARKER_LABEL,
-  PENDING_MARKER_ASSETS,
-} from './generated-marker-assets';
-
-const pinBlue = require('../../assets/pins/pin-blue.png');
-const pinGreen = require('../../assets/pins/pin-green.png');
-
 export type MarkerStatus = 'pending' | 'complete';
 
 type MarkerIconParams = {
@@ -18,8 +7,8 @@ type MarkerIconParams = {
 
 export const MARKER_LABEL_MAX_CHARS = 4;
 export const MARKER_GENERATION_CONCURRENCY = 6;
-export const MARKER_ICON_WIDTH = 140;
-export const MARKER_ICON_HEIGHT = 60;
+export const MARKER_ICON_WIDTH = 120;
+export const MARKER_ICON_HEIGHT = 56;
 export const MARKER_ANCHOR_X = 0.5;
 export const MARKER_ANCHOR_Y = 1;
 export const MARKER_CALLOUT_ANCHOR_X = 0.5;
@@ -36,7 +25,7 @@ export type MarkerIconDescriptor = {
   anchorY: number;
 };
 
-type MarkerIconSource = 'memory' | 'bundled' | 'fallback' | 'inflight';
+type MarkerIconSource = 'memory' | 'generated' | 'inflight';
 
 type MarkerIconResult = {
   descriptor: MarkerIconDescriptor;
@@ -74,24 +63,32 @@ function buildDescriptor(key: MarkerVisualKey, uri: string): MarkerIconDescripto
   };
 }
 
-function getModuleForLabel(label: string, status: MarkerStatus): number | null {
-  const normalized = normalizeMarkerLabel(label);
-  if (!/^\d+$/.test(normalized)) {
-    return null;
-  }
-  const value = Number.parseInt(normalized, 10);
-  if (!Number.isFinite(value) || value < 1 || value > MAX_BUNDLED_MARKER_LABEL) {
-    return null;
-  }
-  return status === 'complete'
-    ? (COMPLETE_MARKER_ASSETS[normalized] ?? null)
-    : (PENDING_MARKER_ASSETS[normalized] ?? null);
+function encodeSvg(svg: string): string {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-async function resolveAssetUri(moduleRef: number): Promise<string> {
-  const asset = Asset.fromModule(moduleRef);
-  await asset.downloadAsync();
-  return asset.localUri ?? asset.uri;
+function createSvgMarker(label: string, status: MarkerStatus): string {
+  const text = normalizeMarkerLabel(label).slice(0, 4);
+  const fill = status === 'complete' ? '#16A34A' : '#2563EB';
+  const textColor = '#FFFFFF';
+  const borderColor = 'rgba(0,0,0,0.2)';
+
+  const width = MARKER_ICON_WIDTH;
+  const height = MARKER_ICON_HEIGHT;
+  const radius = 18;
+  const pointerWidth = 20;
+  const pointerHeight = 10;
+  const bodyHeight = height - pointerHeight;
+  const pointerX = width / 2;
+
+  const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect x="1" y="1" width="${width - 2}" height="${bodyHeight - 1}" rx="${radius}" ry="${radius}" fill="${fill}" stroke="${borderColor}" stroke-width="1.5"/>
+  <path d="M ${pointerX - pointerWidth / 2} ${bodyHeight - 1} L ${pointerX} ${height - 1} L ${pointerX + pointerWidth / 2} ${bodyHeight - 1} Z" fill="${fill}" stroke="${borderColor}" stroke-width="1.5"/>
+  <text x="50%" y="${bodyHeight / 2 + 6}" text-anchor="middle" font-family="Arial, sans-serif" font-size="26" font-weight="700" fill="${textColor}">${text}</text>
+</svg>`;
+
+  return encodeSvg(svg);
 }
 
 export async function ensureMarkerIcon({
@@ -118,13 +115,10 @@ export async function getMarkerIconDescriptor({
   }
 
   const promise = (async () => {
-    const bundledModule = getModuleForLabel(label, status);
-    const source: MarkerIconSource = bundledModule ? 'bundled' : 'fallback';
-    const fallbackModule = status === 'complete' ? pinGreen : pinBlue;
-    const uri = await resolveAssetUri(bundledModule ?? fallbackModule);
+    const uri = createSvgMarker(label, status);
     const descriptor = buildDescriptor(visualKey, uri);
     memoryCache.set(visualKey, descriptor);
-    return { descriptor, source };
+    return { descriptor, source: 'generated' as const };
   })();
 
   inflight.set(visualKey, promise);
