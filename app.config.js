@@ -1,18 +1,21 @@
 // Requires IOS_GOOGLE_MAPS_API_KEY to be set in expo.dev Project Secrets
 export default ({ config }) => {
   const iosGoogleMapsApiKey = process.env.IOS_GOOGLE_MAPS_API_KEY ?? '';
-  const androidGoogleMapsApiKey = process.env.GOOGLE_MAPS_ANDROID_KEY ?? '';
+  const androidGoogleMapsApiKey =
+    process.env.GOOGLE_MAPS_ANDROID_KEY ??
+    process.env.EXPO_PUBLIC_GOOGLE_API_KEY ??
+    '';
 
   return {
     ...config,
-    name: 'my-app',
+    name: 'Blow-Grid',
     slug: 'my-app',
-    version: '1.0.0',
+    version: '1.0.10',
     orientation: 'portrait',
     icon: './assets/images/icon.png',
-    scheme: 'myapp',
+    scheme: 'blowgrid',
     userInterfaceStyle: 'automatic',
-    // Align with Expo Go (always New Architecture); keep enabled so native builds match runtime behavior.
+    // Reanimated/worklets in this dependency set require New Architecture.
     newArchEnabled: true,
     ios: {
       bundleIdentifier: 'com.macdonaldautomation.blowpin',
@@ -28,10 +31,10 @@ export default ({ config }) => {
     },
     android: {
       package: 'com.macdonaldautomation.blowpin',
+      versionCode: 21,
       adaptiveIcon: {
         backgroundColor: '#E6F4FE',
         foregroundImage: './assets/images/android-icon-foreground.png',
-        backgroundImage: './assets/images/android-icon-background.png',
         monochromeImage: './assets/images/android-icon-monochrome.png',
       },
       edgeToEdgeEnabled: true,

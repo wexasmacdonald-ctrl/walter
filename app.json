@@ -1,6 +1,9 @@
 {
   "expo": {
     "name": "my-app",
-    "slug": "my-app"
+    "slug": "my-app",
+    "android": {
+      "versionCode": 21
+    }
   }
 }

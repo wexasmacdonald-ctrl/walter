@@ -1,0 +1,24 @@
+diff --git a/node_modules/react-native-maps/android/src/main/java/com/rnmaps/maps/MapMarkerManager.java b/node_modules/react-native-maps/android/src/main/java/com/rnmaps/maps/MapMarkerManager.java
+index 8cf3d72..af27204 100644
+--- a/node_modules/react-native-maps/android/src/main/java/com/rnmaps/maps/MapMarkerManager.java
++++ b/node_modules/react-native-maps/android/src/main/java/com/rnmaps/maps/MapMarkerManager.java
+@@ -12,6 +12,7 @@ import com.facebook.react.bridge.ReadableArray;
+ import com.facebook.react.bridge.ReadableMap;
+ import com.facebook.react.common.MapBuilder;
+ import com.facebook.react.uimanager.LayoutShadowNode;
++import com.facebook.react.uimanager.PixelUtil;
+ import com.facebook.react.uimanager.ThemedReactContext;
+ import com.facebook.react.uimanager.ViewGroupManager;
+ import com.facebook.react.uimanager.annotations.ReactProp;
+@@ -363,6 +364,10 @@ public class MapMarkerManager extends ViewGroupManager<MapMarker> {
+         HashMap<String, Float> data = (HashMap<String, Float>) extraData;
+         float width = data.get("width");
+         float height = data.get("height");
+-        view.update((int) width, (int) height);
++        // Layout values arrive in DIP; convert to pixels so marker snapshots don't get clipped on high-density screens.
++        int pixelWidth = (int) Math.ceil(PixelUtil.toPixelFromDIP(width));
++        int pixelHeight = (int) Math.ceil(PixelUtil.toPixelFromDIP(height));
++
++        view.update(pixelWidth, pixelHeight);
+     }
+ }
