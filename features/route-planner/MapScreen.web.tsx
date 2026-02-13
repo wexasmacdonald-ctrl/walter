@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -34,10 +34,6 @@ type MapPin = {
   label: string;
   status: 'pending' | 'complete';
 };
-type UserLocation = {
-  lat: number;
-  lng: number;
-};
 const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 };
 const DEFAULT_ZOOM = 12;
 
@@ -58,11 +54,6 @@ export function MapScreen({
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const mapRef = useRef<google.maps.Map | null>(null);
-  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
-  const [locationPermissionDenied, setLocationPermissionDenied] = useState(false);
-  const [locationRequesting, setLocationRequesting] = useState(false);
-  const watchIdRef = useRef<number | null>(null);
-  const isMountedRef = useRef(true);
 
   const mapPins = useMemo<MapPin[]>(() => {
     return pins
@@ -118,72 +109,6 @@ export function MapScreen({
     };
   }, []);
 
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
-  const handleLocationSuccess = useCallback((position: GeolocationPosition) => {
-    if (!isMountedRef.current) {
-      return;
-    }
-    setUserLocation({
-      lat: position.coords.latitude,
-      lng: position.coords.longitude,
-    });
-    setLocationPermissionDenied(false);
-    setLocationRequesting(false);
-  }, []);
-
-  const handleLocationError = useCallback((error: GeolocationPositionError) => {
-    if (!isMountedRef.current) {
-      return;
-    }
-    if (error.code === error.PERMISSION_DENIED) {
-      setLocationPermissionDenied(true);
-    }
-    setLocationRequesting(false);
-  }, []);
-
-  const requestUserLocation = useCallback(
-    (startWatch: boolean) => {
-      if (typeof navigator === 'undefined' || !navigator.geolocation) {
-        return;
-      }
-
-      setLocationRequesting(true);
-      navigator.geolocation.getCurrentPosition(handleLocationSuccess, handleLocationError, {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      });
-
-      if (startWatch) {
-        if (watchIdRef.current !== null) {
-          navigator.geolocation.clearWatch(watchIdRef.current);
-        }
-        watchIdRef.current = navigator.geolocation.watchPosition(handleLocationSuccess, handleLocationError, {
-          enableHighAccuracy: true,
-          maximumAge: 0,
-        });
-      }
-    },
-    [handleLocationError, handleLocationSuccess]
-  );
-
-  useEffect(() => {
-    requestUserLocation(true);
-    return () => {
-      if (typeof navigator === 'undefined' || !navigator.geolocation) {
-        return;
-      }
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
-    };
-  }, [requestUserLocation]);
-
   const selectedMarker = useMemo(
     () => mapPins.find((marker) => marker.id === selectedId) ?? null,
     [mapPins, selectedId]
@@ -196,11 +121,8 @@ export function MapScreen({
     if (mapPins.length > 0) {
       return mapPins[0].position;
     }
-    if (userLocation) {
-      return userLocation;
-    }
     return DEFAULT_CENTER;
-  }, [mapPins, selectedMarker, userLocation]);
+  }, [mapPins, selectedMarker]);
 
   const selectedMixTarget = isDark ? colors.text : colors.surface;
   const selectedMixAmount = isDark ? 0.35 : 0.55;
@@ -407,37 +329,6 @@ export function MapScreen({
     return null;
   };
 
-  const renderLocationPrompt = () => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      return null;
-    }
-    if (userLocation) {
-      return null;
-    }
-
-    return (
-      <View style={styles.locationPrompt}>
-        <Text style={styles.locationPromptText}>
-          {locationPermissionDenied
-            ? 'Location access is blocked. Enable it to show your position.'
-            : 'Show your live position on the map.'}
-        </Text>
-        <Pressable
-          style={[
-            styles.locationPromptButton,
-            locationRequesting && styles.locationPromptButtonDisabled,
-          ]}
-          onPress={() => requestUserLocation(true)}
-          disabled={locationRequesting}
-        >
-          <Text style={styles.locationPromptButtonText}>
-            {locationRequesting ? 'Requesting...' : 'Enable location'}
-          </Text>
-        </Pressable>
-      </View>
-    );
-  };
-
   const renderMapTypeToggle = () => (
     <View style={styles.mapTypeToggle}>
       <Pressable
@@ -489,21 +380,6 @@ export function MapScreen({
     }),
     [mapStyle]
   );
-
-  const userMarkerIcon = useMemo(() => {
-    const maps = (globalThis as any).google?.maps as typeof google.maps | undefined;
-    if (!maps) {
-      return undefined;
-    }
-    return {
-      path: maps.SymbolPath.CIRCLE,
-      scale: 7,
-      fillColor: colors.primary,
-      fillOpacity: 1,
-      strokeColor: colors.surface,
-      strokeWeight: 2,
-    };
-  }, [colors.primary, colors.surface]);
 
   // Some global CSS (e.g., img { max-width: 100% }) can distort Google marker sprites.
   // Ensure map images use their native sizing so pins are not clipped.
@@ -578,13 +454,9 @@ export function MapScreen({
             }}
           >
             {renderMarkers()}
-            {userLocation ? (
-              <Marker position={userLocation} icon={userMarkerIcon} title="Your location" />
-            ) : null}
           </Map>
           {renderOverlay()}
           {renderToast('primary')}
-          {renderLocationPrompt()}
         </View>
 
         <Modal visible={isFullScreen} animationType="slide" onRequestClose={() => setIsFullScreen(false)}>
@@ -610,13 +482,9 @@ export function MapScreen({
               }}
             >
               {renderMarkers()}
-              {userLocation ? (
-                <Marker position={userLocation} icon={userMarkerIcon} title="Your location" />
-              ) : null}
             </Map>
             {renderOverlay()}
             {renderToast('modal')}
-            {renderLocationPrompt()}
           </View>
           </View>
         </Modal>
@@ -963,39 +831,6 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     toastButtonDangerText: {
       color: colors.danger,
       fontWeight: '600',
-    },
-    locationPrompt: {
-      position: 'absolute',
-      left: 16,
-      bottom: 16,
-      maxWidth: 240,
-      padding: 12,
-      borderRadius: 12,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      gap: 8,
-    },
-    locationPromptText: {
-      color: colors.text,
-      fontSize: 13,
-    },
-    locationPromptButton: {
-      alignSelf: 'flex-start',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.primary,
-      backgroundColor: colors.primary,
-    },
-    locationPromptButtonDisabled: {
-      opacity: 0.6,
-    },
-    locationPromptButtonText: {
-      color: onPrimary,
-      fontWeight: '600',
-      fontSize: 13,
     },
     modalContent: {
       flex: 1,

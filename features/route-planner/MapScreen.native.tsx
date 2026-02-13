@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -7,16 +7,22 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  UIManager,
   View,
 } from 'react-native';
 import * as Location from 'expo-location';
 
 import { useTheme } from '@/features/theme/theme-context';
-import type MapView from 'react-native-maps';
 import type { LatLng, MapPressEvent } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import type { Stop } from './types';
-import { Buffer } from 'buffer';
+import pinBlue from '@/assets/pins/pin-blue.png';
+import pinGreen from '@/assets/pins/pin-green.png';
+import {
+  MARKER_ANCHOR_X,
+  MARKER_ANCHOR_Y,
+  MARKER_CALLOUT_ANCHOR_X,
+  MARKER_CALLOUT_ANCHOR_Y,
+} from './marker-icon-cache';
 
 const GOOGLE_LIGHT_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
@@ -111,15 +117,16 @@ export type MapScreenProps = {
   exitFullScreenSignal?: number;
 };
 
-type UserLocation = {
-  latitude: number;
-  longitude: number;
+type RouteMarker = {
+  id: string;
+  coordinate: LatLng;
+  address: string | null | undefined;
+  label: string;
+  status: 'complete' | 'pending';
 };
 
-type MapModule = typeof import('react-native-maps') | null;
-
 export function MapScreen({
-  pins,
+  pins = [],
   loading = false,
   onCompleteStop,
   onUndoStop,
@@ -127,24 +134,9 @@ export function MapScreen({
   exitFullScreenSignal,
   // onAdjustPinDrag exists for feature parity with web; native map remains modal-driven for now.
 }: MapScreenProps) {
-  // Expo Go does not bundle react-native-maps. Load at runtime so we can fall back gracefully.
-  const mapModule = useMemo<MapModule>(() => {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      return require('react-native-maps');
-    } catch (error) {
-      console.warn('react-native-maps unavailable; rendering fallback map view', error);
-      return null;
-    }
-  }, []);
-
-  const MapViewComponent = mapModule?.default ?? null;
-  // For now, bypass custom MarkerBadge and use default markers to validate native rendering.
-  const MarkerComponent = mapModule?.Marker ?? null;
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
-  const [location, setLocation] = useState<UserLocation | null>(null);
-  const [requestingLocation, setRequestingLocation] = useState(false);
+  const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -152,17 +144,23 @@ export function MapScreen({
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const [modalMapReady, setModalMapReady] = useState(false);
+  const [didFitMarkers, setDidFitMarkers] = useState(false);
+  const [didFitModalMarkers, setDidFitModalMarkers] = useState(false);
 
   const mapRef = useRef<MapView | null>(null);
   const modalMapRef = useRef<MapView | null>(null);
-  const mapProvider = useMemo(
-    () => (mapModule && supportsGoogleMapsProvider(mapModule) ? mapModule.PROVIDER_GOOGLE : undefined),
-    [mapModule]
-  );
-  const markerIconCache = useRef<Map<string, string>>(new Map());
+  const mapProvider = PROVIDER_GOOGLE;
 
-  const resolvedMapType = mapType === 'satellite' ? 'satellite' : isDark ? 'mutedStandard' : 'standard';
+  const resolvedMapType = useMemo(() => {
+    if (mapType === 'satellite') {
+      return 'satellite';
+    }
+    // Android: stick to standard to avoid provider-specific mapType quirks (mutedStandard is iOS-only).
+    if (Platform.OS === 'android') {
+      return 'standard';
+    }
+    return isDark ? 'mutedStandard' : 'standard';
+  }, [isDark, mapType]);
   const mapCustomStyle = useMemo(() => {
     if (!mapProvider || mapType !== 'standard') {
       return undefined;
@@ -174,36 +172,35 @@ export function MapScreen({
     let mounted = true;
 
     async function requestLocation() {
-      setRequestingLocation(true);
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (!mounted) {
-          return;
+        // Check existing permission before asking.
+        let perm = await Location.getForegroundPermissionsAsync();
+        if (!mounted) return;
+        let status = perm.status;
+        if (status !== 'granted' && perm.canAskAgain) {
+          perm = await Location.requestForegroundPermissionsAsync();
+          if (!mounted) return;
+          status = perm.status;
         }
 
-        if (status !== 'granted') {
+        if (status === 'granted') {
+          setLocationPermissionGranted(true);
+          try {
+            const position = await Location.getCurrentPositionAsync({});
+            if (!mounted) return;
+            void position.coords.latitude;
+            void position.coords.longitude;
+          } catch (error) {
+            console.warn('Failed to get current position', error);
+          }
+        } else {
           setPermissionDenied(true);
-          setRequestingLocation(false);
-          return;
+          setLocationPermissionGranted(false);
         }
-
-        const position = await Location.getCurrentPositionAsync({});
-        if (!mounted) {
-          return;
-        }
-
-        setLocation({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-      } catch {
-        if (mounted) {
-          setPermissionDenied(true);
-        }
-      } finally {
-        if (mounted) {
-          setRequestingLocation(false);
-        }
+      } catch (error) {
+        console.warn('Location permission request failed', error);
+        setPermissionDenied(true);
+        setLocationPermissionGranted(false);
       }
     }
 
@@ -213,7 +210,7 @@ export function MapScreen({
     };
   }, []);
 
-  const markers = useMemo(() => {
+  const markers = useMemo<RouteMarker[]>(() => {
     return pins
       .filter((pin): pin is Stop & { lat: number; lng: number } => typeof pin.lat === 'number' && typeof pin.lng === 'number')
       .map((pin, index) => {
@@ -235,11 +232,12 @@ export function MapScreen({
   const coordinates = useMemo<LatLng[]>(() => markers.map((marker) => marker.coordinate), [markers]);
 
   useEffect(() => {
-    if (!mapReady || coordinates.length === 0) {
+    if (!mapReady || coordinates.length === 0 || didFitMarkers) {
       return;
     }
     fitToMarkers(mapRef.current, coordinates);
-  }, [coordinates, mapReady]);
+    setDidFitMarkers(true);
+  }, [coordinates, didFitMarkers, mapReady]);
 
   useEffect(() => {
     if (selectedId && !markers.some((marker) => marker.id === selectedId)) {
@@ -271,27 +269,23 @@ export function MapScreen({
     });
   }, [pins]);
 
+  useEffect(() => {
+    if (coordinates.length > 0) {
+      setDidFitMarkers(false);
+      setDidFitModalMarkers(false);
+    }
+  }, [coordinates.length]);
+
   const selectedMarker = useMemo(
     () => markers.find((marker) => marker.id === selectedId) ?? null,
     [markers, selectedId]
   );
 
-  const selectedMixTarget = isDark ? colors.text : colors.surface;
-  const selectedMixAmount = isDark ? 0.35 : 0.55;
-  const pinColor = colors.primary;
-  const confirmedColor = colors.success;
-  const selectedPinColor = useMemo(
-    () => mixHexColor(pinColor, selectedMixTarget, selectedMixAmount),
-    [pinColor, selectedMixTarget, selectedMixAmount]
+  const getMarkerStatus = useCallback(
+    (marker: RouteMarker): 'complete' | 'pending' =>
+      marker.status === 'complete' || confirmed[marker.id] ? 'complete' : 'pending',
+    [confirmed]
   );
-  const selectedConfirmedPinColor = useMemo(
-    () => mixHexColor(confirmedColor, selectedMixTarget, selectedMixAmount),
-    [confirmedColor, selectedMixTarget, selectedMixAmount]
-  );
-  const USE_NATIVE_ANDROID_PIN = false;
-  const USE_ANDROID_SVG_ICON = true;
-  const badgeLabelColor = isDark ? colors.text : colors.surface;
-  const badgeBorderColor = isDark ? colors.text : colors.surface;
 
   const handleSelect = (id: string) => {
     setSelectedId((prev) => (prev === id ? null : id));
@@ -348,89 +342,24 @@ export function MapScreen({
       ]);
     };
 
-  const getAndroidMarkerIcon = (label: string, fill: string, textColor: string) => {
-    const glyph = label.trim().slice(0, 4);
-    const cacheKey = `${glyph}-${fill}-${textColor}`;
-    const cached = markerIconCache.current.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-    const width = 100;
-    const height = 36;
-    const rectWidth = 88;
-    const rectHeight = 28;
-    const rectX = (width - rectWidth) / 2;
-    const rectY = (height - rectHeight) / 2;
-    const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-        <g fill="none">
-          <rect x="${rectX}" y="${rectY}" width="${rectWidth}" height="${rectHeight}" rx="10" fill="${fill}" stroke="${colors.surface}" stroke-width="2"/>
-          <text x="${width / 2}" y="${height / 2}" text-anchor="middle" dominant-baseline="middle" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="${textColor}">${glyph}</text>
-        </g>
-      </svg>
-    `;
-    const uri = `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
-    markerIconCache.current.set(cacheKey, uri);
-    return uri;
-  };
-
   const renderMarkers = () => {
-    if (!MarkerComponent) {
-      return null;
-    }
-    return markers.map((marker) => (
-      <MarkerComponent
-        key={marker.id}
-        coordinate={marker.coordinate}
-        anchor={{ x: 0.5, y: 0.5 }}
-        calloutAnchor={{ x: 0.5, y: 0 }}
-        {...(USE_NATIVE_ANDROID_PIN && Platform.OS === 'android'
-          ? {
-              pinColor:
-                marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
-              tracksViewChanges: false,
-            }
-          : USE_ANDROID_SVG_ICON && Platform.OS === 'android'
-          ? {
-              tracksViewChanges: false,
-              icon: {
-                uri: getAndroidMarkerIcon(
-                  (marker.label ?? '').slice(0, 4),
-                  marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
-                  colors.surface
-                ),
-              },
-            }
-          : { tracksViewChanges: true })}
-        onPress={() => handleSelect(marker.id)}
-      >
-        {USE_NATIVE_ANDROID_PIN || (USE_ANDROID_SVG_ICON && Platform.OS === 'android') ? null : (
-          <View style={styles.inlineMarkerOuter} collapsable={false}>
-            <View
-              style={[
-                styles.inlineMarker,
-                Platform.OS === 'android' && styles.inlineMarkerAndroid,
-                {
-                  backgroundColor:
-                    marker.status === 'complete' || confirmed[marker.id] ? colors.success : colors.primary,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.inlineMarkerText,
-                  Platform.OS === 'android' && styles.inlineMarkerTextAndroid,
-                ]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {Platform.OS === 'android' ? (marker.label ?? '').slice(0, 4) : marker.label}
-              </Text>
-            </View>
-          </View>
-        )}
-      </MarkerComponent>
-    ));
+    return markers.map((marker) => {
+      const status = getMarkerStatus(marker);
+      const imageSource = status === 'complete' ? pinGreen : pinBlue;
+
+      return (
+        <Marker
+          key={marker.id}
+          coordinate={marker.coordinate}
+          anchor={{ x: MARKER_ANCHOR_X, y: MARKER_ANCHOR_Y }}
+          calloutAnchor={{ x: MARKER_CALLOUT_ANCHOR_X, y: MARKER_CALLOUT_ANCHOR_Y }}
+          onPress={() => handleSelect(marker.id)}
+          image={imageSource}
+          title={marker.label}
+          description={marker.address ?? undefined}
+        />
+      );
+    });
   };
 
   const canAdjustPin = typeof onAdjustPin === 'function';
@@ -451,12 +380,12 @@ export function MapScreen({
             <Text style={styles.toastTitle} numberOfLines={2}>
               {selectedMarker.address || 'Address unavailable'}
             </Text>
-            {isConfirmed ? (
-              <Text style={styles.toastStatus}>Snow cleared. Tap undo to revert.</Text>
-            ) : null}
-          <View style={styles.toastActions}>
-            {canAdjustPin ? (
-              <Pressable
+        {isConfirmed ? (
+          <Text style={styles.toastStatus}>Snow cleared. Tap undo to revert.</Text>
+        ) : null}
+      <View style={styles.toastActions}>
+        {canAdjustPin ? (
+          <Pressable
                 style={[styles.toastButton, styles.toastButtonSecondary]}
                 onPress={() => {
                   setIsFullScreen(false);
@@ -476,7 +405,7 @@ export function MapScreen({
                   disabled={actioningId === selectedMarker.id}
                 >
                   <Text style={styles.toastButtonDangerText}>
-                    {actioningId === selectedMarker.id ? 'Updating???' : 'Undo'}
+                    {actioningId === selectedMarker.id ? 'Updating...' : 'Undo'}
                   </Text>
                 </Pressable>
               ) : (
@@ -486,7 +415,7 @@ export function MapScreen({
                   disabled={actioningId === selectedMarker.id}
                 >
                   <Text style={styles.toastButtonPrimaryText}>
-                    {actioningId === selectedMarker.id ? 'Updating???' : 'Snow cleared'}
+                    {actioningId === selectedMarker.id ? 'Updating...' : 'Snow cleared'}
                   </Text>
                 </Pressable>
               )}
@@ -498,28 +427,11 @@ export function MapScreen({
   };
 
   const renderOverlay = () => {
-    if (loading && !requestingLocation) {
+    if (loading) {
       return (
         <View style={styles.mapOverlay}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.mapOverlayText}>Loading pins???</Text>
-        </View>
-      );
-    }
-
-    if (requestingLocation) {
-      return (
-        <View style={styles.mapOverlay}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={styles.mapOverlayText}>Fetching your location???</Text>
-        </View>
-      );
-    }
-
-    if (permissionDenied) {
-      return (
-        <View style={styles.mapOverlay}>
-          <Text style={styles.mapOverlayText}>Location permission denied. Enable it to show your dot.</Text>
+          <Text style={styles.mapOverlayText}>Loading pins...</Text>
         </View>
       );
     }
@@ -528,6 +440,14 @@ export function MapScreen({
       return (
         <View style={styles.notice}>
           <Text style={styles.noticeText}>Pins appear after the locations finish loading.</Text>
+        </View>
+      );
+    }
+
+    if (permissionDenied) {
+      return (
+        <View style={styles.notice}>
+          <Text style={styles.noticeText}>Location permission denied. Map still works; enable it to show your dot.</Text>
         </View>
       );
     }
@@ -556,42 +476,6 @@ export function MapScreen({
     </View>
   );
 
-  if (!MapViewComponent) {
-    return (
-      <View style={[styles.container, styles.fallbackContainer, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-        <Text style={[styles.fallbackTitle, { color: colors.text }]}>Map unavailable in Expo Go</Text>
-        <Text style={[styles.fallbackBody, { color: colors.mutedText }]}>
-          The native Google Maps module (react-native-maps) is not bundled in Expo Go. Use a custom dev client or
-          production build to view the interactive map. Showing pinned stops below for reference.
-        </Text>
-        {pins.length === 0 ? (
-          <Text style={{ color: colors.mutedText }}>No pins yet.</Text>
-        ) : (
-          <View style={{ gap: 8 }}>
-            {pins.map((pin, index) => (
-              <View
-                key={pin.id ?? index}
-                style={[styles.fallbackRow, { borderColor: colors.border }]}
-              >
-                <Text style={[styles.fallbackBadge, { color: colors.primary }]}>{index + 1}</Text>
-                <View style={{ flex: 1, gap: 4 }}>
-                  <Text style={[styles.fallbackAddress, { color: colors.text }]} numberOfLines={2}>
-                    {pin.address}
-                  </Text>
-                  <Text style={{ color: colors.mutedText, fontSize: 12 }}>
-                    {typeof pin.lat === 'number' && typeof pin.lng === 'number'
-                      ? `(${pin.lat.toFixed(4)}, ${pin.lng.toFixed(4)})`
-                      : 'No coordinates yet'}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -604,20 +488,21 @@ export function MapScreen({
       </View>
 
       <View style={styles.mapWrapper}>
-        <MapViewComponent
+        <MapView
           ref={mapRef}
           provider={mapProvider}
           style={styles.map}
           mapType={resolvedMapType}
-          showsUserLocation
+          showsUserLocation={locationPermissionGranted}
           showsCompass
-          showsMyLocationButton
+          showsMyLocationButton={locationPermissionGranted}
           customMapStyle={mapCustomStyle}
           userInterfaceStyle={isDark ? 'dark' : 'light'}
           onMapReady={() => {
             setMapReady(true);
-            if (coordinates.length > 0) {
+            if (coordinates.length > 0 && !didFitMarkers) {
               fitToMarkers(mapRef.current, coordinates);
+              setDidFitMarkers(true);
             }
           }}
           onPress={(event: MapPressEvent) => {
@@ -627,7 +512,7 @@ export function MapScreen({
           }}
         >
           {renderMarkers()}
-        </MapViewComponent>
+        </MapView>
         {renderOverlay()}
         {renderToast('primary')}
       </View>
@@ -643,20 +528,20 @@ export function MapScreen({
             </View>
           </View>
           <View style={styles.modalMapWrapper}>
-            <MapViewComponent
+            <MapView
               ref={modalMapRef}
               provider={mapProvider}
               style={styles.map}
               mapType={resolvedMapType}
-              showsUserLocation
+              showsUserLocation={locationPermissionGranted}
               showsCompass
-              showsMyLocationButton
+              showsMyLocationButton={locationPermissionGranted}
               customMapStyle={mapCustomStyle}
               userInterfaceStyle={isDark ? 'dark' : 'light'}
               onMapReady={() => {
-                setModalMapReady(true);
-                if (coordinates.length > 0) {
+                if (coordinates.length > 0 && !didFitModalMarkers) {
                   fitToMarkers(modalMapRef.current, coordinates);
+                  setDidFitModalMarkers(true);
                 }
               }}
               onPress={(event: MapPressEvent) => {
@@ -666,7 +551,7 @@ export function MapScreen({
               }}
             >
               {renderMarkers()}
-            </MapViewComponent>
+            </MapView>
             {renderOverlay()}
             {renderToast('modal')}
           </View>
@@ -850,47 +735,6 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.danger,
       fontWeight: '600',
     },
-    inlineMarker: Platform.select({
-      android: {
-        height: 32,
-        borderRadius: 10,
-        backgroundColor: colors.primary,
-        borderWidth: 2,
-        borderColor: colors.surface,
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: undefined,
-        minWidth: 80,
-        paddingHorizontal: 12,
-      },
-      default: {
-        width: 40,
-        height: 32,
-        borderRadius: 10,
-        backgroundColor: colors.primary,
-        borderWidth: 2,
-        borderColor: colors.surface,
-        alignItems: 'center',
-        justifyContent: 'center',
-      },
-    }),
-    inlineMarkerOuter: {
-      overflow: 'visible',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    inlineMarkerAndroid: {},
-    inlineMarkerComplete: {
-      backgroundColor: colors.success,
-    },
-    inlineMarkerText: {
-      color: colors.surface,
-      fontWeight: '700',
-      fontSize: 12,
-    },
-    inlineMarkerTextAndroid: {
-      fontSize: 11,
-    },
     modalContent: {
       flex: 1,
       backgroundColor: colors.surface,
@@ -946,47 +790,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     mapTypeOptionTextActive: {
       color: onPrimary,
     },
-    fallbackContainer: {
-      gap: 12,
-      borderRadius: 16,
-      borderWidth: 1,
-      padding: 16,
-    },
-    fallbackTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    fallbackBody: {
-      fontSize: 14,
-      lineHeight: 20,
-    },
-    fallbackRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: 10,
-      paddingVertical: 8,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-    },
-    fallbackBadge: {
-      width: 26,
-      textAlign: 'center',
-      fontWeight: '700',
-    },
-    fallbackAddress: {
-      fontSize: 14,
-      fontWeight: '500',
-    },
   });
-}
-
-function mixHexColor(base: string, mix: string, ratio: number): string {
-  const amount = Math.max(0, Math.min(1, ratio));
-  const [br, bg, bb] = parseHex(base);
-  const [mr, mg, mb] = parseHex(mix);
-  const r = Math.round(br + (mr - br) * amount);
-  const g = Math.round(bg + (mg - bg) * amount);
-  const b = Math.round(bb + (mb - bb) * amount);
-  return `rgb(${r}, ${g}, ${b})`;
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -997,33 +801,13 @@ function hexToRgba(hex: string, alpha: number): string {
 
 function parseHex(input: string): [number, number, number] {
   const value = input.trim().replace(/^#/, '');
-  if (value.length !== 6) {
-    throw new Error(`Expected 6-digit hex color, received: ${input}`);
+  const normalized = value.length === 3 ? value.split('').map((c) => c + c).join('') : value;
+  if (normalized.length !== 6 || /[^0-9a-f]/i.test(normalized)) {
+    console.warn(`Invalid hex color "${input}", defaulting to black.`);
+    return [0, 0, 0];
   }
-  const r = Number.parseInt(value.slice(0, 2), 16);
-  const g = Number.parseInt(value.slice(2, 4), 16);
-  const b = Number.parseInt(value.slice(4, 6), 16);
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
   return [r, g, b];
-}
-
-function supportsGoogleMapsProvider(mapModule: MapModule): boolean {
-  if (Platform.OS === 'android') {
-    return Boolean(mapModule?.default);
-  }
-  if (Platform.OS !== 'ios') {
-    return false;
-  }
-
-  // AIRGoogleMap exists only when the Google Maps SDK is linked on iOS.
-  try {
-    if (typeof UIManager.getViewManagerConfig === 'function') {
-      return Boolean(UIManager.getViewManagerConfig('AIRGoogleMap'));
-    }
-    if (typeof UIManager.hasViewManagerConfig === 'function') {
-      return UIManager.hasViewManagerConfig('AIRGoogleMap');
-    }
-  } catch (error) {
-    console.warn('Unable to detect Google Maps provider; falling back to Apple Maps.', error);
-  }
-  return false;
 }
