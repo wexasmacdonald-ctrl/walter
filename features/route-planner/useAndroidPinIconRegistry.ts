@@ -39,7 +39,7 @@ type PinIconRendererModule = {
 };
 
 const MODULE_NAME = 'PinIconRenderer';
-const TEMPLATE_VERSION = 'v1';
+const TEMPLATE_VERSION = 'v2';
 const DEFAULT_CONCURRENCY = 3;
 
 const descriptorCache = new Map<AndroidPinVisualKey, AndroidPinIconDescriptor>();

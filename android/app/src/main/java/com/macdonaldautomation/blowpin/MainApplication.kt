@@ -6,7 +6,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.net.Uri
@@ -91,9 +90,7 @@ class PinIconRendererModule(private val reactContext: ReactApplicationContext) :
     private const val MODULE_NAME = "PinIconRenderer"
     private const val ICON_WIDTH_PX = 140
     private const val ICON_HEIGHT_PX = 60
-    private const val POINTER_HEIGHT = 10f
-    private const val POINTER_HALF_WIDTH = 10f
-    private const val CORNER_RADIUS = 18f
+    private const val CORNER_RADIUS = 12f
     private const val MAX_LABEL_LENGTH = 24
 
     private val memoryCache = ConcurrentHashMap<String, String>()
@@ -158,12 +155,11 @@ class PinIconRendererModule(private val reactContext: ReactApplicationContext) :
     }
   }
 
-  private fun drawPin(canvas: Canvas, label: String, status: String, theme: String) {
+  private fun drawPin(canvas: Canvas, label: String, status: String, _theme: String) {
     val width = ICON_WIDTH_PX.toFloat()
     val height = ICON_HEIGHT_PX.toFloat()
-    val bodyHeight = height - POINTER_HEIGHT
-    val fillColor = if (status == "complete") Color.parseColor("#16A34A") else Color.parseColor("#2563EB")
-    val strokeColor = if (theme == "dark") Color.parseColor("#55000000") else Color.parseColor("#33000000")
+    val fillColor = if (status == "complete") Color.parseColor("#2ECC71") else Color.parseColor("#1E88E5")
+    val strokeColor = Color.WHITE
 
     val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       style = Paint.Style.FILL
@@ -172,22 +168,12 @@ class PinIconRendererModule(private val reactContext: ReactApplicationContext) :
     val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       style = Paint.Style.STROKE
       color = strokeColor
-      strokeWidth = 1.5f
+      strokeWidth = 2f
     }
 
-    val bodyRect = RectF(1f, 1f, width - 1f, bodyHeight)
+    val bodyRect = RectF(1f, 1f, width - 1f, height - 1f)
     canvas.drawRoundRect(bodyRect, CORNER_RADIUS, CORNER_RADIUS, fillPaint)
     canvas.drawRoundRect(bodyRect, CORNER_RADIUS, CORNER_RADIUS, strokePaint)
-
-    val pointerCenterX = width / 2f
-    val pointerPath = Path().apply {
-      moveTo(pointerCenterX - POINTER_HALF_WIDTH, bodyHeight - 1f)
-      lineTo(pointerCenterX, height - 1f)
-      lineTo(pointerCenterX + POINTER_HALF_WIDTH, bodyHeight - 1f)
-      close()
-    }
-    canvas.drawPath(pointerPath, fillPaint)
-    canvas.drawPath(pointerPath, strokePaint)
 
     val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       color = Color.WHITE
@@ -196,15 +182,15 @@ class PinIconRendererModule(private val reactContext: ReactApplicationContext) :
       isLinearText = true
     }
 
-    val maxTextWidth = width - 16f
+    val maxTextWidth = width - 20f
     val fittedLabel = fitLabelToWidth(label, textPaint, maxTextWidth)
-    val baseline = (bodyHeight / 2f) - ((textPaint.fontMetrics.ascent + textPaint.fontMetrics.descent) / 2f) + 1.5f
-    canvas.drawText(fittedLabel, pointerCenterX, baseline, textPaint)
+    val baseline = (height / 2f) - ((textPaint.fontMetrics.ascent + textPaint.fontMetrics.descent) / 2f) + 0.8f
+    canvas.drawText(fittedLabel, width / 2f, baseline, textPaint)
   }
 
   private fun fitLabelToWidth(label: String, paint: Paint, maxWidth: Float): String {
     val clean = label.trim().ifEmpty { "?" }
-    val textSizes = floatArrayOf(26f, 24f, 22f, 20f, 18f, 16f, 14f, 12f)
+    val textSizes = floatArrayOf(24f, 22f, 20f, 18f, 16f, 14f, 12f, 11f)
 
     for (size in textSizes) {
       paint.textSize = size
