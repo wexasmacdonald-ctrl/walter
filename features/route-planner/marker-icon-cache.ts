@@ -51,8 +51,9 @@ export function normalizeMarkerLabel(raw: string): string {
   if (!trimmed) {
     return '';
   }
-  if (/^\d+$/.test(trimmed)) {
-    const numeric = String(Number.parseInt(trimmed, 10));
+  const leadingNumberMatch = trimmed.match(/^(\d{1,5})/);
+  if (leadingNumberMatch) {
+    const numeric = String(Number.parseInt(leadingNumberMatch[1], 10));
     return numeric;
   }
   return trimmed.slice(0, MARKER_LABEL_MAX_CHARS).toUpperCase();
