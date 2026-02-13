@@ -16,7 +16,7 @@ export type MarkerVisualInput = {
 };
 
 type MarkerRegistryStats = {
-  generated: number;
+  resolved: number;
   cacheHits: number;
   cacheMisses: number;
   generationSamplesMs: number[];
@@ -45,7 +45,7 @@ export function useMarkerIconRegistry(
   const descriptorsRef = useRef<Record<MarkerVisualKey, MarkerIconDescriptor>>({});
   const [isPrewarming, setIsPrewarming] = useState(false);
   const statsRef = useRef<MarkerRegistryStats>({
-    generated: 0,
+    resolved: 0,
     cacheHits: 0,
     cacheMisses: 0,
     generationSamplesMs: [],
@@ -100,12 +100,12 @@ export function useMarkerIconRegistry(
           const result = await getMarkerIconDescriptor({ label: next.label, status: next.status });
           const elapsed = Date.now() - startedAt;
           const stats = statsRef.current;
-          if (result.source === 'generated') {
-            stats.generated += 1;
+          if (result.source === 'memory' || result.source === 'inflight') {
+            stats.cacheHits += 1;
+          } else {
+            stats.resolved += 1;
             stats.cacheMisses += 1;
             stats.generationSamplesMs.push(elapsed);
-          } else {
-            stats.cacheHits += 1;
           }
 
           if (!cancelled) {
@@ -139,7 +139,7 @@ export function useMarkerIconRegistry(
         const p95 = p95Index >= 0 ? samples[Math.max(0, p95Index)] : 0;
         const total = stats.cacheHits + stats.cacheMisses;
         const hitRatio = total > 0 ? stats.cacheHits / total : 1;
-        console.log('[MapPins] marker_icons_generated_total', stats.generated);
+        console.log('[MapPins] marker_icons_resolved_total', stats.resolved);
         console.log('[MapPins] marker_icon_cache_hit_ratio', Number(hitRatio.toFixed(3)));
         console.log('[MapPins] marker_generation_ms_p95', p95);
       }

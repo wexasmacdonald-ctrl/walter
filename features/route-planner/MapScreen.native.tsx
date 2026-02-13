@@ -15,14 +15,13 @@ import { useTheme } from '@/features/theme/theme-context';
 import type { LatLng, MapPressEvent } from 'react-native-maps';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import type { Stop } from './types';
-import pinBlue from '@/assets/pins/pin-blue.png';
-import pinGreen from '@/assets/pins/pin-green.png';
 import {
   MARKER_ANCHOR_X,
   MARKER_ANCHOR_Y,
   MARKER_CALLOUT_ANCHOR_X,
   MARKER_CALLOUT_ANCHOR_Y,
 } from './marker-icon-cache';
+import { useMarkerIconRegistry } from './useMarkerIconRegistry';
 
 const GOOGLE_LIGHT_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
@@ -287,6 +286,15 @@ export function MapScreen({
     [confirmed]
   );
 
+  const markerVisuals = useMemo(
+    () => markers.map((marker) => ({ label: marker.label, status: getMarkerStatus(marker) })),
+    [getMarkerStatus, markers]
+  );
+
+  const { isPrewarming: isMarkerIconsLoading, getDescriptor } = useMarkerIconRegistry(markerVisuals, {
+    debug: __DEV__,
+  });
+
   const handleSelect = (id: string) => {
     setSelectedId((prev) => (prev === id ? null : id));
   };
@@ -343,9 +351,14 @@ export function MapScreen({
     };
 
   const renderMarkers = () => {
+    if (isMarkerIconsLoading) {
+      return null;
+    }
+
     return markers.map((marker) => {
       const status = getMarkerStatus(marker);
-      const imageSource = status === 'complete' ? pinGreen : pinBlue;
+      const descriptor = getDescriptor(marker.label, status);
+      const imageSource = descriptor ? { uri: descriptor.uri } : undefined;
 
       return (
         <Marker
@@ -432,6 +445,15 @@ export function MapScreen({
         <View style={styles.mapOverlay}>
           <ActivityIndicator color={colors.primary} />
           <Text style={styles.mapOverlayText}>Loading pins...</Text>
+        </View>
+      );
+    }
+
+    if (isMarkerIconsLoading && markers.length > 0) {
+      return (
+        <View style={styles.mapOverlay}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.mapOverlayText}>Preparing numbered pins...</Text>
         </View>
       );
     }
