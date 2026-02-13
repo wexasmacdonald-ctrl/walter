@@ -15,6 +15,8 @@ import { useTheme } from '@/features/theme/theme-context';
 import type { LatLng, MapPressEvent } from 'react-native-maps';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import type { Stop } from './types';
+import pinBlue from '@/assets/pins/pin-blue.png';
+import pinGreen from '@/assets/pins/pin-green.png';
 import {
   MARKER_ANCHOR_X,
   MARKER_ANCHOR_Y,
@@ -358,7 +360,10 @@ export function MapScreen({
     return markers.map((marker) => {
       const status = getMarkerStatus(marker);
       const descriptor = getDescriptor(marker.label, status);
-      const imageSource = descriptor ? { uri: descriptor.uri } : undefined;
+      const fallbackImage = status === 'complete' ? pinGreen : pinBlue;
+      const dynamicIconSource = descriptor ? { uri: descriptor.uri } : undefined;
+      const markerImageSource = Platform.OS === 'android' ? fallbackImage : dynamicIconSource;
+      const markerIconSource = Platform.OS === 'android' ? dynamicIconSource : undefined;
 
       return (
         <Marker
@@ -367,7 +372,8 @@ export function MapScreen({
           anchor={{ x: MARKER_ANCHOR_X, y: MARKER_ANCHOR_Y }}
           calloutAnchor={{ x: MARKER_CALLOUT_ANCHOR_X, y: MARKER_CALLOUT_ANCHOR_Y }}
           onPress={() => handleSelect(marker.id)}
-          image={imageSource}
+          image={markerImageSource}
+          icon={markerIconSource}
           title={marker.label}
           description={marker.address ?? undefined}
         />
