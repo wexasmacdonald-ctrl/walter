@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -7,10 +7,12 @@ import {
   Text,
   View,
 } from 'react-native';
-import { APIProvider, Map, Marker } from '@vis.gl/react-google-maps';
+import { APIProvider, Map, Marker, useMap } from '@vis.gl/react-google-maps';
 
 import { useTheme } from '@/features/theme/theme-context';
 import { getGoogleMapsApiKey } from '@/features/route-planner/getGoogleMapsApiKey';
+import { useWebLocationController } from '@/features/route-planner/useWebLocationController';
+import type { WebLocationState } from '@/features/route-planner/web-location.types';
 
 import type { Stop } from './types';
 
@@ -36,6 +38,13 @@ type MapPin = {
 };
 const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 };
 const DEFAULT_ZOOM = 12;
+const MIN_USER_ZOOM_APPROXIMATE = 14;
+const MIN_USER_ZOOM_PRECISE = 16;
+const FIT_BOUNDS_SUPPRESS_MS = 5000;
+const INLINE_MAP_ID = 'route-map-inline';
+const FULLSCREEN_MAP_ID = 'route-map-fullscreen';
+const FORCE_WEB_LOCATION_DEBUG =
+  typeof process !== 'undefined' && process.env.EXPO_PUBLIC_WEB_LOCATION_DEBUG === '1';
 
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
 export function MapScreen({
@@ -53,43 +62,74 @@ export function MapScreen({
   const [confirmed, setConfirmed] = useState<Record<string, number>>({});
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
-  const [userPosition, setUserPosition] = useState<google.maps.LatLngLiteral | null>(null);
-  const [locationPermissionDenied, setLocationPermissionDenied] = useState(false);
-  const [locationErrorMessage, setLocationErrorMessage] = useState<string | null>(null);
-  const [locating, setLocating] = useState(false);
+  // If this app is embedded cross-origin in the future, the parent iframe must include:
+  // allow="geolocation" and a compatible Permissions-Policy.
+  const {
+    startLocate,
+    state: locationState,
+    hasFix,
+    isPrecise,
+  } = useWebLocationController({ autoStart: false, pollIntervalMs: 60000 });
   const mapRef = useRef<google.maps.Map | null>(null);
-  const geoWatchIdRef = useRef<number | null>(null);
+  const hasCenteredOnUserRef = useRef(false);
+  const suppressFitBoundsUntilRef = useRef(0);
+  const mapCanvasStyle = useMemo<CSSProperties>(
+    () => ({
+      width: '100%',
+      height: '100%',
+      touchAction: 'none',
+    }),
+    []
+  );
+  const fullScreenOverlayStyle = useMemo<CSSProperties>(
+    () => ({
+      position: 'fixed',
+      inset: 0,
+      width: '100vw',
+      height: '100dvh',
+      minHeight: '100vh',
+      paddingTop: 'env(safe-area-inset-top)',
+      paddingRight: 'env(safe-area-inset-right)',
+      paddingBottom: 'env(safe-area-inset-bottom)',
+      paddingLeft: 'env(safe-area-inset-left)',
+    }),
+    []
+  );
+  const fullScreenLocateInsetStyle = useMemo<CSSProperties>(
+    () => ({
+      bottom: 'calc(env(safe-area-inset-bottom) + 16px)',
+    }),
+    []
+  );
 
   const mapPins = useMemo<MapPin[]>(() => {
-    return pins
-      .map((pin, index) => {
-        const lat = toNumber(pin.lat);
-        const lng = toNumber(pin.lng);
-        if (lat === null || lng === null) {
-          return null;
-        }
+    const normalized: MapPin[] = [];
+    pins.forEach((pin, index) => {
+      const lat = toNumber(pin.lat);
+      const lng = toNumber(pin.lng);
+      if (lat === null || lng === null) {
+        return;
+      }
 
-        const label =
-          typeof pin.label === 'string' && pin.label.trim().length > 0
-            ? pin.label.trim()
-            : extractHouseNumber(pin.address) ?? String(index + 1);
+      const label =
+        typeof pin.label === 'string' && pin.label.trim().length > 0
+          ? pin.label.trim()
+          : extractHouseNumber(pin.address) ?? String(index + 1);
 
-        return {
-          id: pin.id ?? String(index),
-          position: { lat, lng },
-          address: pin.address,
-          label,
-          status: pin.status === 'complete' ? 'complete' : 'pending',
-        };
-      })
-      .filter((pin): pin is MapPin => pin !== null);
+      normalized.push({
+        id: pin.id ?? String(index),
+        position: { lat, lng },
+        address: pin.address,
+        label,
+        status: pin.status === 'complete' ? 'complete' : 'pending',
+      });
+    });
+    return normalized;
   }, [pins]);
 
-  // Debug: surface pins that were dropped so we can trace missing markers quickly.
   useEffect(() => {
     const dropped = pins.filter((pin) => toNumber(pin.lat) === null || toNumber(pin.lng) === null);
     if (dropped.length > 0) {
-      // eslint-disable-next-line no-console
       console.warn(
         'Dropped pins missing lat/lng',
         dropped.map((pin) => ({ id: pin.id, lat: pin.lat, lng: pin.lng, label: pin.label }))
@@ -97,85 +137,38 @@ export function MapScreen({
     }
   }, [pins]);
 
-  useEffect(() => {
-    const onError = (ev: ErrorEvent) => {
-      // eslint-disable-next-line no-console
-      console.error('Window error', ev.error || ev.message, ev.filename, ev.lineno, ev.colno);
-    };
-    const onRejection = (ev: PromiseRejectionEvent) => {
-      // eslint-disable-next-line no-console
-      console.error('Unhandled rejection', ev.reason);
-    };
-    window.addEventListener('error', onError);
-    window.addEventListener('unhandledrejection', onRejection);
-    return () => {
-      window.removeEventListener('error', onError);
-      window.removeEventListener('unhandledrejection', onRejection);
-    };
-  }, []);
-
-  const requestLocation = (highAccuracy: boolean) => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setLocationErrorMessage('Browser geolocation is unavailable on this device.');
-      setLocationPermissionDenied(false);
+  const applyUserViewport = (
+    map: google.maps.Map | null,
+    coords: google.maps.LatLngLiteral,
+    precise: boolean
+  ) => {
+    if (!map) {
       return;
     }
-
-    setLocating(true);
-    const onSuccess = (position: GeolocationPosition) => {
-      setUserPosition({
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-      });
-      setLocationPermissionDenied(false);
-      setLocationErrorMessage(null);
-      setLocating(false);
-    };
-
-    const onError = (error: GeolocationPositionError) => {
-      setLocating(false);
-      if (error.code === error.PERMISSION_DENIED) {
-        setLocationPermissionDenied(true);
-        setLocationErrorMessage(
-          'Location was denied by Safari for this site. Open aA > Website Settings > Location and choose Allow.'
-        );
-        return;
-      }
-      if (error.code === error.POSITION_UNAVAILABLE) {
-        setLocationErrorMessage('Location is currently unavailable. Check GPS/network and try again.');
-        return;
-      }
-      if (error.code === error.TIMEOUT) {
-        setLocationErrorMessage('Location lookup timed out. Tap "Use my location" to retry.');
-        return;
-      }
-      setLocationErrorMessage('Could not read your location. Tap "Use my location" to retry.');
-    };
-
-    navigator.geolocation.getCurrentPosition(onSuccess, onError, {
-      enableHighAccuracy: highAccuracy,
-      timeout: 12000,
-      maximumAge: 0,
-    });
-
-    if (geoWatchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(geoWatchIdRef.current);
+    map.panTo(coords);
+    const minZoom = precise ? MIN_USER_ZOOM_PRECISE : MIN_USER_ZOOM_APPROXIMATE;
+    const currentZoom = map.getZoom() ?? DEFAULT_ZOOM;
+    if (currentZoom < minZoom) {
+      map.setZoom(minZoom);
     }
-    geoWatchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, {
-      enableHighAccuracy: highAccuracy,
-      timeout: 20000,
-      maximumAge: 15000,
-    });
+    hasCenteredOnUserRef.current = true;
+    suppressFitBoundsUntilRef.current = Date.now() + FIT_BOUNDS_SUPPRESS_MS;
   };
 
+  const handleStartLocate = useCallback(() => {
+    hasCenteredOnUserRef.current = false;
+    startLocate();
+  }, [startLocate]);
+
   useEffect(() => {
-    requestLocation(false);
-    return () => {
-      if (geoWatchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
-        navigator.geolocation.clearWatch(geoWatchIdRef.current);
-      }
-    };
-  }, []);
+    if (!hasFix || !locationState.coords || !mapRef.current) {
+      return;
+    }
+    if (hasCenteredOnUserRef.current) {
+      return;
+    }
+    applyUserViewport(mapRef.current, locationState.coords, isPrecise);
+  }, [hasFix, isPrecise, locationState.coords]);
 
   const selectedMarker = useMemo(
     () => mapPins.find((marker) => marker.id === selectedId) ?? null,
@@ -377,37 +370,31 @@ export function MapScreen({
   // renderSelectedCard was added accidentally and duplicated the existing toast UI; removed to avoid double overlays.
 
   const renderOverlay = () => {
-    if (loading) {
-      return (
-        <View style={styles.mapOverlay}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={styles.mapOverlayText}>Loading pins...</Text>
-        </View>
-      );
-    }
-
     if (mapPins.length === 0) {
       return (
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>Pins appear after the locations finish loading.</Text>
+        <View pointerEvents="none" style={styles.noticeOverlay}>
+          <View style={styles.notice}>
+            <Text style={styles.noticeText}>Pins appear after the locations finish loading.</Text>
+          </View>
         </View>
       );
     }
 
-    if (locationPermissionDenied) {
-      return (
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>
-            Location permission denied. Enable it in browser settings to show your current location.
-          </Text>
-        </View>
-      );
-    }
+    const shouldShowLocationNotice =
+      locationState.statusMessage !== null &&
+      (locationState.status === 'denied' ||
+        locationState.status === 'timeout' ||
+        locationState.status === 'unavailable' ||
+        locationState.status === 'unsupported' ||
+        locationState.status === 'insecure_context' ||
+        locationState.status === 'error');
 
-    if (locationErrorMessage) {
+    if (shouldShowLocationNotice) {
       return (
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>{locationErrorMessage}</Text>
+        <View pointerEvents="none" style={styles.noticeOverlay}>
+          <View style={styles.notice}>
+            <Text style={styles.noticeText}>{locationState.statusMessage}</Text>
+          </View>
         </View>
       );
     }
@@ -436,19 +423,6 @@ export function MapScreen({
     </View>
   );
 
-  if (!GOOGLE_MAPS_API_KEY) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.banner}>
-          <Text style={styles.bannerText}>
-            Google Maps API key for web is not configured. Set EXPO_PUBLIC_GOOGLE_API_KEY (or
-            GOOGLE_API_KEY) to render the interactive map.
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
   const mapTypeId = mapType === 'satellite' ? 'satellite' : 'roadmap';
   // Use default Google styling for standard maps so base layers/buildings remain visible.
   const mapStyle = useMemo<google.maps.MapTypeStyle[] | undefined>(() => undefined, []);
@@ -467,9 +441,59 @@ export function MapScreen({
     [mapStyle]
   );
 
-  // Some global CSS (e.g., img { max-width: 100% }) can distort Google marker sprites.
-  // Ensure map images use their native sizing so pins are not clipped.
+  const showLocationDebug = __DEV__ || FORCE_WEB_LOCATION_DEBUG;
+  const locationDebugLabel = showLocationDebug
+    ? formatWebLocationDebug(locationState)
+    : null;
+
+  const renderLocationButton = (variant: 'primary' | 'modal') => {
+    const wrapperStyle =
+      variant === 'primary'
+        ? styles.locationButtonWrapper
+        : [styles.locationButtonWrapperFullScreen, fullScreenLocateInsetStyle as any];
+    return (
+      <View pointerEvents="box-none" style={wrapperStyle}>
+        <Pressable
+          style={[styles.locationButton, locationState.isLocating && styles.locationButtonDisabled]}
+          onPress={handleStartLocate}
+        >
+          <Text style={styles.locationButtonText}>
+            {locationState.isLocating ? 'Locating...' : 'Locate me'}
+          </Text>
+        </Pressable>
+        {showLocationDebug ? (
+          <Text style={styles.locationDebugText} numberOfLines={3}>
+            {locationDebugLabel}
+          </Text>
+        ) : null}
+      </View>
+    );
+  };
+
+  const fitPinsToMap = useCallback(
+    (map: google.maps.Map | null) => {
+      if (!map || mapPins.length === 0) {
+        return;
+      }
+      if (Date.now() < suppressFitBoundsUntilRef.current) {
+        return;
+      }
+      if (hasCenteredOnUserRef.current && hasFix) {
+        return;
+      }
+      const bounds = new google.maps.LatLngBounds();
+      mapPins.forEach((pin) => bounds.extend(pin.position));
+      map.fitBounds(bounds);
+    },
+    [hasFix, mapPins]
+  );
+
+  // Some global CSS (e.g., img { max-width: 100% }) can distort Google map sprites.
+  // Keep native image sizing, but never override transforms (tiles need transforms for pan/zoom).
   useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
     const id = 'google-maps-image-reset';
     if (document.getElementById(id)) {
       return;
@@ -477,7 +501,7 @@ export function MapScreen({
     const style = document.createElement('style');
     style.id = id;
     style.innerHTML = `
-      .gm-style img { max-width: none !important; transform: none !important; }
+      .gm-style img { max-width: none !important; }
     `;
     document.head.appendChild(style);
     return () => {
@@ -486,13 +510,24 @@ export function MapScreen({
   }, []);
 
   useEffect(() => {
-    if (!mapRef.current || mapPins.length === 0) {
+    if (!mapRef.current) {
       return;
     }
-    const bounds = new google.maps.LatLngBounds();
-    mapPins.forEach((pin) => bounds.extend(pin.position));
-    mapRef.current.fitBounds(bounds);
-  }, [mapPins]);
+    fitPinsToMap(mapRef.current);
+  }, [fitPinsToMap]);
+
+  if (!GOOGLE_MAPS_API_KEY) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.banner}>
+          <Text style={styles.bannerText}>
+            Google Maps API key for web is not configured. Set EXPO_PUBLIC_GOOGLE_API_KEY (or
+            GOOGLE_API_KEY) to render the interactive map.
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   if (loading) {
     return (
@@ -520,15 +555,6 @@ export function MapScreen({
       <View style={styles.container}>
         <View style={styles.header}>
           <View style={styles.headerActions}>
-            <Pressable
-              style={styles.fullScreenButton}
-              onPress={() => requestLocation(true)}
-              disabled={locating}
-            >
-              <Text style={styles.fullScreenButtonText}>
-                {locating ? 'Locating...' : 'Use my location'}
-              </Text>
-            </Pressable>
             {renderMapTypeToggle()}
             <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
               <Text style={styles.fullScreenButtonText}>Full Screen</Text>
@@ -538,46 +564,42 @@ export function MapScreen({
 
         <View style={styles.mapWrapper}>
           <Map
-            style={styles.mapCanvas}
+            id={INLINE_MAP_ID}
+            style={mapCanvasStyle}
             defaultCenter={initialCenter}
             defaultZoom={DEFAULT_ZOOM}
             mapTypeId={mapTypeId}
-            options={mapOptions}
+            {...mapOptions}
             onClick={() => setSelectedId(null)}
-            onLoad={(map) => {
-              mapRef.current = map;
-            }}
           >
-            {userPosition ? (
-              <BadgeMarker
-                label="ME"
-                position={userPosition}
-                fill={colors.success}
-                labelColor={badgeLabelColor}
-                outlineColor={badgeOutlineColor}
-                selected={false}
-                onPress={() => {}}
+            <MapInstanceBridge
+              mapId={INLINE_MAP_ID}
+              onMapReady={(map) => {
+                mapRef.current = map;
+                if (hasFix && locationState.coords) {
+                  applyUserViewport(map, locationState.coords, isPrecise);
+                } else {
+                  fitPinsToMap(map);
+                }
+              }}
+            />
+            {hasFix && locationState.coords ? (
+              <UserLocationMarker
+                position={locationState.coords}
+                approximate={locationState.isApproximate}
               />
             ) : null}
             {renderMarkers()}
           </Map>
           {renderOverlay()}
+          {renderLocationButton('primary')}
           {renderToast('primary')}
         </View>
 
         <Modal visible={isFullScreen} animationType="slide" onRequestClose={() => setIsFullScreen(false)}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, fullScreenOverlayStyle as any]}>
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderActions}>
-                <Pressable
-                  style={styles.fullScreenButton}
-                  onPress={() => requestLocation(true)}
-                  disabled={locating}
-                >
-                  <Text style={styles.fullScreenButtonText}>
-                    {locating ? 'Locating...' : 'Use my location'}
-                  </Text>
-                </Pressable>
                 {renderMapTypeToggle()}
                 <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(false)}>
                   <Text style={styles.fullScreenButtonText}>Close</Text>
@@ -586,30 +608,35 @@ export function MapScreen({
             </View>
             <View style={styles.modalMapWrapper}>
             <Map
-              style={styles.mapCanvas}
+              id={FULLSCREEN_MAP_ID}
+              style={mapCanvasStyle}
               defaultCenter={initialCenter}
               defaultZoom={DEFAULT_ZOOM}
               mapTypeId={mapTypeId}
-              options={mapOptions}
+              {...mapOptions}
               onClick={() => setSelectedId(null)}
-              onLoad={(map) => {
-                mapRef.current = map;
-              }}
             >
-              {userPosition ? (
-                <BadgeMarker
-                  label="ME"
-                  position={userPosition}
-                  fill={colors.success}
-                  labelColor={badgeLabelColor}
-                  outlineColor={badgeOutlineColor}
-                  selected={false}
-                  onPress={() => {}}
+              <MapInstanceBridge
+                mapId={FULLSCREEN_MAP_ID}
+                onMapReady={(map) => {
+                  mapRef.current = map;
+                  if (hasFix && locationState.coords) {
+                    applyUserViewport(map, locationState.coords, isPrecise);
+                  } else {
+                    fitPinsToMap(map);
+                  }
+                }}
+              />
+              {hasFix && locationState.coords ? (
+                <UserLocationMarker
+                  position={locationState.coords}
+                  approximate={locationState.isApproximate}
                 />
               ) : null}
               {renderMarkers()}
             </Map>
             {renderOverlay()}
+            {renderLocationButton('modal')}
             {renderToast('modal')}
           </View>
           </View>
@@ -730,6 +757,115 @@ function BadgeMarker({
   );
 }
 
+function UserLocationMarker({
+  position,
+  approximate,
+}: {
+  position: google.maps.LatLngLiteral;
+  approximate: boolean;
+}) {
+  const [icons, setIcons] = useState<{
+    core: google.maps.Symbol;
+    ring: google.maps.Symbol | null;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timeoutId: number | null = null;
+
+    const configure = () => {
+      const maps = (globalThis as any).google?.maps;
+      if (!maps) {
+        if (!cancelled) {
+          timeoutId = window.setTimeout(configure, 100);
+        }
+        return;
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      const core: google.maps.Symbol = approximate
+        ? {
+            path: maps.SymbolPath.CIRCLE,
+            scale: 8,
+            fillColor: '#1A73E8',
+            fillOpacity: 0.74,
+            strokeColor: '#FFFFFF',
+            strokeOpacity: 0.9,
+            strokeWeight: 2.5,
+          }
+        : {
+            path: maps.SymbolPath.CIRCLE,
+            scale: 8,
+            fillColor: '#1A73E8',
+            fillOpacity: 0.95,
+            strokeColor: '#FFFFFF',
+            strokeOpacity: 1,
+            strokeWeight: 3,
+          };
+      const ring: google.maps.Symbol | null = approximate
+        ? {
+            path: maps.SymbolPath.CIRCLE,
+            scale: 18,
+            fillColor: '#1A73E8',
+            fillOpacity: 0.14,
+            strokeColor: '#1A73E8',
+            strokeOpacity: 0.28,
+            strokeWeight: 2,
+          }
+        : null;
+
+      setIcons({ core, ring });
+    };
+
+    configure();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [approximate]);
+
+  if (!icons) {
+    return null;
+  }
+
+  return (
+    <>
+      {icons.ring ? <Marker position={position} icon={icons.ring} zIndex={3} /> : null}
+      <Marker position={position} icon={icons.core} zIndex={4} />
+    </>
+  );
+}
+
+function MapInstanceBridge({
+  mapId,
+  onMapReady,
+}: {
+  mapId?: string;
+  onMapReady: (map: google.maps.Map) => void;
+}) {
+  const map = useMap(mapId ?? null);
+  const onMapReadyRef = useRef(onMapReady);
+
+  useEffect(() => {
+    onMapReadyRef.current = onMapReady;
+  }, [onMapReady]);
+
+  useEffect(() => {
+    if (!map) {
+      return;
+    }
+    onMapReadyRef.current(map);
+  }, [map]);
+
+  return null;
+}
+
 
 function extractHouseNumber(address: string | null | undefined): string | null {
   if (!address) {
@@ -737,6 +873,20 @@ function extractHouseNumber(address: string | null | undefined): string | null {
   }
   const match = address.trim().match(/^(\d+[A-Za-z0-9-]*)\b/);
   return match ? match[1] : null;
+}
+
+function formatWebLocationDebug(state: WebLocationState): string {
+  const accuracyLabel = state.accuracyM === null ? 'n/a' : `${Math.round(state.accuracyM)}m`;
+  const coordLabel =
+    state.coords === null
+      ? 'none'
+      : `${state.coords.lat.toFixed(5)},${state.coords.lng.toFixed(5)}`;
+  const errorLabel = state.lastErrorCode === null ? 'none' : String(state.lastErrorCode);
+  const updatedLabel =
+    state.lastUpdateAtMs === null ? 'never' : new Date(state.lastUpdateAtMs).toLocaleTimeString();
+  const nextPollLabel =
+    state.nextPollAtMs === null ? 'off' : `${Math.max(0, Math.ceil((state.nextPollAtMs - Date.now()) / 1000))}s`;
+  return `state:${state.status} acc:${accuracyLabel} fix:${coordLabel} approx:${state.isApproximate ? 'yes' : 'no'} err:${errorLabel} upd:${updatedLabel} poll:${nextPollLabel}`;
 }
 
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
@@ -779,9 +929,6 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderWidth: 1,
       borderColor: colors.border,
     },
-    mapCanvas: {
-      flex: 1,
-    },
     mapOverlay: {
       position: 'absolute',
       inset: 0,
@@ -795,11 +942,13 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.text,
       textAlign: 'center',
     },
+    noticeOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      justifyContent: 'flex-end',
+      paddingHorizontal: 16,
+      paddingBottom: 16,
+    },
     notice: {
-      position: 'absolute',
-      left: 16,
-      right: 16,
-      bottom: 16,
       padding: 12,
       borderRadius: 8,
       backgroundColor: colors.primaryMuted,
@@ -879,14 +1028,14 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       position: 'absolute',
       left: 16,
       right: 16,
-      top: 16,
+      top: 72,
       alignItems: 'flex-end',
     },
     toastContainerFullScreen: {
       position: 'absolute',
-      left: 24,
-      right: 24,
-      top: 24,
+      left: 12,
+      right: 12,
+      top: 84,
       alignItems: 'flex-end',
     },
     toastCard: {
@@ -961,17 +1110,23 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     modalContent: {
       flex: 1,
       backgroundColor: colors.surface,
+      position: 'relative',
+      overflow: 'hidden',
     },
     modalHeader: {
-      paddingTop: 48,
-      paddingHorizontal: 24,
-      paddingBottom: 16,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 4,
+      paddingTop: 12,
+      paddingHorizontal: 12,
+      paddingBottom: 12,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'flex-end',
       gap: 16,
+      backgroundColor: hexToRgba(colors.surface, isDark ? 0.72 : 0.8),
     },
     modalHeaderActions: {
       flexDirection: 'row',
@@ -980,12 +1135,53 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     modalMapWrapper: {
       flex: 1,
-      margin: 24,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: colors.border,
+      margin: 0,
+      borderRadius: 0,
+      borderWidth: 0,
       overflow: 'hidden',
       position: 'relative',
+    },
+    locationButtonWrapper: {
+      position: 'absolute',
+      right: 12,
+      bottom: 12,
+      zIndex: 6,
+      alignItems: 'flex-end',
+    },
+    locationButtonWrapperFullScreen: {
+      position: 'absolute',
+      right: 12,
+      bottom: 16,
+      zIndex: 6,
+      alignItems: 'flex-end',
+    },
+    locationButton: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: hexToRgba(colors.surface, isDark ? 0.86 : 0.94),
+    },
+    locationButtonDisabled: {
+      opacity: 0.7,
+    },
+    locationButtonText: {
+      color: colors.primary,
+      fontWeight: '700',
+    },
+    locationDebugText: {
+      marginTop: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+      backgroundColor: hexToRgba(colors.surface, isDark ? 0.8 : 0.9),
+      borderWidth: 1,
+      borderColor: colors.border,
+      color: colors.mutedText,
+      fontSize: 11,
+      maxWidth: 220,
+      textAlign: 'right',
     },
   });
 }
@@ -1027,3 +1223,4 @@ function toNumber(value: unknown): number | null {
   }
   return null;
 }
+
