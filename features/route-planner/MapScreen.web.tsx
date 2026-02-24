@@ -36,7 +36,6 @@ type MapPin = {
 };
 const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 };
 const DEFAULT_ZOOM = 12;
-const MAX_ACCEPTED_LOCATION_ACCURACY_METERS = 120;
 
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
 export function MapScreen({
@@ -62,6 +61,7 @@ export function MapScreen({
   const mapRef = useRef<google.maps.Map | null>(null);
   const geoWatchIdRef = useRef<number | null>(null);
   const locationRequestTimeoutRef = useRef<number | null>(null);
+  const locationRefineTimeoutRef = useRef<number | null>(null);
 
   const mapPins = useMemo<MapPin[]>(() => {
     return pins
@@ -117,7 +117,41 @@ export function MapScreen({
     };
   }, []);
 
-  const requestLocation = (highAccuracy: boolean) => {
+  const clearLocationTimers = () => {
+    if (locationRequestTimeoutRef.current !== null) {
+      window.clearTimeout(locationRequestTimeoutRef.current);
+      locationRequestTimeoutRef.current = null;
+    }
+    if (locationRefineTimeoutRef.current !== null) {
+      window.clearTimeout(locationRefineTimeoutRef.current);
+      locationRefineTimeoutRef.current = null;
+    }
+  };
+
+  const clearLocationWatch = () => {
+    if (geoWatchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.clearWatch(geoWatchIdRef.current);
+      geoWatchIdRef.current = null;
+    }
+  };
+
+  const applyUserPosition = (position: GeolocationPosition, phase: 'coarse' | 'refined') => {
+    const nextPosition = {
+      lat: position.coords.latitude,
+      lng: position.coords.longitude,
+    };
+    setUserPosition(nextPosition);
+    if (mapRef.current) {
+      mapRef.current.panTo(nextPosition);
+      const currentZoom = mapRef.current.getZoom() ?? DEFAULT_ZOOM;
+      const minZoom = phase === 'refined' ? 16 : 14;
+      if (currentZoom < minZoom) {
+        mapRef.current.setZoom(minZoom);
+      }
+    }
+  };
+
+  const requestLocation = () => {
     setLocationDebug('Locate pressed');
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setLocationErrorMessage('Browser geolocation is unavailable on this device.');
@@ -127,62 +161,72 @@ export function MapScreen({
     }
 
     setLocating(true);
-    setLocationDebug(`Requesting location (highAccuracy=${highAccuracy ? 'true' : 'false'})`);
-    if (locationRequestTimeoutRef.current !== null) {
-      window.clearTimeout(locationRequestTimeoutRef.current);
-    }
+    clearLocationTimers();
+    clearLocationWatch();
+    setLocationDebug('Requesting coarse location first');
     locationRequestTimeoutRef.current = window.setTimeout(() => {
       setLocating(false);
-      setLocationErrorMessage('Location request took too long. Tap "Locate me" to retry.');
-      setLocationDebug('Timeout reached (15s)');
-    }, 15000);
-    const onSuccess = (position: GeolocationPosition) => {
-      if (locationRequestTimeoutRef.current !== null) {
-        window.clearTimeout(locationRequestTimeoutRef.current);
-        locationRequestTimeoutRef.current = null;
-      }
-      if (
-        typeof position.coords.accuracy === 'number' &&
-        Number.isFinite(position.coords.accuracy) &&
-        position.coords.accuracy > MAX_ACCEPTED_LOCATION_ACCURACY_METERS
-      ) {
-        setLocating(false);
-        setLocationErrorMessage(
-          `Location is too coarse (${Math.round(position.coords.accuracy)}m). Move outdoors and retry for GPS accuracy.`
-        );
-        setLocationDebug(
-          `Rejected coarse fix (${Math.round(position.coords.accuracy)}m accuracy)`
-        );
-        return;
-      }
-      setUserPosition({
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-      });
-      if (mapRef.current) {
-        const nextPosition = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        };
-        mapRef.current.panTo(nextPosition);
-        const currentZoom = mapRef.current.getZoom() ?? DEFAULT_ZOOM;
-        if (currentZoom < 16) {
-          mapRef.current.setZoom(16);
-        }
-      }
+      setLocationErrorMessage('Coarse location timed out. Tap "Locate me" to retry.');
+      setLocationDebug('Coarse phase timeout');
+    }, 12000);
+
+    const onCoarseSuccess = (position: GeolocationPosition) => {
+      clearLocationTimers();
+      applyUserPosition(position, 'coarse');
       setLocationPermissionDenied(false);
       setLocationErrorMessage(null);
-      setLocating(false);
       setLocationDebug(
-        `Location OK (${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)})`
+        `Coarse fix ${Math.round(position.coords.accuracy)}m. Refining GPS...`
       );
+
+      locationRefineTimeoutRef.current = window.setTimeout(() => {
+        setLocating(false);
+        setLocationDebug('Refinement timeout; keeping coarse fix');
+      }, 30000);
+
+      const onRefinedSuccess = (next: GeolocationPosition) => {
+        applyUserPosition(next, 'refined');
+        setLocationErrorMessage(null);
+        if (typeof next.coords.accuracy === 'number' && next.coords.accuracy <= 60) {
+          if (locationRefineTimeoutRef.current !== null) {
+            window.clearTimeout(locationRefineTimeoutRef.current);
+            locationRefineTimeoutRef.current = null;
+          }
+          setLocating(false);
+        }
+        setLocationDebug(
+          `Refined fix ${Math.round(next.coords.accuracy)}m (${next.coords.latitude.toFixed(5)}, ${next.coords.longitude.toFixed(5)})`
+        );
+      };
+
+      const onRefinedError = (error: GeolocationPositionError) => {
+        if (error.code === error.PERMISSION_DENIED) {
+          setLocationPermissionDenied(true);
+          setLocationErrorMessage(
+            'Location was denied by Safari for this site. Open aA > Website Settings > Location and choose Allow.'
+          );
+          setLocating(false);
+          setLocationDebug('Refined phase denied');
+          return;
+        }
+        if (error.code === error.TIMEOUT) {
+          setLocationDebug('Refined phase timeout; using coarse fix');
+          return;
+        }
+        setLocationDebug(`Refined phase error code ${error.code}; using coarse fix`);
+      };
+
+      clearLocationWatch();
+      geoWatchIdRef.current = navigator.geolocation.watchPosition(onRefinedSuccess, onRefinedError, {
+        enableHighAccuracy: true,
+        timeout: 30000,
+        maximumAge: 0,
+      });
     };
 
-    const onError = (error: GeolocationPositionError) => {
-      if (locationRequestTimeoutRef.current !== null) {
-        window.clearTimeout(locationRequestTimeoutRef.current);
-        locationRequestTimeoutRef.current = null;
-      }
+    const onCoarseError = (error: GeolocationPositionError) => {
+      clearLocationTimers();
+      clearLocationWatch();
       setLocating(false);
       if (error.code === error.PERMISSION_DENIED) {
         setLocationPermissionDenied(true);
@@ -193,12 +237,12 @@ export function MapScreen({
         return;
       }
       if (error.code === error.POSITION_UNAVAILABLE) {
-        setLocationErrorMessage('Location is currently unavailable. Check GPS/network and try again.');
+        setLocationErrorMessage('Location is currently unavailable. Check GPS/network then retry.');
         setLocationDebug(`Error code ${error.code}: POSITION_UNAVAILABLE`);
         return;
       }
       if (error.code === error.TIMEOUT) {
-        setLocationErrorMessage('Location lookup timed out. Tap "Locate me" to retry.');
+        setLocationErrorMessage('Location lookup timed out. Move outdoors and tap "Locate me" again.');
         setLocationDebug(`Error code ${error.code}: TIMEOUT`);
         return;
       }
@@ -206,30 +250,17 @@ export function MapScreen({
       setLocationDebug(`Error code ${error.code}: UNKNOWN`);
     };
 
-    navigator.geolocation.getCurrentPosition(onSuccess, onError, {
-      enableHighAccuracy: highAccuracy,
+    navigator.geolocation.getCurrentPosition(onCoarseSuccess, onCoarseError, {
+      enableHighAccuracy: false,
       timeout: 12000,
-      maximumAge: 0,
-    });
-
-    if (geoWatchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(geoWatchIdRef.current);
-    }
-    geoWatchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, {
-      enableHighAccuracy: highAccuracy,
-      timeout: 20000,
-      maximumAge: 15000,
+      maximumAge: 120000,
     });
   };
 
   useEffect(() => {
     return () => {
-      if (locationRequestTimeoutRef.current !== null) {
-        window.clearTimeout(locationRequestTimeoutRef.current);
-      }
-      if (geoWatchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
-        navigator.geolocation.clearWatch(geoWatchIdRef.current);
-      }
+      clearLocationTimers();
+      clearLocationWatch();
     };
   }, []);
 
@@ -532,7 +563,7 @@ export function MapScreen({
       <View pointerEvents="box-none" style={wrapperStyle}>
         <Pressable
           style={[styles.locationButton, locating && styles.locationButtonDisabled]}
-          onPress={() => requestLocation(true)}
+          onPress={requestLocation}
           onPressIn={() => setLocationDebug('Button press detected')}
           disabled={locating}
         >
@@ -618,14 +649,8 @@ export function MapScreen({
             }}
           >
             {userPosition ? (
-              <BadgeMarker
-                label="ME"
+              <UserLocationMarker
                 position={userPosition}
-                fill={colors.success}
-                labelColor={badgeLabelColor}
-                outlineColor={badgeOutlineColor}
-                selected={false}
-                onPress={() => {}}
               />
             ) : null}
             {renderMarkers()}
@@ -658,14 +683,8 @@ export function MapScreen({
               }}
             >
               {userPosition ? (
-                <BadgeMarker
-                  label="ME"
+                <UserLocationMarker
                   position={userPosition}
-                  fill={colors.success}
-                  labelColor={badgeLabelColor}
-                  outlineColor={badgeOutlineColor}
-                  selected={false}
-                  onPress={() => {}}
                 />
               ) : null}
               {renderMarkers()}
@@ -790,6 +809,54 @@ function BadgeMarker({
       zIndex={visual.zIndex}
     />
   );
+}
+
+function UserLocationMarker({ position }: { position: google.maps.LatLngLiteral }) {
+  const [icon, setIcon] = useState<google.maps.Symbol | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timeoutId: number | null = null;
+
+    const configure = () => {
+      const maps = (globalThis as any).google?.maps;
+      if (!maps) {
+        if (!cancelled) {
+          timeoutId = window.setTimeout(configure, 100);
+        }
+        return;
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      setIcon({
+        path: maps.SymbolPath.CIRCLE,
+        scale: 8,
+        fillColor: '#1A73E8',
+        fillOpacity: 0.95,
+        strokeColor: '#FFFFFF',
+        strokeOpacity: 1,
+        strokeWeight: 3,
+      });
+    };
+
+    configure();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, []);
+
+  if (!icon) {
+    return null;
+  }
+
+  return <Marker position={position} icon={icon} zIndex={4} />;
 }
 
 
