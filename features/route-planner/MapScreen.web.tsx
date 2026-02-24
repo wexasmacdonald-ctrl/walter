@@ -446,8 +446,8 @@ export function MapScreen({
     [hasFix, mapPins]
   );
 
-  // Some global CSS (e.g., img { max-width: 100% }) can distort Google marker sprites.
-  // Ensure map images use their native sizing so pins are not clipped.
+  // Some global CSS (e.g., img { max-width: 100% }) can distort Google map sprites.
+  // Keep native image sizing, but never override transforms (tiles need transforms for pan/zoom).
   useEffect(() => {
     const id = 'google-maps-image-reset';
     if (document.getElementById(id)) {
@@ -456,7 +456,7 @@ export function MapScreen({
     const style = document.createElement('style');
     style.id = id;
     style.innerHTML = `
-      .gm-style img { max-width: none !important; transform: none !important; }
+      .gm-style img { max-width: none !important; }
     `;
     document.head.appendChild(style);
     return () => {
