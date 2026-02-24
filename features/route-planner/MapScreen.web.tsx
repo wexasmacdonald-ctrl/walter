@@ -80,26 +80,6 @@ export function MapScreen({
     }),
     []
   );
-  const fullScreenOverlayStyle = useMemo<CSSProperties>(
-    () => ({
-      position: 'fixed',
-      inset: 0,
-      width: '100vw',
-      height: '100dvh',
-      minHeight: '100vh',
-      paddingTop: 'env(safe-area-inset-top)',
-      paddingRight: 'env(safe-area-inset-right)',
-      paddingBottom: 'env(safe-area-inset-bottom)',
-      paddingLeft: 'env(safe-area-inset-left)',
-    }),
-    []
-  );
-  const fullScreenLocateInsetStyle = useMemo<CSSProperties>(
-    () => ({
-      bottom: 'calc(env(safe-area-inset-bottom) + 16px)',
-    }),
-    []
-  );
 
   const mapPins = useMemo<MapPin[]>(() => {
     const normalized: MapPin[] = [];
@@ -449,7 +429,7 @@ export function MapScreen({
     const wrapperStyle =
       variant === 'primary'
         ? styles.locationButtonWrapper
-        : [styles.locationButtonWrapperFullScreen, fullScreenLocateInsetStyle as any];
+        : styles.locationButtonWrapperFullScreen;
     return (
       <View pointerEvents="box-none" style={wrapperStyle}>
         <Pressable
@@ -596,7 +576,7 @@ export function MapScreen({
         </View>
 
         <Modal visible={isFullScreen} animationType="slide" onRequestClose={() => setIsFullScreen(false)}>
-          <View style={[styles.modalContent, fullScreenOverlayStyle as any]}>
+          <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderActions}>
                 {renderMapTypeToggle()}
