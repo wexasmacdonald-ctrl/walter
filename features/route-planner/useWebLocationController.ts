@@ -15,6 +15,9 @@ const DEFAULT_COARSE_TIMEOUT_MS = 10000;
 const DEFAULT_COARSE_MAX_AGE_MS = 120000;
 const DEFAULT_PRECISE_TIMEOUT_MS = 30000;
 const DEFAULT_PRECISE_MAX_AGE_MS = 0;
+const MIN_LOCATION_MOVE_UPDATE_M = 8;
+const MIN_ACCURACY_DELTA_UPDATE_M = 8;
+const MAX_LOCATION_STALE_UPDATE_MS = 4000;
 
 function createInitialState(): WebLocationState {
   return {
@@ -50,6 +53,47 @@ function normalizeAccuracy(value: unknown): number | null {
   return value;
 }
 
+function distanceMeters(a: WebLocationCoords, b: WebLocationCoords): number {
+  const toRad = Math.PI / 180;
+  const lat1 = a.lat * toRad;
+  const lat2 = b.lat * toRad;
+  const dLat = (b.lat - a.lat) * toRad;
+  const dLng = (b.lng - a.lng) * toRad;
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const h =
+    sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
+  return 2 * 6371000 * Math.asin(Math.sqrt(h));
+}
+
+function hasMeaningfulLocationChange(
+  prev: WebLocationState,
+  nextCoords: WebLocationCoords,
+  nextAccuracyM: number | null,
+  nextStatus: WebLocationStatus,
+  nextApproximate: boolean,
+  lastEmitAtMs: number
+): boolean {
+  if (!prev.coords) {
+    return true;
+  }
+  if (prev.status !== nextStatus || prev.isApproximate !== nextApproximate) {
+    return true;
+  }
+  const moved = distanceMeters(prev.coords, nextCoords);
+  if (moved >= MIN_LOCATION_MOVE_UPDATE_M) {
+    return true;
+  }
+  if (prev.accuracyM !== null && nextAccuracyM !== null) {
+    if (Math.abs(prev.accuracyM - nextAccuracyM) >= MIN_ACCURACY_DELTA_UPDATE_M) {
+      return true;
+    }
+  } else if (prev.accuracyM !== nextAccuracyM) {
+    return true;
+  }
+  return Date.now() - lastEmitAtMs >= MAX_LOCATION_STALE_UPDATE_MS;
+}
+
 export function useWebLocationController(
   options: UseWebLocationControllerOptions = {}
 ): UseWebLocationControllerResult {
@@ -69,6 +113,7 @@ export function useWebLocationController(
   const coarseTimeoutRef = useRef<number | null>(null);
   const refineTimeoutRef = useRef<number | null>(null);
   const watchIdRef = useRef<number | null>(null);
+  const lastLocationEmitAtRef = useRef(0);
 
   const clearCoarseTimeout = useCallback(() => {
     if (coarseTimeoutRef.current !== null) {
@@ -142,27 +187,57 @@ export function useWebLocationController(
 
         if (accuracyM !== null && accuracyM <= preciseThresholdM) {
           clearRefineTimeout();
-          setState({
-            status: 'precise_ready',
-            coords,
-            accuracyM,
-            isApproximate: false,
-            statusMessage: null,
-            isLocating: false,
-            lastErrorCode: null,
+          setState((prev) => {
+            if (
+              !hasMeaningfulLocationChange(
+                prev,
+                coords,
+                accuracyM,
+                'precise_ready',
+                false,
+                lastLocationEmitAtRef.current
+              )
+            ) {
+              return prev;
+            }
+            lastLocationEmitAtRef.current = Date.now();
+            return {
+              status: 'precise_ready',
+              coords,
+              accuracyM,
+              isApproximate: false,
+              statusMessage: null,
+              isLocating: false,
+              lastErrorCode: null,
+            };
           });
           return;
         }
 
         if (accuracyM !== null && accuracyM <= approximateThresholdM) {
-          setState({
-            status: 'coarse_ready',
-            coords,
-            accuracyM,
-            isApproximate: true,
-            statusMessage: 'Using approximate location while refining GPS.',
-            isLocating: false,
-            lastErrorCode: null,
+          setState((prev) => {
+            if (
+              !hasMeaningfulLocationChange(
+                prev,
+                coords,
+                accuracyM,
+                'coarse_ready',
+                true,
+                lastLocationEmitAtRef.current
+              )
+            ) {
+              return prev;
+            }
+            lastLocationEmitAtRef.current = Date.now();
+            return {
+              status: 'coarse_ready',
+              coords,
+              accuracyM,
+              isApproximate: true,
+              statusMessage: 'Using approximate location while refining GPS.',
+              isLocating: false,
+              lastErrorCode: null,
+            };
           });
           return;
         }
@@ -353,6 +428,7 @@ export function useWebLocationController(
 
       const coords = toCoords(position);
       const accuracyM = normalizeAccuracy(position.coords.accuracy);
+      lastLocationEmitAtRef.current = Date.now();
 
       if (accuracyM !== null && accuracyM <= approximateThresholdM) {
         setState({

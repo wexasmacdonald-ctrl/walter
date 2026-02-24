@@ -519,6 +519,7 @@ export function MapScreen({
 
         <View style={styles.mapWrapper}>
           <Map
+            id="route-map-inline"
             style={styles.mapCanvas}
             defaultCenter={initialCenter}
             defaultZoom={DEFAULT_ZOOM}
@@ -561,6 +562,7 @@ export function MapScreen({
             </View>
             <View style={styles.modalMapWrapper}>
             <Map
+              id="route-map-fullscreen"
               style={styles.mapCanvas}
               defaultCenter={initialCenter}
               defaultZoom={DEFAULT_ZOOM}
