@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -11,6 +11,8 @@ import { APIProvider, Map, Marker } from '@vis.gl/react-google-maps';
 
 import { useTheme } from '@/features/theme/theme-context';
 import { getGoogleMapsApiKey } from '@/features/route-planner/getGoogleMapsApiKey';
+import { useWebLocationController } from '@/features/route-planner/useWebLocationController';
+import type { WebLocationState } from '@/features/route-planner/web-location.types';
 
 import type { Stop } from './types';
 
@@ -36,6 +38,10 @@ type MapPin = {
 };
 const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 };
 const DEFAULT_ZOOM = 12;
+const MIN_USER_ZOOM_APPROXIMATE = 14;
+const MIN_USER_ZOOM_PRECISE = 16;
+const FORCE_WEB_LOCATION_DEBUG =
+  typeof process !== 'undefined' && process.env.EXPO_PUBLIC_WEB_LOCATION_DEBUG === '1';
 
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
 export function MapScreen({
@@ -53,46 +59,43 @@ export function MapScreen({
   const [confirmed, setConfirmed] = useState<Record<string, number>>({});
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
-  const [userPosition, setUserPosition] = useState<google.maps.LatLngLiteral | null>(null);
-  const [locationPermissionDenied, setLocationPermissionDenied] = useState(false);
-  const [locationErrorMessage, setLocationErrorMessage] = useState<string | null>(null);
-  const [locating, setLocating] = useState(false);
-  const [locationDebug, setLocationDebug] = useState('Idle');
+  const {
+    startLocate,
+    state: locationState,
+    hasFix,
+    isPrecise,
+  } = useWebLocationController({ autoStart: true });
   const mapRef = useRef<google.maps.Map | null>(null);
-  const geoWatchIdRef = useRef<number | null>(null);
-  const locationRequestTimeoutRef = useRef<number | null>(null);
-  const locationRefineTimeoutRef = useRef<number | null>(null);
+  const hasCenteredOnUserRef = useRef(false);
 
   const mapPins = useMemo<MapPin[]>(() => {
-    return pins
-      .map((pin, index) => {
-        const lat = toNumber(pin.lat);
-        const lng = toNumber(pin.lng);
-        if (lat === null || lng === null) {
-          return null;
-        }
+    const normalized: MapPin[] = [];
+    pins.forEach((pin, index) => {
+      const lat = toNumber(pin.lat);
+      const lng = toNumber(pin.lng);
+      if (lat === null || lng === null) {
+        return;
+      }
 
-        const label =
-          typeof pin.label === 'string' && pin.label.trim().length > 0
-            ? pin.label.trim()
-            : extractHouseNumber(pin.address) ?? String(index + 1);
+      const label =
+        typeof pin.label === 'string' && pin.label.trim().length > 0
+          ? pin.label.trim()
+          : extractHouseNumber(pin.address) ?? String(index + 1);
 
-        return {
-          id: pin.id ?? String(index),
-          position: { lat, lng },
-          address: pin.address,
-          label,
-          status: pin.status === 'complete' ? 'complete' : 'pending',
-        };
-      })
-      .filter((pin): pin is MapPin => pin !== null);
+      normalized.push({
+        id: pin.id ?? String(index),
+        position: { lat, lng },
+        address: pin.address,
+        label,
+        status: pin.status === 'complete' ? 'complete' : 'pending',
+      });
+    });
+    return normalized;
   }, [pins]);
 
-  // Debug: surface pins that were dropped so we can trace missing markers quickly.
   useEffect(() => {
     const dropped = pins.filter((pin) => toNumber(pin.lat) === null || toNumber(pin.lng) === null);
     if (dropped.length > 0) {
-      // eslint-disable-next-line no-console
       console.warn(
         'Dropped pins missing lat/lng',
         dropped.map((pin) => ({ id: pin.id, lat: pin.lat, lng: pin.lng, label: pin.label }))
@@ -100,169 +103,29 @@ export function MapScreen({
     }
   }, [pins]);
 
-  useEffect(() => {
-    const onError = (ev: ErrorEvent) => {
-      // eslint-disable-next-line no-console
-      console.error('Window error', ev.error || ev.message, ev.filename, ev.lineno, ev.colno);
-    };
-    const onRejection = (ev: PromiseRejectionEvent) => {
-      // eslint-disable-next-line no-console
-      console.error('Unhandled rejection', ev.reason);
-    };
-    window.addEventListener('error', onError);
-    window.addEventListener('unhandledrejection', onRejection);
-    return () => {
-      window.removeEventListener('error', onError);
-      window.removeEventListener('unhandledrejection', onRejection);
-    };
-  }, []);
-
-  const clearLocationTimers = () => {
-    if (locationRequestTimeoutRef.current !== null) {
-      window.clearTimeout(locationRequestTimeoutRef.current);
-      locationRequestTimeoutRef.current = null;
-    }
-    if (locationRefineTimeoutRef.current !== null) {
-      window.clearTimeout(locationRefineTimeoutRef.current);
-      locationRefineTimeoutRef.current = null;
-    }
-  };
-
-  const clearLocationWatch = () => {
-    if (geoWatchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
-      navigator.geolocation.clearWatch(geoWatchIdRef.current);
-      geoWatchIdRef.current = null;
-    }
-  };
-
-  const applyUserPosition = (position: GeolocationPosition, phase: 'coarse' | 'refined') => {
-    const nextPosition = {
-      lat: position.coords.latitude,
-      lng: position.coords.longitude,
-    };
-    setUserPosition(nextPosition);
-    if (mapRef.current) {
-      mapRef.current.panTo(nextPosition);
-      const currentZoom = mapRef.current.getZoom() ?? DEFAULT_ZOOM;
-      const minZoom = phase === 'refined' ? 16 : 14;
-      if (currentZoom < minZoom) {
-        mapRef.current.setZoom(minZoom);
-      }
-    }
-  };
-
-  const requestLocation = () => {
-    setLocationDebug('Locate pressed');
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setLocationErrorMessage('Browser geolocation is unavailable on this device.');
-      setLocationPermissionDenied(false);
-      setLocationDebug('No navigator.geolocation');
+  const applyUserViewport = (
+    map: google.maps.Map | null,
+    coords: google.maps.LatLngLiteral,
+    precise: boolean
+  ) => {
+    if (!map) {
       return;
     }
-
-    setLocating(true);
-    clearLocationTimers();
-    clearLocationWatch();
-    setLocationDebug('Requesting coarse location first');
-    locationRequestTimeoutRef.current = window.setTimeout(() => {
-      setLocating(false);
-      setLocationErrorMessage('Coarse location timed out. Tap "Locate me" to retry.');
-      setLocationDebug('Coarse phase timeout');
-    }, 12000);
-
-    const onCoarseSuccess = (position: GeolocationPosition) => {
-      clearLocationTimers();
-      applyUserPosition(position, 'coarse');
-      setLocationPermissionDenied(false);
-      setLocationErrorMessage(null);
-      setLocationDebug(
-        `Coarse fix ${Math.round(position.coords.accuracy)}m. Refining GPS...`
-      );
-
-      locationRefineTimeoutRef.current = window.setTimeout(() => {
-        setLocating(false);
-        setLocationDebug('Refinement timeout; keeping coarse fix');
-      }, 30000);
-
-      const onRefinedSuccess = (next: GeolocationPosition) => {
-        applyUserPosition(next, 'refined');
-        setLocationErrorMessage(null);
-        if (typeof next.coords.accuracy === 'number' && next.coords.accuracy <= 60) {
-          if (locationRefineTimeoutRef.current !== null) {
-            window.clearTimeout(locationRefineTimeoutRef.current);
-            locationRefineTimeoutRef.current = null;
-          }
-          setLocating(false);
-        }
-        setLocationDebug(
-          `Refined fix ${Math.round(next.coords.accuracy)}m (${next.coords.latitude.toFixed(5)}, ${next.coords.longitude.toFixed(5)})`
-        );
-      };
-
-      const onRefinedError = (error: GeolocationPositionError) => {
-        if (error.code === error.PERMISSION_DENIED) {
-          setLocationPermissionDenied(true);
-          setLocationErrorMessage(
-            'Location was denied by Safari for this site. Open aA > Website Settings > Location and choose Allow.'
-          );
-          setLocating(false);
-          setLocationDebug('Refined phase denied');
-          return;
-        }
-        if (error.code === error.TIMEOUT) {
-          setLocationDebug('Refined phase timeout; using coarse fix');
-          return;
-        }
-        setLocationDebug(`Refined phase error code ${error.code}; using coarse fix`);
-      };
-
-      clearLocationWatch();
-      geoWatchIdRef.current = navigator.geolocation.watchPosition(onRefinedSuccess, onRefinedError, {
-        enableHighAccuracy: true,
-        timeout: 30000,
-        maximumAge: 0,
-      });
-    };
-
-    const onCoarseError = (error: GeolocationPositionError) => {
-      clearLocationTimers();
-      clearLocationWatch();
-      setLocating(false);
-      if (error.code === error.PERMISSION_DENIED) {
-        setLocationPermissionDenied(true);
-        setLocationErrorMessage(
-          'Location was denied by Safari for this site. Open aA > Website Settings > Location and choose Allow.'
-        );
-        setLocationDebug(`Error code ${error.code}: PERMISSION_DENIED`);
-        return;
-      }
-      if (error.code === error.POSITION_UNAVAILABLE) {
-        setLocationErrorMessage('Location is currently unavailable. Check GPS/network then retry.');
-        setLocationDebug(`Error code ${error.code}: POSITION_UNAVAILABLE`);
-        return;
-      }
-      if (error.code === error.TIMEOUT) {
-        setLocationErrorMessage('Location lookup timed out. Move outdoors and tap "Locate me" again.');
-        setLocationDebug(`Error code ${error.code}: TIMEOUT`);
-        return;
-      }
-      setLocationErrorMessage('Could not read your location. Tap "Locate me" to retry.');
-      setLocationDebug(`Error code ${error.code}: UNKNOWN`);
-    };
-
-    navigator.geolocation.getCurrentPosition(onCoarseSuccess, onCoarseError, {
-      enableHighAccuracy: false,
-      timeout: 12000,
-      maximumAge: 120000,
-    });
+    map.panTo(coords);
+    const minZoom = precise ? MIN_USER_ZOOM_PRECISE : MIN_USER_ZOOM_APPROXIMATE;
+    const currentZoom = map.getZoom() ?? DEFAULT_ZOOM;
+    if (currentZoom < minZoom) {
+      map.setZoom(minZoom);
+    }
+    hasCenteredOnUserRef.current = true;
   };
 
   useEffect(() => {
-    return () => {
-      clearLocationTimers();
-      clearLocationWatch();
-    };
-  }, []);
+    if (!hasFix || !locationState.coords || !mapRef.current) {
+      return;
+    }
+    applyUserViewport(mapRef.current, locationState.coords, isPrecise);
+  }, [hasFix, isPrecise, locationState.coords]);
 
   const selectedMarker = useMemo(
     () => mapPins.find((marker) => marker.id === selectedId) ?? null,
@@ -464,15 +327,6 @@ export function MapScreen({
   // renderSelectedCard was added accidentally and duplicated the existing toast UI; removed to avoid double overlays.
 
   const renderOverlay = () => {
-    if (loading) {
-      return (
-        <View style={styles.mapOverlay}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={styles.mapOverlayText}>Loading pins...</Text>
-        </View>
-      );
-    }
-
     if (mapPins.length === 0) {
       return (
         <View style={styles.notice}>
@@ -481,20 +335,19 @@ export function MapScreen({
       );
     }
 
-    if (locationPermissionDenied) {
-      return (
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>
-            Location permission denied. Enable it in browser settings to show your current location.
-          </Text>
-        </View>
-      );
-    }
+    const shouldShowLocationNotice =
+      locationState.statusMessage !== null &&
+      (locationState.status === 'denied' ||
+        locationState.status === 'timeout' ||
+        locationState.status === 'unavailable' ||
+        locationState.status === 'unsupported' ||
+        locationState.status === 'insecure_context' ||
+        locationState.status === 'error');
 
-    if (locationErrorMessage) {
+    if (shouldShowLocationNotice) {
       return (
         <View style={styles.notice}>
-          <Text style={styles.noticeText}>{locationErrorMessage}</Text>
+          <Text style={styles.noticeText}>{locationState.statusMessage}</Text>
         </View>
       );
     }
@@ -523,19 +376,6 @@ export function MapScreen({
     </View>
   );
 
-  if (!GOOGLE_MAPS_API_KEY) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.banner}>
-          <Text style={styles.bannerText}>
-            Google Maps API key for web is not configured. Set EXPO_PUBLIC_GOOGLE_API_KEY (or
-            GOOGLE_API_KEY) to render the interactive map.
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
   const mapTypeId = mapType === 'satellite' ? 'satellite' : 'roadmap';
   // Use default Google styling for standard maps so base layers/buildings remain visible.
   const mapStyle = useMemo<google.maps.MapTypeStyle[] | undefined>(() => undefined, []);
@@ -553,6 +393,12 @@ export function MapScreen({
     }),
     [mapStyle]
   );
+  const GoogleMap: any = Map;
+
+  const showLocationDebug = __DEV__ || FORCE_WEB_LOCATION_DEBUG;
+  const locationDebugLabel = showLocationDebug
+    ? formatWebLocationDebug(locationState)
+    : null;
 
   const renderLocationButton = (variant: 'primary' | 'modal') => {
     const wrapperStyle =
@@ -562,19 +408,37 @@ export function MapScreen({
     return (
       <View pointerEvents="box-none" style={wrapperStyle}>
         <Pressable
-          style={[styles.locationButton, locating && styles.locationButtonDisabled]}
-          onPress={requestLocation}
-          onPressIn={() => setLocationDebug('Button press detected')}
-          disabled={locating}
+          style={[styles.locationButton, locationState.isLocating && styles.locationButtonDisabled]}
+          onPress={startLocate}
+          disabled={locationState.isLocating}
         >
-          <Text style={styles.locationButtonText}>{locating ? 'Locating...' : 'Locate me'}</Text>
+          <Text style={styles.locationButtonText}>
+            {locationState.isLocating ? 'Locating...' : 'Locate me'}
+          </Text>
         </Pressable>
-        <Text style={styles.locationDebugText} numberOfLines={2}>
-          {locationDebug}
-        </Text>
+        {showLocationDebug ? (
+          <Text style={styles.locationDebugText} numberOfLines={3}>
+            {locationDebugLabel}
+          </Text>
+        ) : null}
       </View>
     );
   };
+
+  const fitPinsToMap = useCallback(
+    (map: google.maps.Map | null) => {
+      if (!map || mapPins.length === 0) {
+        return;
+      }
+      if (hasCenteredOnUserRef.current && hasFix) {
+        return;
+      }
+      const bounds = new google.maps.LatLngBounds();
+      mapPins.forEach((pin) => bounds.extend(pin.position));
+      map.fitBounds(bounds);
+    },
+    [hasFix, mapPins]
+  );
 
   // Some global CSS (e.g., img { max-width: 100% }) can distort Google marker sprites.
   // Ensure map images use their native sizing so pins are not clipped.
@@ -595,13 +459,24 @@ export function MapScreen({
   }, []);
 
   useEffect(() => {
-    if (!mapRef.current || mapPins.length === 0) {
+    if (!mapRef.current) {
       return;
     }
-    const bounds = new google.maps.LatLngBounds();
-    mapPins.forEach((pin) => bounds.extend(pin.position));
-    mapRef.current.fitBounds(bounds);
-  }, [mapPins]);
+    fitPinsToMap(mapRef.current);
+  }, [fitPinsToMap]);
+
+  if (!GOOGLE_MAPS_API_KEY) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.banner}>
+          <Text style={styles.bannerText}>
+            Google Maps API key for web is not configured. Set EXPO_PUBLIC_GOOGLE_API_KEY (or
+            GOOGLE_API_KEY) to render the interactive map.
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   if (loading) {
     return (
@@ -637,24 +512,30 @@ export function MapScreen({
         </View>
 
         <View style={styles.mapWrapper}>
-          <Map
+          <GoogleMap
             style={styles.mapCanvas}
             defaultCenter={initialCenter}
             defaultZoom={DEFAULT_ZOOM}
             mapTypeId={mapTypeId}
-            options={mapOptions}
+            {...mapOptions}
             onClick={() => setSelectedId(null)}
-            onLoad={(map) => {
+            onLoad={(map: google.maps.Map) => {
               mapRef.current = map;
+              if (hasFix && locationState.coords) {
+                applyUserViewport(map, locationState.coords, isPrecise);
+              } else {
+                fitPinsToMap(map);
+              }
             }}
           >
-            {userPosition ? (
+            {hasFix && locationState.coords ? (
               <UserLocationMarker
-                position={userPosition}
+                position={locationState.coords}
+                approximate={locationState.isApproximate}
               />
             ) : null}
             {renderMarkers()}
-          </Map>
+          </GoogleMap>
           {renderOverlay()}
           {renderLocationButton('primary')}
           {renderToast('primary')}
@@ -671,24 +552,30 @@ export function MapScreen({
               </View>
             </View>
             <View style={styles.modalMapWrapper}>
-            <Map
+            <GoogleMap
               style={styles.mapCanvas}
               defaultCenter={initialCenter}
               defaultZoom={DEFAULT_ZOOM}
               mapTypeId={mapTypeId}
-              options={mapOptions}
+              {...mapOptions}
               onClick={() => setSelectedId(null)}
-              onLoad={(map) => {
+              onLoad={(map: google.maps.Map) => {
                 mapRef.current = map;
+                if (hasFix && locationState.coords) {
+                  applyUserViewport(map, locationState.coords, isPrecise);
+                } else {
+                  fitPinsToMap(map);
+                }
               }}
             >
-              {userPosition ? (
+              {hasFix && locationState.coords ? (
                 <UserLocationMarker
-                  position={userPosition}
+                  position={locationState.coords}
+                  approximate={locationState.isApproximate}
                 />
               ) : null}
               {renderMarkers()}
-            </Map>
+            </GoogleMap>
             {renderOverlay()}
             {renderLocationButton('modal')}
             {renderToast('modal')}
@@ -811,8 +698,17 @@ function BadgeMarker({
   );
 }
 
-function UserLocationMarker({ position }: { position: google.maps.LatLngLiteral }) {
-  const [icon, setIcon] = useState<google.maps.Symbol | null>(null);
+function UserLocationMarker({
+  position,
+  approximate,
+}: {
+  position: google.maps.LatLngLiteral;
+  approximate: boolean;
+}) {
+  const [icons, setIcons] = useState<{
+    core: google.maps.Symbol;
+    ring: google.maps.Symbol | null;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -831,15 +727,38 @@ function UserLocationMarker({ position }: { position: google.maps.LatLngLiteral 
         return;
       }
 
-      setIcon({
-        path: maps.SymbolPath.CIRCLE,
-        scale: 8,
-        fillColor: '#1A73E8',
-        fillOpacity: 0.95,
-        strokeColor: '#FFFFFF',
-        strokeOpacity: 1,
-        strokeWeight: 3,
-      });
+      const core: google.maps.Symbol = approximate
+        ? {
+            path: maps.SymbolPath.CIRCLE,
+            scale: 8,
+            fillColor: '#1A73E8',
+            fillOpacity: 0.74,
+            strokeColor: '#FFFFFF',
+            strokeOpacity: 0.9,
+            strokeWeight: 2.5,
+          }
+        : {
+            path: maps.SymbolPath.CIRCLE,
+            scale: 8,
+            fillColor: '#1A73E8',
+            fillOpacity: 0.95,
+            strokeColor: '#FFFFFF',
+            strokeOpacity: 1,
+            strokeWeight: 3,
+          };
+      const ring: google.maps.Symbol | null = approximate
+        ? {
+            path: maps.SymbolPath.CIRCLE,
+            scale: 18,
+            fillColor: '#1A73E8',
+            fillOpacity: 0.14,
+            strokeColor: '#1A73E8',
+            strokeOpacity: 0.28,
+            strokeWeight: 2,
+          }
+        : null;
+
+      setIcons({ core, ring });
     };
 
     configure();
@@ -850,13 +769,18 @@ function UserLocationMarker({ position }: { position: google.maps.LatLngLiteral 
         window.clearTimeout(timeoutId);
       }
     };
-  }, []);
+  }, [approximate]);
 
-  if (!icon) {
+  if (!icons) {
     return null;
   }
 
-  return <Marker position={position} icon={icon} zIndex={4} />;
+  return (
+    <>
+      {icons.ring ? <Marker position={position} icon={icons.ring} zIndex={3} /> : null}
+      <Marker position={position} icon={icons.core} zIndex={4} />
+    </>
+  );
 }
 
 
@@ -866,6 +790,16 @@ function extractHouseNumber(address: string | null | undefined): string | null {
   }
   const match = address.trim().match(/^(\d+[A-Za-z0-9-]*)\b/);
   return match ? match[1] : null;
+}
+
+function formatWebLocationDebug(state: WebLocationState): string {
+  const accuracyLabel = state.accuracyM === null ? 'n/a' : `${Math.round(state.accuracyM)}m`;
+  const coordLabel =
+    state.coords === null
+      ? 'none'
+      : `${state.coords.lat.toFixed(5)},${state.coords.lng.toFixed(5)}`;
+  const errorLabel = state.lastErrorCode === null ? 'none' : String(state.lastErrorCode);
+  return `state:${state.status} acc:${accuracyLabel} fix:${coordLabel} approx:${state.isApproximate ? 'yes' : 'no'} err:${errorLabel}`;
 }
 
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
