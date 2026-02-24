@@ -12,7 +12,6 @@ import { APIProvider, Map, Marker, useMap } from '@vis.gl/react-google-maps';
 import { useTheme } from '@/features/theme/theme-context';
 import { getGoogleMapsApiKey } from '@/features/route-planner/getGoogleMapsApiKey';
 import { useWebLocationController } from '@/features/route-planner/useWebLocationController';
-import type { WebLocationState } from '@/features/route-planner/web-location.types';
 
 import type { Stop } from './types';
 
@@ -43,9 +42,6 @@ const MIN_USER_ZOOM_PRECISE = 16;
 const FIT_BOUNDS_SUPPRESS_MS = 5000;
 const INLINE_MAP_ID = 'route-map-inline';
 const FULLSCREEN_MAP_ID = 'route-map-fullscreen';
-const FORCE_WEB_LOCATION_DEBUG =
-  typeof process !== 'undefined' && process.env.EXPO_PUBLIC_WEB_LOCATION_DEBUG === '1';
-
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
 export function MapScreen({
   pins,
@@ -348,39 +344,14 @@ export function MapScreen({
   };
 
   // renderSelectedCard was added accidentally and duplicated the existing toast UI; removed to avoid double overlays.
-
-  const renderOverlay = () => {
-    if (mapPins.length === 0) {
-      return (
-        <View pointerEvents="none" style={styles.noticeOverlay}>
-          <View style={styles.notice}>
-            <Text style={styles.noticeText}>Pins appear after the locations finish loading.</Text>
-          </View>
-        </View>
-      );
-    }
-
-    const shouldShowLocationNotice =
-      locationState.statusMessage !== null &&
-      (locationState.status === 'denied' ||
-        locationState.status === 'timeout' ||
-        locationState.status === 'unavailable' ||
-        locationState.status === 'unsupported' ||
-        locationState.status === 'insecure_context' ||
-        locationState.status === 'error');
-
-    if (shouldShowLocationNotice) {
-      return (
-        <View pointerEvents="none" style={styles.noticeOverlay}>
-          <View style={styles.notice}>
-            <Text style={styles.noticeText}>{locationState.statusMessage}</Text>
-          </View>
-        </View>
-      );
-    }
-
-    return null;
-  };
+  const shouldShowLocationNotice =
+    locationState.statusMessage !== null &&
+    (locationState.status === 'denied' ||
+      locationState.status === 'timeout' ||
+      locationState.status === 'unavailable' ||
+      locationState.status === 'unsupported' ||
+      locationState.status === 'insecure_context' ||
+      locationState.status === 'error');
 
   const renderMapTypeToggle = () => (
     <View style={styles.mapTypeToggle}>
@@ -411,6 +382,8 @@ export function MapScreen({
       disableDefaultUI: true,
       clickableIcons: false,
       gestureHandling: 'greedy',
+      draggable: true,
+      scrollwheel: true,
       rotateControl: false,
       fullscreenControl: false,
       streetViewControl: false,
@@ -420,35 +393,6 @@ export function MapScreen({
     }),
     [mapStyle]
   );
-
-  const showLocationDebug = __DEV__ || FORCE_WEB_LOCATION_DEBUG;
-  const locationDebugLabel = showLocationDebug
-    ? formatWebLocationDebug(locationState)
-    : null;
-
-  const renderLocationButton = (variant: 'primary' | 'modal') => {
-    const wrapperStyle =
-      variant === 'primary'
-        ? styles.locationButtonWrapper
-        : styles.locationButtonWrapperFullScreen;
-    return (
-      <View pointerEvents="box-none" style={wrapperStyle}>
-        <Pressable
-          style={[styles.locationButton, locationState.isLocating && styles.locationButtonDisabled]}
-          onPress={handleStartLocate}
-        >
-          <Text style={styles.locationButtonText}>
-            {locationState.isLocating ? 'Locating...' : 'Locate me'}
-          </Text>
-        </Pressable>
-        {showLocationDebug ? (
-          <Text style={styles.locationDebugText} numberOfLines={3}>
-            {locationDebugLabel}
-          </Text>
-        ) : null}
-      </View>
-    );
-  };
 
   const fitPinsToMap = useCallback(
     (map: google.maps.Map | null) => {
@@ -537,12 +481,25 @@ export function MapScreen({
       <View style={styles.container}>
         <View style={styles.header}>
           <View style={styles.headerActions}>
+            <Pressable
+              style={[styles.fullScreenButton, locationState.isLocating && styles.locationButtonDisabled]}
+              onPress={handleStartLocate}
+            >
+              <Text style={styles.fullScreenButtonText}>
+                {locationState.isLocating ? 'Locating...' : 'Locate me'}
+              </Text>
+            </Pressable>
             {renderMapTypeToggle()}
             <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
               <Text style={styles.fullScreenButtonText}>Full Screen</Text>
             </Pressable>
           </View>
         </View>
+        {shouldShowLocationNotice ? (
+          <View style={styles.noticeStandalone}>
+            <Text style={styles.noticeText}>{locationState.statusMessage}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.mapWrapper}>
           <Map
@@ -552,7 +509,6 @@ export function MapScreen({
             defaultZoom={DEFAULT_ZOOM}
             mapTypeId={mapTypeId}
             {...mapOptions}
-            onClick={() => setSelectedId(null)}
           >
             <MapInstanceBridge
               mapId={INLINE_MAP_ID}
@@ -573,8 +529,6 @@ export function MapScreen({
             ) : null}
             {renderMarkers()}
           </Map>
-          {renderOverlay()}
-          {renderLocationButton('primary')}
           {renderToast('primary')}
         </View>
 
@@ -596,7 +550,6 @@ export function MapScreen({
               defaultZoom={DEFAULT_ZOOM}
               mapTypeId={mapTypeId}
               {...mapOptions}
-              onClick={() => setSelectedId(null)}
             >
               <MapInstanceBridge
                 mapId={FULLSCREEN_MAP_ID}
@@ -613,12 +566,10 @@ export function MapScreen({
                 <UserLocationMarker
                   position={locationState.coords}
                   approximate={locationState.isApproximate}
-                />
-              ) : null}
-              {renderMarkers()}
+              />
+            ) : null}
+            {renderMarkers()}
             </Map>
-            {renderOverlay()}
-            {renderLocationButton('modal')}
             {renderToast('modal')}
           </View>
           </View>
@@ -855,20 +806,6 @@ function extractHouseNumber(address: string | null | undefined): string | null {
   }
   const match = address.trim().match(/^(\d+[A-Za-z0-9-]*)\b/);
   return match ? match[1] : null;
-}
-
-function formatWebLocationDebug(state: WebLocationState): string {
-  const accuracyLabel = state.accuracyM === null ? 'n/a' : `${Math.round(state.accuracyM)}m`;
-  const coordLabel =
-    state.coords === null
-      ? 'none'
-      : `${state.coords.lat.toFixed(5)},${state.coords.lng.toFixed(5)}`;
-  const errorLabel = state.lastErrorCode === null ? 'none' : String(state.lastErrorCode);
-  const updatedLabel =
-    state.lastUpdateAtMs === null ? 'never' : new Date(state.lastUpdateAtMs).toLocaleTimeString();
-  const nextPollLabel =
-    state.nextPollAtMs === null ? 'off' : `${Math.max(0, Math.ceil((state.nextPollAtMs - Date.now()) / 1000))}s`;
-  return `state:${state.status} acc:${accuracyLabel} fix:${coordLabel} approx:${state.isApproximate ? 'yes' : 'no'} err:${errorLabel} upd:${updatedLabel} poll:${nextPollLabel}`;
 }
 
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
