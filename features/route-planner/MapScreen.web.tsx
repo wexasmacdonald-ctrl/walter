@@ -59,6 +59,7 @@ export function MapScreen({
   const [locating, setLocating] = useState(false);
   const mapRef = useRef<google.maps.Map | null>(null);
   const geoWatchIdRef = useRef<number | null>(null);
+  const locationRequestTimeoutRef = useRef<number | null>(null);
 
   const mapPins = useMemo<MapPin[]>(() => {
     return pins
@@ -122,7 +123,18 @@ export function MapScreen({
     }
 
     setLocating(true);
+    if (locationRequestTimeoutRef.current !== null) {
+      window.clearTimeout(locationRequestTimeoutRef.current);
+    }
+    locationRequestTimeoutRef.current = window.setTimeout(() => {
+      setLocating(false);
+      setLocationErrorMessage('Location request took too long. Tap "Locate me" to retry.');
+    }, 15000);
     const onSuccess = (position: GeolocationPosition) => {
+      if (locationRequestTimeoutRef.current !== null) {
+        window.clearTimeout(locationRequestTimeoutRef.current);
+        locationRequestTimeoutRef.current = null;
+      }
       setUserPosition({
         lat: position.coords.latitude,
         lng: position.coords.longitude,
@@ -133,6 +145,10 @@ export function MapScreen({
     };
 
     const onError = (error: GeolocationPositionError) => {
+      if (locationRequestTimeoutRef.current !== null) {
+        window.clearTimeout(locationRequestTimeoutRef.current);
+        locationRequestTimeoutRef.current = null;
+      }
       setLocating(false);
       if (error.code === error.PERMISSION_DENIED) {
         setLocationPermissionDenied(true);
@@ -146,10 +162,10 @@ export function MapScreen({
         return;
       }
       if (error.code === error.TIMEOUT) {
-        setLocationErrorMessage('Location lookup timed out. Tap "Use my location" to retry.');
+        setLocationErrorMessage('Location lookup timed out. Tap "Locate me" to retry.');
         return;
       }
-      setLocationErrorMessage('Could not read your location. Tap "Use my location" to retry.');
+      setLocationErrorMessage('Could not read your location. Tap "Locate me" to retry.');
     };
 
     navigator.geolocation.getCurrentPosition(onSuccess, onError, {
@@ -171,6 +187,9 @@ export function MapScreen({
   useEffect(() => {
     requestLocation(false);
     return () => {
+      if (locationRequestTimeoutRef.current !== null) {
+        window.clearTimeout(locationRequestTimeoutRef.current);
+      }
       if (geoWatchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
         navigator.geolocation.clearWatch(geoWatchIdRef.current);
       }
@@ -467,6 +486,24 @@ export function MapScreen({
     [mapStyle]
   );
 
+  const renderLocationButton = (variant: 'primary' | 'modal') => {
+    const wrapperStyle =
+      variant === 'primary'
+        ? styles.locationButtonWrapper
+        : styles.locationButtonWrapperFullScreen;
+    return (
+      <View pointerEvents="box-none" style={wrapperStyle}>
+        <Pressable
+          style={[styles.locationButton, locating && styles.locationButtonDisabled]}
+          onPress={() => requestLocation(true)}
+          disabled={locating}
+        >
+          <Text style={styles.locationButtonText}>{locating ? 'Locating...' : 'Locate me'}</Text>
+        </Pressable>
+      </View>
+    );
+  };
+
   // Some global CSS (e.g., img { max-width: 100% }) can distort Google marker sprites.
   // Ensure map images use their native sizing so pins are not clipped.
   useEffect(() => {
@@ -520,15 +557,6 @@ export function MapScreen({
       <View style={styles.container}>
         <View style={styles.header}>
           <View style={styles.headerActions}>
-            <Pressable
-              style={styles.fullScreenButton}
-              onPress={() => requestLocation(true)}
-              disabled={locating}
-            >
-              <Text style={styles.fullScreenButtonText}>
-                {locating ? 'Locating...' : 'Use my location'}
-              </Text>
-            </Pressable>
             {renderMapTypeToggle()}
             <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
               <Text style={styles.fullScreenButtonText}>Full Screen</Text>
@@ -562,6 +590,7 @@ export function MapScreen({
             {renderMarkers()}
           </Map>
           {renderOverlay()}
+          {renderLocationButton('primary')}
           {renderToast('primary')}
         </View>
 
@@ -569,15 +598,6 @@ export function MapScreen({
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderActions}>
-                <Pressable
-                  style={styles.fullScreenButton}
-                  onPress={() => requestLocation(true)}
-                  disabled={locating}
-                >
-                  <Text style={styles.fullScreenButtonText}>
-                    {locating ? 'Locating...' : 'Use my location'}
-                  </Text>
-                </Pressable>
                 {renderMapTypeToggle()}
                 <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(false)}>
                   <Text style={styles.fullScreenButtonText}>Close</Text>
@@ -610,6 +630,7 @@ export function MapScreen({
               {renderMarkers()}
             </Map>
             {renderOverlay()}
+            {renderLocationButton('modal')}
             {renderToast('modal')}
           </View>
           </View>
@@ -879,7 +900,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       position: 'absolute',
       left: 16,
       right: 16,
-      top: 16,
+      top: 72,
       alignItems: 'flex-end',
     },
     toastContainerFullScreen: {
@@ -990,6 +1011,31 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderWidth: 0,
       overflow: 'hidden',
       position: 'relative',
+    },
+    locationButtonWrapper: {
+      position: 'absolute',
+      right: 12,
+      bottom: 12,
+    },
+    locationButtonWrapperFullScreen: {
+      position: 'absolute',
+      right: 12,
+      bottom: 16,
+    },
+    locationButton: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: hexToRgba(colors.surface, isDark ? 0.86 : 0.94),
+    },
+    locationButtonDisabled: {
+      opacity: 0.7,
+    },
+    locationButtonText: {
+      color: colors.primary,
+      fontWeight: '700',
     },
   });
 }
