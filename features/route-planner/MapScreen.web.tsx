@@ -53,6 +53,8 @@ export function MapScreen({
   const [confirmed, setConfirmed] = useState<Record<string, number>>({});
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
+  const [userPosition, setUserPosition] = useState<google.maps.LatLngLiteral | null>(null);
+  const [locationPermissionDenied, setLocationPermissionDenied] = useState(false);
   const mapRef = useRef<google.maps.Map | null>(null);
 
   const mapPins = useMemo<MapPin[]>(() => {
@@ -106,6 +108,50 @@ export function MapScreen({
     return () => {
       window.removeEventListener('error', onError);
       window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      return;
+    }
+
+    let mounted = true;
+    const onSuccess = (position: GeolocationPosition) => {
+      if (!mounted) {
+        return;
+      }
+      setUserPosition({
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      });
+      setLocationPermissionDenied(false);
+    };
+
+    const onError = (error: GeolocationPositionError) => {
+      if (!mounted) {
+        return;
+      }
+      if (error.code === error.PERMISSION_DENIED) {
+        setLocationPermissionDenied(true);
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, {
+      enableHighAccuracy: true,
+      timeout: 12000,
+      maximumAge: 0,
+    });
+
+    const watchId = navigator.geolocation.watchPosition(onSuccess, onError, {
+      enableHighAccuracy: true,
+      timeout: 20000,
+      maximumAge: 15000,
+    });
+
+    return () => {
+      mounted = false;
+      navigator.geolocation.clearWatch(watchId);
     };
   }, []);
 
@@ -326,6 +372,16 @@ export function MapScreen({
       );
     }
 
+    if (locationPermissionDenied) {
+      return (
+        <View style={styles.notice}>
+          <Text style={styles.noticeText}>
+            Location permission denied. Enable it in browser settings to show your current location.
+          </Text>
+        </View>
+      );
+    }
+
     return null;
   };
 
@@ -453,6 +509,17 @@ export function MapScreen({
               mapRef.current = map;
             }}
           >
+            {userPosition ? (
+              <BadgeMarker
+                label="ME"
+                position={userPosition}
+                fill={colors.success}
+                labelColor={badgeLabelColor}
+                outlineColor={badgeOutlineColor}
+                selected={false}
+                onPress={() => {}}
+              />
+            ) : null}
             {renderMarkers()}
           </Map>
           {renderOverlay()}
@@ -481,6 +548,17 @@ export function MapScreen({
                 mapRef.current = map;
               }}
             >
+              {userPosition ? (
+                <BadgeMarker
+                  label="ME"
+                  position={userPosition}
+                  fill={colors.success}
+                  labelColor={badgeLabelColor}
+                  outlineColor={badgeOutlineColor}
+                  selected={false}
+                  onPress={() => {}}
+                />
+              ) : null}
               {renderMarkers()}
             </Map>
             {renderOverlay()}
