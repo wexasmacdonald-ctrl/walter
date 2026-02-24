@@ -159,6 +159,17 @@ export function MapScreen({
         lat: position.coords.latitude,
         lng: position.coords.longitude,
       });
+      if (mapRef.current) {
+        const nextPosition = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+        mapRef.current.panTo(nextPosition);
+        const currentZoom = mapRef.current.getZoom() ?? DEFAULT_ZOOM;
+        if (currentZoom < 16) {
+          mapRef.current.setZoom(16);
+        }
+      }
       setLocationPermissionDenied(false);
       setLocationErrorMessage(null);
       setLocating(false);
