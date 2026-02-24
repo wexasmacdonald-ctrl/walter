@@ -73,7 +73,7 @@ export function MapScreen({
   const mapRef = useRef<google.maps.Map | null>(null);
   const hasCenteredOnUserRef = useRef(false);
   const suppressFitBoundsUntilRef = useRef(0);
-  const lastFittedPinsSignatureRef = useRef<string | null>(null);
+  const hasFittedPinsRef = useRef(false);
   const mapCanvasStyle = useMemo<CSSProperties>(
     () => ({
       width: '100%',
@@ -137,7 +137,6 @@ export function MapScreen({
 
   const handleStartLocate = useCallback(() => {
     hasCenteredOnUserRef.current = false;
-    lastFittedPinsSignatureRef.current = null;
     startLocate();
   }, [startLocate]);
 
@@ -456,6 +455,9 @@ export function MapScreen({
       if (!map || mapPins.length === 0) {
         return;
       }
+      if (hasFittedPinsRef.current) {
+        return;
+      }
       if (Date.now() < suppressFitBoundsUntilRef.current) {
         return;
       }
@@ -463,17 +465,10 @@ export function MapScreen({
         return;
       }
 
-      const pinSignature = mapPins
-        .map((pin) => `${pin.id}:${pin.position.lat.toFixed(6)},${pin.position.lng.toFixed(6)}`)
-        .join('|');
-      if (lastFittedPinsSignatureRef.current === pinSignature) {
-        return;
-      }
-
       const bounds = new google.maps.LatLngBounds();
       mapPins.forEach((pin) => bounds.extend(pin.position));
       map.fitBounds(bounds);
-      lastFittedPinsSignatureRef.current = pinSignature;
+      hasFittedPinsRef.current = true;
     },
     [hasFix, mapPins]
   );
@@ -500,11 +495,8 @@ export function MapScreen({
   }, []);
 
   useEffect(() => {
-    if (!mapRef.current) {
-      return;
-    }
-    fitPinsToMap(mapRef.current);
-  }, [fitPinsToMap]);
+    hasFittedPinsRef.current = false;
+  }, [mapPins.length]);
 
   if (!GOOGLE_MAPS_API_KEY) {
     return (
