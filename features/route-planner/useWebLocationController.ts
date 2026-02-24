@@ -15,6 +15,7 @@ const DEFAULT_COARSE_TIMEOUT_MS = 10000;
 const DEFAULT_COARSE_MAX_AGE_MS = 120000;
 const DEFAULT_PRECISE_TIMEOUT_MS = 30000;
 const DEFAULT_PRECISE_MAX_AGE_MS = 0;
+const DEFAULT_POLL_INTERVAL_MS = 30000;
 const MIN_LOCATION_MOVE_UPDATE_M = 8;
 const MIN_ACCURACY_DELTA_UPDATE_M = 8;
 const MAX_LOCATION_STALE_UPDATE_MS = 4000;
@@ -112,7 +113,7 @@ export function useWebLocationController(
   const sessionIdRef = useRef(0);
   const coarseTimeoutRef = useRef<number | null>(null);
   const refineTimeoutRef = useRef<number | null>(null);
-  const watchIdRef = useRef<number | null>(null);
+  const pollIntervalRef = useRef<number | null>(null);
   const lastLocationEmitAtRef = useRef(0);
 
   const clearCoarseTimeout = useCallback(() => {
@@ -129,18 +130,18 @@ export function useWebLocationController(
     }
   }, []);
 
-  const clearWatch = useCallback(() => {
-    if (watchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
+  const clearPollInterval = useCallback(() => {
+    if (pollIntervalRef.current !== null) {
+      window.clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
     }
   }, []);
 
   const clearAllTracking = useCallback(() => {
     clearCoarseTimeout();
     clearRefineTimeout();
-    clearWatch();
-  }, [clearCoarseTimeout, clearRefineTimeout, clearWatch]);
+    clearPollInterval();
+  }, [clearCoarseTimeout, clearPollInterval, clearRefineTimeout]);
 
   const beginPreciseTracking = useCallback(
     (sessionId: number, host: string) => {
@@ -333,17 +334,25 @@ export function useWebLocationController(
         }));
       };
 
-      clearWatch();
-      watchIdRef.current = navigator.geolocation.watchPosition(onPreciseSuccess, onPreciseError, {
-        enableHighAccuracy: true,
-        timeout: preciseTimeoutMs,
-        maximumAge: preciseMaximumAgeMs,
-      });
+      const requestPreciseUpdate = () => {
+        if (sessionIdRef.current !== sessionId) {
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(onPreciseSuccess, onPreciseError, {
+          enableHighAccuracy: true,
+          timeout: preciseTimeoutMs,
+          maximumAge: preciseMaximumAgeMs,
+        });
+      };
+
+      requestPreciseUpdate();
+      clearPollInterval();
+      pollIntervalRef.current = window.setInterval(requestPreciseUpdate, DEFAULT_POLL_INTERVAL_MS);
     },
     [
       approximateThresholdM,
+      clearPollInterval,
       clearRefineTimeout,
-      clearWatch,
       preciseMaximumAgeMs,
       preciseThresholdM,
       preciseTimeoutMs,
