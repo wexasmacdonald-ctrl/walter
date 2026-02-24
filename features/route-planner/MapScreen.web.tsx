@@ -36,6 +36,7 @@ type MapPin = {
 };
 const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 };
 const DEFAULT_ZOOM = 12;
+const MAX_ACCEPTED_LOCATION_ACCURACY_METERS = 120;
 
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
 export function MapScreen({
@@ -139,6 +140,20 @@ export function MapScreen({
       if (locationRequestTimeoutRef.current !== null) {
         window.clearTimeout(locationRequestTimeoutRef.current);
         locationRequestTimeoutRef.current = null;
+      }
+      if (
+        typeof position.coords.accuracy === 'number' &&
+        Number.isFinite(position.coords.accuracy) &&
+        position.coords.accuracy > MAX_ACCEPTED_LOCATION_ACCURACY_METERS
+      ) {
+        setLocating(false);
+        setLocationErrorMessage(
+          `Location is too coarse (${Math.round(position.coords.accuracy)}m). Move outdoors and retry for GPS accuracy.`
+        );
+        setLocationDebug(
+          `Rejected coarse fix (${Math.round(position.coords.accuracy)}m accuracy)`
+        );
+        return;
       }
       setUserPosition({
         lat: position.coords.latitude,
