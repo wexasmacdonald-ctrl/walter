@@ -64,7 +64,7 @@ export function MapScreen({
     state: locationState,
     hasFix,
     isPrecise,
-  } = useWebLocationController({ autoStart: true });
+  } = useWebLocationController({ autoStart: false });
   const mapRef = useRef<google.maps.Map | null>(null);
   const hasCenteredOnUserRef = useRef(false);
 
