@@ -57,6 +57,7 @@ export function MapScreen({
   const [locationPermissionDenied, setLocationPermissionDenied] = useState(false);
   const [locationErrorMessage, setLocationErrorMessage] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
+  const [locationDebug, setLocationDebug] = useState('Idle');
   const mapRef = useRef<google.maps.Map | null>(null);
   const geoWatchIdRef = useRef<number | null>(null);
   const locationRequestTimeoutRef = useRef<number | null>(null);
@@ -116,19 +117,23 @@ export function MapScreen({
   }, []);
 
   const requestLocation = (highAccuracy: boolean) => {
+    setLocationDebug('Locate pressed');
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setLocationErrorMessage('Browser geolocation is unavailable on this device.');
       setLocationPermissionDenied(false);
+      setLocationDebug('No navigator.geolocation');
       return;
     }
 
     setLocating(true);
+    setLocationDebug(`Requesting location (highAccuracy=${highAccuracy ? 'true' : 'false'})`);
     if (locationRequestTimeoutRef.current !== null) {
       window.clearTimeout(locationRequestTimeoutRef.current);
     }
     locationRequestTimeoutRef.current = window.setTimeout(() => {
       setLocating(false);
       setLocationErrorMessage('Location request took too long. Tap "Locate me" to retry.');
+      setLocationDebug('Timeout reached (15s)');
     }, 15000);
     const onSuccess = (position: GeolocationPosition) => {
       if (locationRequestTimeoutRef.current !== null) {
@@ -142,6 +147,9 @@ export function MapScreen({
       setLocationPermissionDenied(false);
       setLocationErrorMessage(null);
       setLocating(false);
+      setLocationDebug(
+        `Location OK (${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)})`
+      );
     };
 
     const onError = (error: GeolocationPositionError) => {
@@ -155,17 +163,21 @@ export function MapScreen({
         setLocationErrorMessage(
           'Location was denied by Safari for this site. Open aA > Website Settings > Location and choose Allow.'
         );
+        setLocationDebug(`Error code ${error.code}: PERMISSION_DENIED`);
         return;
       }
       if (error.code === error.POSITION_UNAVAILABLE) {
         setLocationErrorMessage('Location is currently unavailable. Check GPS/network and try again.');
+        setLocationDebug(`Error code ${error.code}: POSITION_UNAVAILABLE`);
         return;
       }
       if (error.code === error.TIMEOUT) {
         setLocationErrorMessage('Location lookup timed out. Tap "Locate me" to retry.');
+        setLocationDebug(`Error code ${error.code}: TIMEOUT`);
         return;
       }
       setLocationErrorMessage('Could not read your location. Tap "Locate me" to retry.');
+      setLocationDebug(`Error code ${error.code}: UNKNOWN`);
     };
 
     navigator.geolocation.getCurrentPosition(onSuccess, onError, {
@@ -495,10 +507,14 @@ export function MapScreen({
         <Pressable
           style={[styles.locationButton, locating && styles.locationButtonDisabled]}
           onPress={() => requestLocation(true)}
+          onPressIn={() => setLocationDebug('Button press detected')}
           disabled={locating}
         >
           <Text style={styles.locationButtonText}>{locating ? 'Locating...' : 'Locate me'}</Text>
         </Pressable>
+        <Text style={styles.locationDebugText} numberOfLines={2}>
+          {locationDebug}
+        </Text>
       </View>
     );
   };
@@ -1015,11 +1031,15 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       position: 'absolute',
       right: 12,
       bottom: 12,
+      zIndex: 6,
+      alignItems: 'flex-end',
     },
     locationButtonWrapperFullScreen: {
       position: 'absolute',
       right: 12,
       bottom: 16,
+      zIndex: 6,
+      alignItems: 'flex-end',
     },
     locationButton: {
       paddingHorizontal: 14,
@@ -1035,6 +1055,19 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     locationButtonText: {
       color: colors.primary,
       fontWeight: '700',
+    },
+    locationDebugText: {
+      marginTop: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+      backgroundColor: hexToRgba(colors.surface, isDark ? 0.8 : 0.9),
+      borderWidth: 1,
+      borderColor: colors.border,
+      color: colors.mutedText,
+      fontSize: 11,
+      maxWidth: 220,
+      textAlign: 'right',
     },
   });
 }
