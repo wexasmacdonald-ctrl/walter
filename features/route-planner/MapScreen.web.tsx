@@ -185,7 +185,6 @@ export function MapScreen({
   };
 
   useEffect(() => {
-    requestLocation(false);
     return () => {
       if (locationRequestTimeoutRef.current !== null) {
         window.clearTimeout(locationRequestTimeoutRef.current);
