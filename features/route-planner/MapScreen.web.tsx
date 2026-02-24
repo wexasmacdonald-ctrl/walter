@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -96,7 +97,6 @@ export function MapScreen({
   );
   const fullScreenLocateInsetStyle = useMemo<CSSProperties>(
     () => ({
-      left: 'calc(env(safe-area-inset-left) + 12px)',
       bottom: 'calc(env(safe-area-inset-bottom) + 16px)',
     }),
     []
@@ -211,21 +211,6 @@ export function MapScreen({
       setIsFullScreen(false);
     }
   }, [exitFullScreenSignal]);
-
-  useEffect(() => {
-    if (typeof document === 'undefined' || !isFullScreen) {
-      return;
-    }
-    const { body, documentElement } = document;
-    const previousBodyOverflow = body.style.overflow;
-    const previousDocOverflow = documentElement.style.overflow;
-    body.style.overflow = 'hidden';
-    documentElement.style.overflow = 'hidden';
-    return () => {
-      body.style.overflow = previousBodyOverflow;
-      documentElement.style.overflow = previousDocOverflow;
-    };
-  }, [isFullScreen]);
 
   const handleSelect = (id: string) => {
     setSelectedId((prev) => (prev === id ? null : id));
@@ -611,9 +596,8 @@ export function MapScreen({
           {renderToast('primary')}
         </View>
 
-        {isFullScreen ? (
-          <View pointerEvents="box-none" style={[styles.fullScreenShell, fullScreenOverlayStyle as any]}>
-            <View style={styles.modalContent}>
+        <Modal visible={isFullScreen} animationType="slide" onRequestClose={() => setIsFullScreen(false)}>
+          <View style={[styles.modalContent, fullScreenOverlayStyle as any]}>
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderActions}>
                 {renderMapTypeToggle()}
@@ -656,8 +640,7 @@ export function MapScreen({
             {renderToast('modal')}
           </View>
           </View>
-          </View>
-        ) : null}
+        </Modal>
       </View>
     </APIProvider>
   );
@@ -1124,9 +1107,6 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.danger,
       fontWeight: '600',
     },
-    fullScreenShell: {
-      zIndex: 9999,
-    },
     modalContent: {
       flex: 1,
       backgroundColor: colors.surface,
@@ -1163,17 +1143,17 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     locationButtonWrapper: {
       position: 'absolute',
-      left: 12,
+      right: 12,
       bottom: 12,
       zIndex: 6,
-      alignItems: 'flex-start',
+      alignItems: 'flex-end',
     },
     locationButtonWrapperFullScreen: {
       position: 'absolute',
-      left: 12,
+      right: 12,
       bottom: 16,
       zIndex: 6,
-      alignItems: 'flex-start',
+      alignItems: 'flex-end',
     },
     locationButton: {
       paddingHorizontal: 14,
@@ -1201,7 +1181,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.mutedText,
       fontSize: 11,
       maxWidth: 220,
-      textAlign: 'left',
+      textAlign: 'right',
     },
   });
 }
