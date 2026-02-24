@@ -73,6 +73,7 @@ export function MapScreen({
   const mapRef = useRef<google.maps.Map | null>(null);
   const hasCenteredOnUserRef = useRef(false);
   const suppressFitBoundsUntilRef = useRef(0);
+  const lastFittedPinsSignatureRef = useRef<string | null>(null);
   const mapCanvasStyle = useMemo<CSSProperties>(
     () => ({
       width: '100%',
@@ -136,6 +137,7 @@ export function MapScreen({
 
   const handleStartLocate = useCallback(() => {
     hasCenteredOnUserRef.current = false;
+    lastFittedPinsSignatureRef.current = null;
     startLocate();
   }, [startLocate]);
 
@@ -460,9 +462,18 @@ export function MapScreen({
       if (hasCenteredOnUserRef.current && hasFix) {
         return;
       }
+
+      const pinSignature = mapPins
+        .map((pin) => `${pin.id}:${pin.position.lat.toFixed(6)},${pin.position.lng.toFixed(6)}`)
+        .join('|');
+      if (lastFittedPinsSignatureRef.current === pinSignature) {
+        return;
+      }
+
       const bounds = new google.maps.LatLngBounds();
       mapPins.forEach((pin) => bounds.extend(pin.position));
       map.fitBounds(bounds);
+      lastFittedPinsSignatureRef.current = pinSignature;
     },
     [hasFix, mapPins]
   );
