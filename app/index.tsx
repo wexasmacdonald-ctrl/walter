@@ -928,7 +928,8 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
       }),
     [animateBackNavigation, canGoBack, resetSwipePosition, screenWidth, swipeTranslate]
   );
-  const panHandlers = isDevUser ? panResponder.panHandlers : {};
+  // Keep back-swipe gestures off web so embedded maps can own horizontal drag.
+  const panHandlers = isDevUser && !IS_WEB ? panResponder.panHandlers : {};
 
   const sections: {
     key: AdminSectionKey;
