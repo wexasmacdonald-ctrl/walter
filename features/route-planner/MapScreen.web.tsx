@@ -77,7 +77,6 @@ export function MapScreen({
     () => ({
       width: '100%',
       height: '100%',
-      touchAction: 'none',
     }),
     []
   );
