@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { APIProvider, Map, Marker } from '@vis.gl/react-google-maps';
+import { APIProvider, Map, Marker, useMap } from '@vis.gl/react-google-maps';
 
 import { useTheme } from '@/features/theme/theme-context';
 import { getGoogleMapsApiKey } from '@/features/route-planner/getGoogleMapsApiKey';
@@ -401,7 +401,6 @@ export function MapScreen({
     }),
     [mapStyle]
   );
-  const GoogleMap: any = Map;
 
   const showLocationDebug = __DEV__ || FORCE_WEB_LOCATION_DEBUG;
   const locationDebugLabel = showLocationDebug
@@ -519,22 +518,24 @@ export function MapScreen({
         </View>
 
         <View style={styles.mapWrapper}>
-          <GoogleMap
+          <Map
             style={styles.mapCanvas}
             defaultCenter={initialCenter}
             defaultZoom={DEFAULT_ZOOM}
             mapTypeId={mapTypeId}
             {...mapOptions}
             onClick={() => setSelectedId(null)}
-            onLoad={(map: google.maps.Map) => {
-              mapRef.current = map;
-              if (hasFix && locationState.coords) {
-                applyUserViewport(map, locationState.coords, isPrecise);
-              } else {
-                fitPinsToMap(map);
-              }
-            }}
           >
+            <MapInstanceBridge
+              onMapReady={(map) => {
+                mapRef.current = map;
+                if (hasFix && locationState.coords) {
+                  applyUserViewport(map, locationState.coords, isPrecise);
+                } else {
+                  fitPinsToMap(map);
+                }
+              }}
+            />
             {hasFix && locationState.coords ? (
               <UserLocationMarker
                 position={locationState.coords}
@@ -542,7 +543,7 @@ export function MapScreen({
               />
             ) : null}
             {renderMarkers()}
-          </GoogleMap>
+          </Map>
           {renderOverlay()}
           {renderLocationButton('primary')}
           {renderToast('primary')}
@@ -559,22 +560,24 @@ export function MapScreen({
               </View>
             </View>
             <View style={styles.modalMapWrapper}>
-            <GoogleMap
+            <Map
               style={styles.mapCanvas}
               defaultCenter={initialCenter}
               defaultZoom={DEFAULT_ZOOM}
               mapTypeId={mapTypeId}
               {...mapOptions}
               onClick={() => setSelectedId(null)}
-              onLoad={(map: google.maps.Map) => {
-                mapRef.current = map;
-                if (hasFix && locationState.coords) {
-                  applyUserViewport(map, locationState.coords, isPrecise);
-                } else {
-                  fitPinsToMap(map);
-                }
-              }}
             >
+              <MapInstanceBridge
+                onMapReady={(map) => {
+                  mapRef.current = map;
+                  if (hasFix && locationState.coords) {
+                    applyUserViewport(map, locationState.coords, isPrecise);
+                  } else {
+                    fitPinsToMap(map);
+                  }
+                }}
+              />
               {hasFix && locationState.coords ? (
                 <UserLocationMarker
                   position={locationState.coords}
@@ -582,7 +585,7 @@ export function MapScreen({
                 />
               ) : null}
               {renderMarkers()}
-            </GoogleMap>
+            </Map>
             {renderOverlay()}
             {renderLocationButton('modal')}
             {renderToast('modal')}
@@ -788,6 +791,24 @@ function UserLocationMarker({
       <Marker position={position} icon={icons.core} zIndex={4} />
     </>
   );
+}
+
+function MapInstanceBridge({ onMapReady }: { onMapReady: (map: google.maps.Map) => void }) {
+  const map = useMap();
+  const onMapReadyRef = useRef(onMapReady);
+
+  useEffect(() => {
+    onMapReadyRef.current = onMapReady;
+  }, [onMapReady]);
+
+  useEffect(() => {
+    if (!map) {
+      return;
+    }
+    onMapReadyRef.current(map);
+  }, [map]);
+
+  return null;
 }
 
 
