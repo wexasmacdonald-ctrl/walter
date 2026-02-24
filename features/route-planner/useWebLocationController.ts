@@ -438,28 +438,18 @@ export function useWebLocationController(
       const coords = toCoords(position);
       const accuracyM = normalizeAccuracy(position.coords.accuracy);
       lastLocationEmitAtRef.current = Date.now();
-
-      if (accuracyM !== null && accuracyM <= approximateThresholdM) {
-        setState({
-          status: 'coarse_ready',
-          coords,
-          accuracyM,
-          isApproximate: true,
-          statusMessage: 'Approximate location found. Refining GPS...',
-          isLocating: false,
-          lastErrorCode: null,
-        });
-      } else {
-        setState({
-          status: 'requesting_precise',
-          coords: null,
-          accuracyM,
-          isApproximate: false,
-          statusMessage: 'Initial fix is too coarse. Refining GPS...',
-          isLocating: true,
-          lastErrorCode: null,
-        });
-      }
+      const isVeryCoarse = accuracyM === null || accuracyM > approximateThresholdM;
+      setState({
+        status: 'coarse_ready',
+        coords,
+        accuracyM,
+        isApproximate: true,
+        statusMessage: isVeryCoarse
+          ? 'Location is very approximate. Refining GPS...'
+          : 'Approximate location found. Refining GPS...',
+        isLocating: false,
+        lastErrorCode: null,
+      });
 
       beginPreciseTracking(sessionId, host);
     };
