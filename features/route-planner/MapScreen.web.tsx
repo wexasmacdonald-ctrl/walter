@@ -120,8 +120,16 @@ export function MapScreen({
     hasCenteredOnUserRef.current = true;
   };
 
+  const handleStartLocate = useCallback(() => {
+    hasCenteredOnUserRef.current = false;
+    startLocate();
+  }, [startLocate]);
+
   useEffect(() => {
     if (!hasFix || !locationState.coords || !mapRef.current) {
+      return;
+    }
+    if (hasCenteredOnUserRef.current) {
       return;
     }
     applyUserViewport(mapRef.current, locationState.coords, isPrecise);
@@ -409,8 +417,7 @@ export function MapScreen({
       <View pointerEvents="box-none" style={wrapperStyle}>
         <Pressable
           style={[styles.locationButton, locationState.isLocating && styles.locationButtonDisabled]}
-          onPress={startLocate}
-          disabled={locationState.isLocating}
+          onPress={handleStartLocate}
         >
           <Text style={styles.locationButtonText}>
             {locationState.isLocating ? 'Locating...' : 'Locate me'}
