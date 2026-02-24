@@ -55,7 +55,10 @@ export function MapScreen({
   const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   const [userPosition, setUserPosition] = useState<google.maps.LatLngLiteral | null>(null);
   const [locationPermissionDenied, setLocationPermissionDenied] = useState(false);
+  const [locationErrorMessage, setLocationErrorMessage] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
   const mapRef = useRef<google.maps.Map | null>(null);
+  const geoWatchIdRef = useRef<number | null>(null);
 
   const mapPins = useMemo<MapPin[]>(() => {
     return pins
@@ -111,47 +114,66 @@ export function MapScreen({
     };
   }, []);
 
-  useEffect(() => {
+  const requestLocation = (highAccuracy: boolean) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocationErrorMessage('Browser geolocation is unavailable on this device.');
+      setLocationPermissionDenied(false);
       return;
     }
 
-    let mounted = true;
+    setLocating(true);
     const onSuccess = (position: GeolocationPosition) => {
-      if (!mounted) {
-        return;
-      }
       setUserPosition({
         lat: position.coords.latitude,
         lng: position.coords.longitude,
       });
       setLocationPermissionDenied(false);
+      setLocationErrorMessage(null);
+      setLocating(false);
     };
 
     const onError = (error: GeolocationPositionError) => {
-      if (!mounted) {
-        return;
-      }
+      setLocating(false);
       if (error.code === error.PERMISSION_DENIED) {
         setLocationPermissionDenied(true);
+        setLocationErrorMessage(
+          'Location was denied by Safari for this site. Open aA > Website Settings > Location and choose Allow.'
+        );
+        return;
       }
+      if (error.code === error.POSITION_UNAVAILABLE) {
+        setLocationErrorMessage('Location is currently unavailable. Check GPS/network and try again.');
+        return;
+      }
+      if (error.code === error.TIMEOUT) {
+        setLocationErrorMessage('Location lookup timed out. Tap "Use my location" to retry.');
+        return;
+      }
+      setLocationErrorMessage('Could not read your location. Tap "Use my location" to retry.');
     };
 
     navigator.geolocation.getCurrentPosition(onSuccess, onError, {
-      enableHighAccuracy: true,
+      enableHighAccuracy: highAccuracy,
       timeout: 12000,
       maximumAge: 0,
     });
 
-    const watchId = navigator.geolocation.watchPosition(onSuccess, onError, {
-      enableHighAccuracy: true,
+    if (geoWatchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(geoWatchIdRef.current);
+    }
+    geoWatchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, {
+      enableHighAccuracy: highAccuracy,
       timeout: 20000,
       maximumAge: 15000,
     });
+  };
 
+  useEffect(() => {
+    requestLocation(false);
     return () => {
-      mounted = false;
-      navigator.geolocation.clearWatch(watchId);
+      if (geoWatchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(geoWatchIdRef.current);
+      }
     };
   }, []);
 
@@ -382,6 +404,14 @@ export function MapScreen({
       );
     }
 
+    if (locationErrorMessage) {
+      return (
+        <View style={styles.notice}>
+          <Text style={styles.noticeText}>{locationErrorMessage}</Text>
+        </View>
+      );
+    }
+
     return null;
   };
 
@@ -490,6 +520,15 @@ export function MapScreen({
       <View style={styles.container}>
         <View style={styles.header}>
           <View style={styles.headerActions}>
+            <Pressable
+              style={styles.fullScreenButton}
+              onPress={() => requestLocation(true)}
+              disabled={locating}
+            >
+              <Text style={styles.fullScreenButtonText}>
+                {locating ? 'Locating...' : 'Use my location'}
+              </Text>
+            </Pressable>
             {renderMapTypeToggle()}
             <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
               <Text style={styles.fullScreenButtonText}>Full Screen</Text>
@@ -530,6 +569,15 @@ export function MapScreen({
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderActions}>
+                <Pressable
+                  style={styles.fullScreenButton}
+                  onPress={() => requestLocation(true)}
+                  disabled={locating}
+                >
+                  <Text style={styles.fullScreenButtonText}>
+                    {locating ? 'Locating...' : 'Use my location'}
+                  </Text>
+                </Pressable>
                 {renderMapTypeToggle()}
                 <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(false)}>
                   <Text style={styles.fullScreenButtonText}>Close</Text>
