@@ -320,9 +320,8 @@ export function MapScreen({
             {hasFix && locationState.coords ? (
               <Marker
                 position={locationState.coords}
-                label="You"
                 zIndex={9}
-                opacity={locationState.isApproximate ? 0.72 : 1}
+                title="Your location"
               />
             ) : null}
           </Map>
