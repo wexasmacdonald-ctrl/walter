@@ -83,21 +83,14 @@ export function MapScreen({
   );
   const fullScreenOverlayStyle = useMemo<CSSProperties>(
     () => ({
-      position: 'fixed',
-      inset: 0,
-      width: '100vw',
-      height: '100dvh',
-      minHeight: '100vh',
-      paddingTop: 'env(safe-area-inset-top)',
-      paddingRight: 'env(safe-area-inset-right)',
-      paddingBottom: 'env(safe-area-inset-bottom)',
-      paddingLeft: 'env(safe-area-inset-left)',
+      width: '100%',
+      height: '100%',
     }),
     []
   );
   const fullScreenLocateInsetStyle = useMemo<CSSProperties>(
     () => ({
-      bottom: 'calc(env(safe-area-inset-bottom) + 16px)',
+      bottom: 16,
     }),
     []
   );
