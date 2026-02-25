@@ -305,12 +305,13 @@ export function MapScreen({
             {mapPins.map((pin) => {
               const isSelected = pin.id === selectedId;
               const isConfirmed = pin.status === 'complete' || Boolean(confirmedAt[pin.id]);
+              const pinFill = isConfirmed ? '#10B981' : isSelected ? '#2563EB' : '#1D4ED8';
               return (
                 <Marker
                   key={pin.id}
                   position={pin.position}
                   onClick={() => setSelectedId(pin.id)}
-                  label={pin.label}
+                  icon={buildBadgePinIcon(pin.label, pinFill, isSelected)}
                   zIndex={isSelected ? 5 : 3}
                   opacity={isConfirmed ? 0.78 : 1}
                 />
@@ -418,6 +419,23 @@ function toNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function buildBadgePinIcon(label: string, fill: string, selected: boolean): string {
+  const width = selected ? 82 : 74;
+  const height = selected ? 40 : 36;
+  const text = escapeSvgText((label || '').slice(0, 4));
+  const svg = `<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"${width}\" height=\"${height}\" viewBox=\"0 0 ${width} ${height}\"><rect x=\"2\" y=\"2\" width=\"${width - 4}\" height=\"${height - 4}\" rx=\"10\" fill=\"${fill}\" stroke=\"#ffffff\" stroke-width=\"2\"/><text x=\"${Math.round(width / 2)}\" y=\"${Math.round(height / 2) + 5}\" text-anchor=\"middle\" font-family=\"Arial, sans-serif\" font-size=\"14\" font-weight=\"700\" fill=\"#ffffff\">${text}</text></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function escapeSvgText(input: string): string {
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
