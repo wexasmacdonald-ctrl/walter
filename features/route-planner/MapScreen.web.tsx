@@ -45,6 +45,30 @@ const INLINE_MAP_ID = 'route-map-inline';
 const FULLSCREEN_MAP_ID = 'route-map-fullscreen';
 const FORCE_WEB_LOCATION_DEBUG =
   typeof process !== 'undefined' && process.env.EXPO_PUBLIC_WEB_LOCATION_DEBUG === '1';
+const FORCE_WEB_MAP_GESTURE_DEBUG =
+  typeof process !== 'undefined' && process.env.EXPO_PUBLIC_WEB_MAP_GESTURE_DEBUG === '1';
+const gestureProbeStyles = StyleSheet.create({
+  overlay: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 56,
+    zIndex: 6,
+    alignItems: 'flex-start',
+  },
+  text: {
+    fontSize: 11,
+    lineHeight: 14,
+    color: '#111827',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    maxWidth: 340,
+  },
+});
 
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
 export function MapScreen({
@@ -435,9 +459,11 @@ export function MapScreen({
   );
 
   const showLocationDebug = __DEV__ || FORCE_WEB_LOCATION_DEBUG;
+  const showGestureDebug = __DEV__ || FORCE_WEB_MAP_GESTURE_DEBUG;
   const locationDebugLabel = showLocationDebug
     ? formatWebLocationDebug(locationState)
     : null;
+  const [gestureDebugLabel, setGestureDebugLabel] = useState('waiting for map events...');
 
   const renderLocationButton = (variant: 'primary' | 'modal') => {
     const wrapperStyle =
@@ -462,6 +488,22 @@ export function MapScreen({
       </View>
     );
   };
+
+  const handleGestureDebugEvent = useCallback(
+    (entry: { source: 'map' | 'dom'; name: string; center?: google.maps.LatLngLiteral; zoom?: number }) => {
+      if (!showGestureDebug) {
+        return;
+      }
+      const now = new Date().toLocaleTimeString();
+      const centerLabel =
+        entry.center === undefined
+          ? 'center:n/a'
+          : `center:${entry.center.lat.toFixed(5)},${entry.center.lng.toFixed(5)}`;
+      const zoomLabel = entry.zoom === undefined ? 'zoom:n/a' : `zoom:${entry.zoom}`;
+      setGestureDebugLabel(`${now} ${entry.source}:${entry.name} ${centerLabel} ${zoomLabel}`);
+    },
+    [showGestureDebug]
+  );
 
   const fitPinsToMap = useCallback(
     (map: google.maps.Map | null) => {
@@ -566,6 +608,9 @@ export function MapScreen({
               {...mapOptions}
               onClick={() => setSelectedId(null)}
             >
+              {showGestureDebug ? (
+                <MapGestureProbe mapId={INLINE_MAP_ID} onEvent={handleGestureDebugEvent} />
+              ) : null}
               <MapInstanceBridge
                 mapId={INLINE_MAP_ID}
                 onMapReady={(map) => {
@@ -587,6 +632,7 @@ export function MapScreen({
             </Map>
             {renderOverlay()}
             {renderLocationButton('primary')}
+            {showGestureDebug ? <MapGestureDebugOverlay label={gestureDebugLabel} /> : null}
             {renderToast('primary')}
           </View>
         ) : null}
@@ -611,6 +657,9 @@ export function MapScreen({
               {...mapOptions}
               onClick={() => setSelectedId(null)}
             >
+              {showGestureDebug ? (
+                <MapGestureProbe mapId={FULLSCREEN_MAP_ID} onEvent={handleGestureDebugEvent} />
+              ) : null}
               <MapInstanceBridge
                 mapId={FULLSCREEN_MAP_ID}
                 onMapReady={(map) => {
@@ -632,6 +681,7 @@ export function MapScreen({
             </Map>
             {renderOverlay()}
             {renderLocationButton('modal')}
+            {showGestureDebug ? <MapGestureDebugOverlay label={gestureDebugLabel} /> : null}
             {renderToast('modal')}
           </View>
           </View>
@@ -861,6 +911,70 @@ function MapInstanceBridge({
   return null;
 }
 
+function MapGestureProbe({
+  mapId,
+  onEvent,
+}: {
+  mapId?: string;
+  onEvent: (entry: { source: 'map' | 'dom'; name: string; center?: google.maps.LatLngLiteral; zoom?: number }) => void;
+}) {
+  const map = useMap(mapId ?? null);
+  const onEventRef = useRef(onEvent);
+
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
+
+  useEffect(() => {
+    if (!map) {
+      return;
+    }
+
+    const report = (source: 'map' | 'dom', name: string) => {
+      const center = map.getCenter()?.toJSON();
+      const zoom = map.getZoom() ?? undefined;
+      onEventRef.current({ source, name, center, zoom });
+    };
+
+    const mapListeners = [
+      map.addListener('dragstart', () => report('map', 'dragstart')),
+      map.addListener('drag', () => report('map', 'drag')),
+      map.addListener('dragend', () => report('map', 'dragend')),
+      map.addListener('idle', () => report('map', 'idle')),
+      map.addListener('center_changed', () => report('map', 'center_changed')),
+      map.addListener('zoom_changed', () => report('map', 'zoom_changed')),
+    ];
+
+    const div = map.getDiv();
+    const domEvents = ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'wheel'];
+    const domHandlers = domEvents.map((eventName) => {
+      const handler = () => report('dom', eventName);
+      div.addEventListener(eventName, handler, { passive: true });
+      return { eventName, handler };
+    });
+
+    report('map', 'probe_attached');
+
+    return () => {
+      mapListeners.forEach((listener) => listener.remove());
+      domHandlers.forEach(({ eventName, handler }) => {
+        div.removeEventListener(eventName, handler);
+      });
+    };
+  }, [map]);
+
+  return null;
+}
+
+function MapGestureDebugOverlay({ label }: { label: string }) {
+  return (
+    <View pointerEvents="none" style={gestureProbeStyles.overlay}>
+      <Text numberOfLines={3} style={gestureProbeStyles.text}>
+        {label}
+      </Text>
+    </View>
+  );
+}
 
 function extractHouseNumber(address: string | null | undefined): string | null {
   if (!address) {
