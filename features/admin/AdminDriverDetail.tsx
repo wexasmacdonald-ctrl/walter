@@ -914,6 +914,7 @@ export function AdminDriverDetail({
       ) : null}
 
       <ScrollView
+        scrollEnabled={!(Platform.OS === 'web' && mapExpanded)}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"

@@ -1219,9 +1219,11 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
           <Animated.View
             style={[
               styles.currentStage,
-              {
-                transform: [{ translateX: swipeTranslate }],
-              },
+              !IS_WEB
+                ? {
+                    transform: [{ translateX: swipeTranslate }],
+                  }
+                : null,
             ]}
             {...(isDevUser ? panHandlers : {})}
           >
