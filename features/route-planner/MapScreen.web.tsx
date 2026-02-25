@@ -55,7 +55,6 @@ export function MapScreen({
   const rootElementId = 'web-map-v2-root';
 
   const {
-    startLocate,
     state: locationState,
     hasFix,
   } = useWebLocationController({ autoStart: true, pollIntervalMs: 60000 });
@@ -174,10 +173,6 @@ export function MapScreen({
       fitPinsToMap(mapRef.current);
     }
   }, [fitPinsToMap]);
-
-  const handleLocate = () => {
-    startLocate();
-  };
 
   const handleConfirm = async (id: string) => {
     if (confirmingId) {
@@ -305,26 +300,6 @@ export function MapScreen({
   return (
     <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
       <View nativeID={rootElementId} style={activeContainerStyle}>
-        <View style={styles.topRow}>
-          <View style={styles.mapTypeToggle}>
-            <Pressable
-              style={[styles.mapTypeButton, mapType === 'roadmap' && styles.mapTypeButtonActive]}
-              onPress={() => setMapType('roadmap')}
-            >
-              <Text style={[styles.mapTypeText, mapType === 'roadmap' && styles.mapTypeTextActive]}>Map</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.mapTypeButton, mapType === 'satellite' && styles.mapTypeButtonActive]}
-              onPress={() => setMapType('satellite')}
-            >
-              <Text style={[styles.mapTypeText, mapType === 'satellite' && styles.mapTypeTextActive]}>Satellite</Text>
-            </Pressable>
-          </View>
-          <Pressable style={styles.fullScreenButton} onPress={handleToggleFullscreen}>
-            <Text style={styles.fullScreenButtonText}>{isFullScreen ? 'Close' : 'Full Screen'}</Text>
-          </Pressable>
-        </View>
-
         <View style={activeMapWrapStyle}>
           <Map
             id={MAP_ID}
@@ -372,22 +347,33 @@ export function MapScreen({
               />
             ) : null}
           </Map>
+          <View style={styles.mapOverlayControls}>
+            <View style={styles.mapTypeToggle}>
+              <Pressable
+                style={[styles.mapTypeButton, mapType === 'roadmap' && styles.mapTypeButtonActive]}
+                onPress={() => setMapType('roadmap')}
+              >
+                <Text style={[styles.mapTypeText, mapType === 'roadmap' && styles.mapTypeTextActive]}>Map</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.mapTypeButton, mapType === 'satellite' && styles.mapTypeButtonActive]}
+                onPress={() => setMapType('satellite')}
+              >
+                <Text style={[styles.mapTypeText, mapType === 'satellite' && styles.mapTypeTextActive]}>Satellite</Text>
+              </Pressable>
+            </View>
+            <Pressable style={styles.fullScreenButton} onPress={handleToggleFullscreen}>
+              <Text style={styles.fullScreenButtonText}>{isFullScreen ? 'Close' : 'Full Screen'}</Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.bottomPanel}>
-          <View style={styles.locationRow}>
-            <Pressable
-              style={[styles.locateButton, locationState.isLocating && styles.locateButtonDisabled]}
-              onPress={handleLocate}
-            >
-              <Text style={styles.locateButtonText}>{locationState.isLocating ? 'Locating...' : 'Locate me'}</Text>
-            </Pressable>
-            {FORCE_WEB_LOCATION_DEBUG ? (
-              <Text style={styles.debugText} numberOfLines={2}>
-                {`state:${locationState.status} acc:${locationState.accuracyM === null ? 'n/a' : Math.round(locationState.accuracyM)}`}
-              </Text>
-            ) : null}
-          </View>
+          {FORCE_WEB_LOCATION_DEBUG ? (
+            <Text style={styles.debugText} numberOfLines={2}>
+              {`state:${locationState.status} acc:${locationState.accuracyM === null ? 'n/a' : Math.round(locationState.accuracyM)}`}
+            </Text>
+          ) : null}
 
           {showLocationNotice ? (
             <View style={styles.noticeCard}>
@@ -503,11 +489,16 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       padding: 12,
       minHeight: 0,
     },
-    topRow: {
+    mapOverlayControls: {
+      position: 'absolute',
+      top: 8,
+      left: 8,
+      right: 8,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: 8,
+      pointerEvents: 'box-none',
     },
     mapTypeToggle: {
       flexDirection: 'row',
@@ -537,7 +528,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderRadius: 999,
       borderWidth: 1,
       borderColor: colors.primary,
-      backgroundColor: colors.surface,
+      backgroundColor: isDark ? 'rgba(15,23,42,0.86)' : 'rgba(255,255,255,0.92)',
       paddingHorizontal: 14,
       paddingVertical: 7,
     },
@@ -560,31 +551,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     bottomPanel: {
       gap: 8,
     },
-    locationRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 8,
-    },
-    locateButton: {
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.primary,
-      backgroundColor: colors.surface,
-      paddingHorizontal: 14,
-      paddingVertical: 9,
-    },
-    locateButtonDisabled: {
-      opacity: 0.7,
-    },
-    locateButtonText: {
-      color: colors.primary,
-      fontWeight: '700',
-    },
     debugText: {
-      flex: 1,
       fontSize: 11,
-      textAlign: 'right',
+      textAlign: 'left',
       color: colors.mutedText,
     },
     noticeCard: {
