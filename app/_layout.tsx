@@ -48,6 +48,7 @@ function NavigationBridge() {
       <GlobalScreenWrapper>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="map-app" options={{ animation: 'fade' }} />
           <Stack.Screen name="legal/[doc]" />
         </Stack>
         <DevErrorOverlay />
