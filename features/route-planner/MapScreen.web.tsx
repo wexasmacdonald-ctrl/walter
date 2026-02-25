@@ -555,39 +555,41 @@ export function MapScreen({
           </View>
         </View>
 
-        <View style={styles.mapWrapper}>
-          <Map
-            id={INLINE_MAP_ID}
-            style={mapCanvasStyle}
-            defaultCenter={initialCenter}
-            defaultZoom={DEFAULT_ZOOM}
-            mapTypeId={mapTypeId}
-            {...mapOptions}
-            onClick={() => setSelectedId(null)}
-          >
-            <MapInstanceBridge
-              mapId={INLINE_MAP_ID}
-              onMapReady={(map) => {
-                mapRef.current = map;
-                if (hasFix && locationState.coords) {
-                  applyUserViewport(map, locationState.coords, isPrecise);
-                } else {
-                  fitPinsToMap(map);
-                }
-              }}
-            />
-            {hasFix && locationState.coords ? (
-              <UserLocationMarker
-                position={locationState.coords}
-                approximate={locationState.isApproximate}
+        {!isFullScreen ? (
+          <View style={styles.mapWrapper}>
+            <Map
+              id={INLINE_MAP_ID}
+              style={mapCanvasStyle}
+              defaultCenter={initialCenter}
+              defaultZoom={DEFAULT_ZOOM}
+              mapTypeId={mapTypeId}
+              {...mapOptions}
+              onClick={() => setSelectedId(null)}
+            >
+              <MapInstanceBridge
+                mapId={INLINE_MAP_ID}
+                onMapReady={(map) => {
+                  mapRef.current = map;
+                  if (hasFix && locationState.coords) {
+                    applyUserViewport(map, locationState.coords, isPrecise);
+                  } else {
+                    fitPinsToMap(map);
+                  }
+                }}
               />
-            ) : null}
-            {renderMarkers()}
-          </Map>
-          {renderOverlay()}
-          {renderLocationButton('primary')}
-          {renderToast('primary')}
-        </View>
+              {hasFix && locationState.coords ? (
+                <UserLocationMarker
+                  position={locationState.coords}
+                  approximate={locationState.isApproximate}
+                />
+              ) : null}
+              {renderMarkers()}
+            </Map>
+            {renderOverlay()}
+            {renderLocationButton('primary')}
+            {renderToast('primary')}
+          </View>
+        ) : null}
 
         <Modal visible={isFullScreen} animationType="slide" onRequestClose={() => setIsFullScreen(false)}>
           <View style={[styles.modalContent, fullScreenOverlayStyle as any]}>
