@@ -115,13 +115,6 @@ export function MapScreen({
     }),
     []
   );
-  const fullScreenLocateInsetStyle = useMemo<CSSProperties>(
-    () => ({
-      bottom: 16,
-    }),
-    []
-  );
-
   const mapPins = useMemo<MapPin[]>(() => {
     const normalized: MapPin[] = [];
     pins.forEach((pin, index) => {
@@ -330,104 +323,6 @@ export function MapScreen({
     });
 
   const canAdjustPin = typeof onAdjustPin === 'function';
-  const renderToast = (variant: 'primary' | 'modal') => {
-    if (!selectedMarker) {
-      return null;
-    }
-    const isConfirmed = Boolean(confirmed[selectedMarker.id]);
-    const containerStyle =
-      variant === 'primary' ? styles.toastContainer : styles.toastContainerFullScreen;
-
-    return (
-      <View style={[styles.toastOverlay, { pointerEvents: 'none' } as const]}>
-        <View style={containerStyle}>
-          <View style={[styles.toastCard, { pointerEvents: 'auto' } as const]}>
-            <Text style={styles.toastLabel}>{selectedMarker.label}</Text>
-            <Text style={styles.toastTitle} numberOfLines={2}>
-              {selectedMarker.address || 'Address unavailable'}
-            </Text>
-            <Text style={styles.toastStatus}>
-              {isConfirmed
-                ? 'Snow cleared. Tap undo to revert.'
-                : 'Tap "Snow cleared" once this stop is finished.'}
-            </Text>
-            <View style={styles.toastActions}>
-              {canAdjustPin ? (
-                <Pressable
-                  style={[styles.toastButton, styles.toastButtonSecondary]}
-                  onPress={() => handleAdjustPin(selectedMarker.id)}
-                >
-                  <Text style={styles.toastButtonSecondaryText}>Adjust pin</Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                style={[styles.toastButton, styles.toastButtonGhost]}
-                onPress={() => setSelectedId(null)}
-              >
-                <Text style={styles.toastButtonGhostText}>Close</Text>
-              </Pressable>
-              {isConfirmed ? (
-                <Pressable
-                  style={[styles.toastButton, styles.toastButtonDanger]}
-                  onPress={() => handleUndo(selectedMarker.id)}
-                  disabled={actioningId === selectedMarker.id}
-                >
-                  <Text style={styles.toastButtonDangerText}>
-                    {actioningId === selectedMarker.id ? 'Updating...' : 'Undo'}
-                  </Text>
-                </Pressable>
-              ) : (
-                <Pressable
-                  style={[styles.toastButton, styles.toastButtonPrimary]}
-                  onPress={() => handleConfirm(selectedMarker.id)}
-                  disabled={actioningId === selectedMarker.id}
-                >
-                  <Text style={styles.toastButtonPrimaryText}>
-                    {actioningId === selectedMarker.id ? 'Updating...' : 'Snow cleared'}
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-          </View>
-        </View>
-      </View>
-    );
-  };
-
-  // renderSelectedCard was added accidentally and duplicated the existing toast UI; removed to avoid double overlays.
-
-  const renderOverlay = () => {
-    if (mapPins.length === 0) {
-      return (
-        <View style={[styles.noticeOverlay, { pointerEvents: 'none' } as const]}>
-          <View style={styles.notice}>
-            <Text style={styles.noticeText}>Pins appear after the locations finish loading.</Text>
-          </View>
-        </View>
-      );
-    }
-
-    const shouldShowLocationNotice =
-      locationState.statusMessage !== null &&
-      (locationState.status === 'denied' ||
-        locationState.status === 'timeout' ||
-        locationState.status === 'unavailable' ||
-        locationState.status === 'unsupported' ||
-        locationState.status === 'insecure_context' ||
-        locationState.status === 'error');
-
-    if (shouldShowLocationNotice) {
-      return (
-        <View style={[styles.noticeOverlay, { pointerEvents: 'none' } as const]}>
-          <View style={styles.notice}>
-            <Text style={styles.noticeText}>{locationState.statusMessage}</Text>
-          </View>
-        </View>
-      );
-    }
-
-    return null;
-  };
 
   const renderMapTypeToggle = () => (
     <View style={styles.mapTypeToggle}>
@@ -475,30 +370,98 @@ export function MapScreen({
     : null;
   const [gestureDebugLabel, setGestureDebugLabel] = useState('waiting for map events...');
 
-  const renderLocationButton = (variant: 'primary' | 'modal') => {
-    const wrapperStyle =
-      variant === 'primary'
-        ? styles.locationButtonWrapper
-        : [styles.locationButtonWrapperFullScreen, fullScreenLocateInsetStyle as any];
+  const renderLocationControlInline = () => (
+    <View style={styles.locationControlInline}>
+      <Pressable
+        style={[styles.locationButton, locationState.isLocating && styles.locationButtonDisabled]}
+        onPress={handleStartLocate}
+      >
+        <Text style={styles.locationButtonText}>
+          {locationState.isLocating ? 'Locating...' : 'Locate me'}
+        </Text>
+      </Pressable>
+      {showLocationDebug ? (
+        <Text style={styles.locationDebugTextInline} numberOfLines={3}>
+          {locationDebugLabel}
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  const renderLocationNoticeInline = () => {
+    const shouldShowLocationNotice =
+      locationState.statusMessage !== null &&
+      (locationState.status === 'denied' ||
+        locationState.status === 'timeout' ||
+        locationState.status === 'unavailable' ||
+        locationState.status === 'unsupported' ||
+        locationState.status === 'insecure_context' ||
+        locationState.status === 'error');
+    if (!shouldShowLocationNotice) {
+      return null;
+    }
     return (
-      <View style={[wrapperStyle as any, { pointerEvents: 'none' } as const]}>
-        <Pressable
-          style={[
-            styles.locationButton,
-            { pointerEvents: 'auto' } as const,
-            locationState.isLocating && styles.locationButtonDisabled,
-          ]}
-          onPress={handleStartLocate}
-        >
-          <Text style={styles.locationButtonText}>
-            {locationState.isLocating ? 'Locating...' : 'Locate me'}
+      <View style={styles.noticeStandalone}>
+        <Text style={styles.noticeText}>{locationState.statusMessage}</Text>
+      </View>
+    );
+  };
+
+  const renderSelectedCardInline = () => {
+    if (!selectedMarker) {
+      return null;
+    }
+    const isConfirmed = Boolean(confirmed[selectedMarker.id]);
+    return (
+      <View style={styles.inlineToastContainer}>
+        <View style={styles.toastCard}>
+          <Text style={styles.toastLabel}>{selectedMarker.label}</Text>
+          <Text style={styles.toastTitle} numberOfLines={2}>
+            {selectedMarker.address || 'Address unavailable'}
           </Text>
-        </Pressable>
-        {showLocationDebug ? (
-          <Text style={styles.locationDebugText} numberOfLines={3}>
-            {locationDebugLabel}
+          <Text style={styles.toastStatus}>
+            {isConfirmed
+              ? 'Snow cleared. Tap undo to revert.'
+              : 'Tap "Snow cleared" once this stop is finished.'}
           </Text>
-        ) : null}
+          <View style={styles.toastActions}>
+            {canAdjustPin ? (
+              <Pressable
+                style={[styles.toastButton, styles.toastButtonSecondary]}
+                onPress={() => handleAdjustPin(selectedMarker.id)}
+              >
+                <Text style={styles.toastButtonSecondaryText}>Adjust pin</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              style={[styles.toastButton, styles.toastButtonGhost]}
+              onPress={() => setSelectedId(null)}
+            >
+              <Text style={styles.toastButtonGhostText}>Close</Text>
+            </Pressable>
+            {isConfirmed ? (
+              <Pressable
+                style={[styles.toastButton, styles.toastButtonDanger]}
+                onPress={() => handleUndo(selectedMarker.id)}
+                disabled={actioningId === selectedMarker.id}
+              >
+                <Text style={styles.toastButtonDangerText}>
+                  {actioningId === selectedMarker.id ? 'Updating...' : 'Undo'}
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={[styles.toastButton, styles.toastButtonPrimary]}
+                onPress={() => handleConfirm(selectedMarker.id)}
+                disabled={actioningId === selectedMarker.id}
+              >
+                <Text style={styles.toastButtonPrimaryText}>
+                  {actioningId === selectedMarker.id ? 'Updating...' : 'Snow cleared'}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
       </View>
     );
   };
@@ -616,42 +579,44 @@ export function MapScreen({
         </View>
 
         {!isFullScreen ? (
-          <View style={styles.mapWrapper}>
-            <Map
-              id={INLINE_MAP_ID}
-              style={mapCanvasStyle}
-              defaultCenter={initialCenter}
-              defaultZoom={DEFAULT_ZOOM}
-              mapTypeId={mapTypeId}
-              {...mapOptions}
-              onClick={() => setSelectedId(null)}
-            >
-              {showGestureDebug ? (
-                <MapGestureProbe mapId={INLINE_MAP_ID} onEvent={handleGestureDebugEvent} />
-              ) : null}
-              <MapInstanceBridge
-                mapId={INLINE_MAP_ID}
-                onMapReady={(map) => {
-                  mapRef.current = map;
-                  if (hasFix && locationState.coords) {
-                    applyUserViewport(map, locationState.coords, isPrecise);
-                  } else {
-                    fitPinsToMap(map);
-                  }
-                }}
-              />
-              {hasFix && locationState.coords ? (
-                <UserLocationMarker
-                  position={locationState.coords}
-                  approximate={locationState.isApproximate}
+          <View style={styles.mapSection}>
+            <View style={styles.mapWrapper}>
+              <Map
+                id={INLINE_MAP_ID}
+                style={mapCanvasStyle}
+                defaultCenter={initialCenter}
+                defaultZoom={DEFAULT_ZOOM}
+                mapTypeId={mapTypeId}
+                {...mapOptions}
+                onClick={() => setSelectedId(null)}
+              >
+                {showGestureDebug ? (
+                  <MapGestureProbe mapId={INLINE_MAP_ID} onEvent={handleGestureDebugEvent} />
+                ) : null}
+                <MapInstanceBridge
+                  mapId={INLINE_MAP_ID}
+                  onMapReady={(map) => {
+                    mapRef.current = map;
+                    if (hasFix && locationState.coords) {
+                      applyUserViewport(map, locationState.coords, isPrecise);
+                    } else {
+                      fitPinsToMap(map);
+                    }
+                  }}
                 />
-              ) : null}
-              {renderMarkers()}
-            </Map>
-            {renderOverlay()}
-            {renderLocationButton('primary')}
+                {hasFix && locationState.coords ? (
+                  <UserLocationMarker
+                    position={locationState.coords}
+                    approximate={locationState.isApproximate}
+                  />
+                ) : null}
+                {renderMarkers()}
+              </Map>
+            </View>
+            {renderLocationControlInline()}
+            {renderLocationNoticeInline()}
+            {renderSelectedCardInline()}
             {showGestureDebug ? <MapGestureDebugOverlay label={gestureDebugLabel} /> : null}
-            {renderToast('primary')}
           </View>
         ) : null}
 
@@ -666,42 +631,44 @@ export function MapScreen({
               </View>
             </View>
             <View style={styles.modalMapWrapper}>
-            <Map
-              id={FULLSCREEN_MAP_ID}
-              style={mapCanvasStyle}
-              defaultCenter={initialCenter}
-              defaultZoom={DEFAULT_ZOOM}
-              mapTypeId={mapTypeId}
-              {...mapOptions}
-              onClick={() => setSelectedId(null)}
-            >
-              {showGestureDebug ? (
-                <MapGestureProbe mapId={FULLSCREEN_MAP_ID} onEvent={handleGestureDebugEvent} />
-              ) : null}
-              <MapInstanceBridge
-                mapId={FULLSCREEN_MAP_ID}
-                onMapReady={(map) => {
-                  mapRef.current = map;
-                  if (hasFix && locationState.coords) {
-                    applyUserViewport(map, locationState.coords, isPrecise);
-                  } else {
-                    fitPinsToMap(map);
-                  }
-                }}
-              />
-              {hasFix && locationState.coords ? (
-                <UserLocationMarker
-                  position={locationState.coords}
-                  approximate={locationState.isApproximate}
+              <Map
+                id={FULLSCREEN_MAP_ID}
+                style={mapCanvasStyle}
+                defaultCenter={initialCenter}
+                defaultZoom={DEFAULT_ZOOM}
+                mapTypeId={mapTypeId}
+                {...mapOptions}
+                onClick={() => setSelectedId(null)}
+              >
+                {showGestureDebug ? (
+                  <MapGestureProbe mapId={FULLSCREEN_MAP_ID} onEvent={handleGestureDebugEvent} />
+                ) : null}
+                <MapInstanceBridge
+                  mapId={FULLSCREEN_MAP_ID}
+                  onMapReady={(map) => {
+                    mapRef.current = map;
+                    if (hasFix && locationState.coords) {
+                      applyUserViewport(map, locationState.coords, isPrecise);
+                    } else {
+                      fitPinsToMap(map);
+                    }
+                  }}
                 />
-              ) : null}
-              {renderMarkers()}
-            </Map>
-            {renderOverlay()}
-            {renderLocationButton('modal')}
-            {showGestureDebug ? <MapGestureDebugOverlay label={gestureDebugLabel} /> : null}
-            {renderToast('modal')}
-          </View>
+                {hasFix && locationState.coords ? (
+                  <UserLocationMarker
+                    position={locationState.coords}
+                    approximate={locationState.isApproximate}
+                  />
+                ) : null}
+                {renderMarkers()}
+              </Map>
+            </View>
+            <View style={styles.modalBottomControls}>
+              {renderLocationControlInline()}
+              {renderLocationNoticeInline()}
+              {renderSelectedCardInline()}
+              {showGestureDebug ? <MapGestureDebugOverlay label={gestureDebugLabel} /> : null}
+            </View>
           </View>
         </Modal>
       </View>
@@ -1060,6 +1027,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderWidth: 1,
       borderColor: colors.border,
     },
+    mapSection: {
+      gap: 10,
+    },
     mapOverlay: {
       position: 'absolute',
       inset: 0,
@@ -1271,6 +1241,23 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       overflow: 'hidden',
       position: 'relative',
     },
+    modalBottomControls: {
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+      gap: 8,
+      backgroundColor: hexToRgba(colors.surface, isDark ? 0.88 : 0.94),
+    },
+    inlineToastContainer: {
+      alignItems: 'flex-end',
+      paddingHorizontal: 4,
+    },
+    locationControlInline: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+      paddingHorizontal: 4,
+    },
     locationButtonWrapper: {
       position: 'absolute',
       right: 12,
@@ -1311,6 +1298,18 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.mutedText,
       fontSize: 11,
       maxWidth: 220,
+      textAlign: 'right',
+    },
+    locationDebugTextInline: {
+      flex: 1,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+      backgroundColor: hexToRgba(colors.surface, isDark ? 0.8 : 0.9),
+      borderWidth: 1,
+      borderColor: colors.border,
+      color: colors.mutedText,
+      fontSize: 11,
       textAlign: 'right',
     },
   });
