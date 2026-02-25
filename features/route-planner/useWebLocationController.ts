@@ -102,6 +102,7 @@ export function useWebLocationController(
   const [state, setState] = useState<WebLocationState>(createInitialState);
   const sessionIdRef = useRef(0);
   const pollIntervalRef = useRef<number | null>(null);
+  const watchIdRef = useRef<number | null>(null);
   const runLocateCycleRef = useRef<(trigger: WebLocationTrigger) => void>(() => undefined);
 
   const clearPolling = useCallback(() => {
@@ -118,6 +119,13 @@ export function useWebLocationController(
         nextPollAtMs: null,
       };
     });
+  }, []);
+
+  const clearWatching = useCallback(() => {
+    if (watchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
   }, []);
 
   const startPolling = useCallback(() => {
@@ -182,6 +190,51 @@ export function useWebLocationController(
       }
 
       const geolocation = navigator.geolocation;
+      const startLiveWatch = () => {
+        if (watchIdRef.current !== null) {
+          return;
+        }
+        watchIdRef.current = geolocation.watchPosition(
+          (position) => {
+            if (sessionIdRef.current !== sessionId) {
+              return;
+            }
+            const coords = toCoords(position);
+            const accuracyM = normalizeAccuracy(position.coords.accuracy);
+            const isApprox = accuracyM === null || accuracyM > approximateThresholdM;
+            setState((prev) => ({
+              ...prev,
+              status: isApprox ? 'ready_approx' : 'ready_precise',
+              coords,
+              accuracyM,
+              isApproximate: isApprox,
+              statusMessage: isApprox ? 'Using approximate location.' : null,
+              isLocating: false,
+              lastErrorCode: null,
+              lastUpdateAtMs: Date.now(),
+            }));
+          },
+          (error) => {
+            const code = normalizeErrorCode(error?.code);
+            if (code === 1) {
+              clearWatching();
+              clearPolling();
+              setState((prev) => ({
+                ...prev,
+                status: 'denied',
+                isLocating: false,
+                statusMessage: getDeniedMessage(hostname),
+                lastErrorCode: code,
+              }));
+            }
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: preciseTimeoutMs,
+            maximumAge: 0,
+          }
+        );
+      };
       setState((prev) => ({
         ...prev,
         status: 'requesting',
@@ -219,6 +272,7 @@ export function useWebLocationController(
         }));
 
         if (!shouldRefine) {
+          startLiveWatch();
           startPolling();
           return;
         }
@@ -249,6 +303,7 @@ export function useWebLocationController(
             lastErrorCode: null,
             lastUpdateAtMs: Date.now(),
           }));
+          startLiveWatch();
           startPolling();
         } catch (error) {
           if (sessionIdRef.current !== sessionId) {
@@ -278,6 +333,7 @@ export function useWebLocationController(
                 : 'Using approximate location.',
             lastErrorCode: code,
           }));
+          startLiveWatch();
           startPolling();
         }
       } catch (error) {
@@ -333,6 +389,7 @@ export function useWebLocationController(
     [
       approximateThresholdM,
       clearPolling,
+      clearWatching,
       coarseMaximumAgeMs,
       coarseTimeoutMs,
       preciseMaximumAgeMs,
@@ -352,11 +409,12 @@ export function useWebLocationController(
   const stop = useCallback(() => {
     sessionIdRef.current += 1;
     clearPolling();
+    clearWatching();
     setState((prev) => ({
       ...prev,
       isLocating: false,
     }));
-  }, [clearPolling]);
+  }, [clearPolling, clearWatching]);
 
   useEffect(() => {
     if (autoStart) {
@@ -369,8 +427,9 @@ export function useWebLocationController(
         window.clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
       }
+      clearWatching();
     };
-  }, [autoStart, runLocateCycle]);
+  }, [autoStart, clearWatching, runLocateCycle]);
 
   const hasFix = state.coords !== null;
   const isPrecise = hasFix && !state.isApproximate;

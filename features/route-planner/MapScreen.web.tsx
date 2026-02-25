@@ -33,9 +33,6 @@ const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
 const MAP_ID = 'route-map-v2';
 const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 };
 const DEFAULT_ZOOM = 12;
-const MIN_USER_ZOOM_APPROX = 14;
-const MIN_USER_ZOOM_PRECISE = 16;
-const FIT_BOUNDS_SUPPRESS_MS = 5000;
 
 const FORCE_WEB_LOCATION_DEBUG =
   typeof process !== 'undefined' && process.env.EXPO_PUBLIC_WEB_LOCATION_DEBUG === '1';
@@ -60,12 +57,9 @@ export function MapScreen({
     startLocate,
     state: locationState,
     hasFix,
-    isPrecise,
-  } = useWebLocationController({ autoStart: false, pollIntervalMs: 60000 });
+  } = useWebLocationController({ autoStart: true, pollIntervalMs: 60000 });
 
   const mapRef = useRef<google.maps.Map | null>(null);
-  const suppressFitUntilRef = useRef(0);
-  const hasCenteredOnUserRef = useRef(false);
   const lastFitKeyRef = useRef<string | null>(null);
 
   const mapCanvasStyle = useMemo<CSSProperties>(() => ({ width: '100%', height: '100%' }), []);
@@ -148,12 +142,6 @@ export function MapScreen({
       if (!map || mapPins.length === 0) {
         return;
       }
-      if (Date.now() < suppressFitUntilRef.current) {
-        return;
-      }
-      if (hasCenteredOnUserRef.current && hasFix) {
-        return;
-      }
       if (lastFitKeyRef.current === boundsKey) {
         return;
       }
@@ -163,7 +151,7 @@ export function MapScreen({
       map.fitBounds(bounds);
       lastFitKeyRef.current = boundsKey;
     },
-    [boundsKey, hasFix, mapPins]
+    [boundsKey, mapPins]
   );
 
   useEffect(() => {
@@ -172,26 +160,7 @@ export function MapScreen({
     }
   }, [fitPinsToMap]);
 
-  useEffect(() => {
-    if (!hasFix || !locationState.coords || !mapRef.current) {
-      return;
-    }
-    if (hasCenteredOnUserRef.current) {
-      return;
-    }
-    const map = mapRef.current;
-    map.panTo(locationState.coords);
-    const minZoom = isPrecise ? MIN_USER_ZOOM_PRECISE : MIN_USER_ZOOM_APPROX;
-    const currentZoom = map.getZoom() ?? DEFAULT_ZOOM;
-    if (currentZoom < minZoom) {
-      map.setZoom(minZoom);
-    }
-    hasCenteredOnUserRef.current = true;
-    suppressFitUntilRef.current = Date.now() + FIT_BOUNDS_SUPPRESS_MS;
-  }, [hasFix, isPrecise, locationState.coords]);
-
   const handleLocate = () => {
-    hasCenteredOnUserRef.current = false;
     startLocate();
   };
 
