@@ -1030,7 +1030,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
     const pointerEvents = options?.preview ? 'none' : 'auto';
     if (mode === 'home') {
       return (
-        <View style={styles.plannerContent} pointerEvents={pointerEvents}>
+        <View style={[styles.plannerContent, { pointerEvents } as const]}>
           <ScrollView
             style={[styles.screen, { backgroundColor: colors.background }]}
             contentContainerStyle={[
@@ -1057,7 +1057,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
     }
     if (mode === 'directory') {
       return (
-        <View style={styles.plannerContent} pointerEvents={pointerEvents}>
+        <View style={[styles.plannerContent, { pointerEvents } as const]}>
           <View
             style={[
               styles.sectionToolbar,
@@ -1085,7 +1085,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
       );
     }
     return (
-        <View style={styles.plannerContent} pointerEvents={pointerEvents}>
+        <View style={[styles.plannerContent, { pointerEvents } as const]}>
           {activeDriverId ? (
             <AdminDriverDetail
               driverId={activeDriverId}
@@ -1202,16 +1202,16 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
     ) : (
       <PlannerContainer headerRight={menuTrigger}>
         <View style={styles.experienceStage}>
-          {previousMode ? (
+          {previousMode && !IS_WEB ? (
             <Animated.View
               style={[
                 styles.previousStage,
                 {
                   transform: [{ translateX: previousTranslate }],
                   opacity: previousOpacity,
+                  pointerEvents: 'none',
                 },
               ]}
-              pointerEvents="none"
             >
               {renderExperienceContent(previousMode, { preview: true })}
             </Animated.View>

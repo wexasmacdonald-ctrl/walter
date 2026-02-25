@@ -104,7 +104,6 @@ export function MapScreen({
     () => ({
       width: '100%',
       height: '100%',
-      touchAction: 'none',
     }),
     []
   );
@@ -332,7 +331,7 @@ export function MapScreen({
       variant === 'primary' ? styles.toastContainer : styles.toastContainerFullScreen;
 
     return (
-      <View pointerEvents="box-none" style={styles.toastOverlay}>
+      <View style={[styles.toastOverlay, { pointerEvents: 'box-none' } as const]}>
         <View style={containerStyle}>
           <View style={styles.toastCard}>
             <Text style={styles.toastLabel}>{selectedMarker.label}</Text>
@@ -392,7 +391,7 @@ export function MapScreen({
   const renderOverlay = () => {
     if (mapPins.length === 0) {
       return (
-        <View pointerEvents="none" style={styles.noticeOverlay}>
+        <View style={[styles.noticeOverlay, { pointerEvents: 'none' } as const]}>
           <View style={styles.notice}>
             <Text style={styles.noticeText}>Pins appear after the locations finish loading.</Text>
           </View>
@@ -411,7 +410,7 @@ export function MapScreen({
 
     if (shouldShowLocationNotice) {
       return (
-        <View pointerEvents="none" style={styles.noticeOverlay}>
+        <View style={[styles.noticeOverlay, { pointerEvents: 'none' } as const]}>
           <View style={styles.notice}>
             <Text style={styles.noticeText}>{locationState.statusMessage}</Text>
           </View>
@@ -474,7 +473,7 @@ export function MapScreen({
         ? styles.locationButtonWrapper
         : [styles.locationButtonWrapperFullScreen, fullScreenLocateInsetStyle as any];
     return (
-      <View pointerEvents="box-none" style={wrapperStyle}>
+      <View style={[wrapperStyle as any, { pointerEvents: 'box-none' } as const]}>
         <Pressable
           style={[styles.locationButton, locationState.isLocating && styles.locationButtonDisabled]}
           onPress={handleStartLocate}
@@ -975,7 +974,7 @@ function MapGestureProbe({
 
 function MapGestureDebugOverlay({ label }: { label: string }) {
   return (
-    <View pointerEvents="none" style={gestureProbeStyles.overlay}>
+    <View style={[gestureProbeStyles.overlay, { pointerEvents: 'none' } as const]}>
       <Text numberOfLines={3} style={gestureProbeStyles.text}>
         {label}
       </Text>
