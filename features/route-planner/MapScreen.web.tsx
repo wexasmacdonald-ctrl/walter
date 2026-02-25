@@ -571,57 +571,108 @@ export function MapScreen({
     return (
       <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
         <View style={styles.container}>
-          <View style={styles.mapSection}>
-            <View style={styles.mapWrapper}>
-              <Map
-                id={INLINE_MAP_ID}
-                style={mapCanvasStyle}
-                defaultCenter={initialCenter}
-                defaultZoom={DEFAULT_ZOOM}
-                mapTypeId={mapTypeId}
-                gestureHandling="greedy"
-                disableDefaultUI={false}
-                clickableIcons={false}
-                rotateControl={false}
-                fullscreenControl={false}
-                streetViewControl={false}
-                mapTypeControl={false}
-              >
-                {showGestureDebug ? (
-                  <MapGestureProbe mapId={INLINE_MAP_ID} onEvent={handleGestureDebugEvent} />
-                ) : null}
-                <MapInstanceBridge
-                  mapId={INLINE_MAP_ID}
-                  onMapReady={(map) => {
-                    mapRef.current = map;
-                    fitPinsToMap(map);
-                  }}
-                />
-                {mapPins.map((pin) => (
-                  <Marker key={pin.id} position={pin.position} />
-                ))}
-                {hasFix && locationState.coords ? (
-                  <Marker position={locationState.coords} />
-                ) : null}
-              </Map>
-            </View>
-            <View style={styles.locationControlInline}>
-              <Pressable
-                style={[styles.locationButton, locationState.isLocating && styles.locationButtonDisabled]}
-                onPress={handleStartLocate}
-              >
-                <Text style={styles.locationButtonText}>
-                  {locationState.isLocating ? 'Locating...' : 'Locate me'}
-                </Text>
+          <View style={styles.header}>
+            <View style={styles.headerActions}>
+              {renderMapTypeToggle()}
+              <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
+                <Text style={styles.fullScreenButtonText}>Full Screen</Text>
               </Pressable>
-              {showLocationDebug ? (
-                <Text style={styles.locationDebugTextInline} numberOfLines={3}>
-                  {locationDebugLabel}
-                </Text>
-              ) : null}
             </View>
-            {showGestureDebug ? <MapGestureDebugOverlay label={gestureDebugLabel} /> : null}
           </View>
+
+          {!isFullScreen ? (
+            <View style={styles.mapSection}>
+              <View style={styles.mapWrapper}>
+                <Map
+                  id={INLINE_MAP_ID}
+                  style={mapCanvasStyle}
+                  defaultCenter={initialCenter}
+                  defaultZoom={DEFAULT_ZOOM}
+                  mapTypeId={mapTypeId}
+                  {...mapOptions}
+                  onClick={() => setSelectedId(null)}
+                >
+                  {showGestureDebug ? (
+                    <MapGestureProbe mapId={INLINE_MAP_ID} onEvent={handleGestureDebugEvent} />
+                  ) : null}
+                  <MapInstanceBridge
+                    mapId={INLINE_MAP_ID}
+                    onMapReady={(map) => {
+                      mapRef.current = map;
+                      if (hasFix && locationState.coords) {
+                        applyUserViewport(map, locationState.coords, isPrecise);
+                      } else {
+                        fitPinsToMap(map);
+                      }
+                    }}
+                  />
+                  {hasFix && locationState.coords ? (
+                    <UserLocationMarker
+                      position={locationState.coords}
+                      approximate={locationState.isApproximate}
+                    />
+                  ) : null}
+                  {renderMarkers()}
+                </Map>
+              </View>
+              {renderLocationControlInline()}
+              {renderLocationNoticeInline()}
+              {renderSelectedCardInline()}
+              {showGestureDebug ? <MapGestureDebugOverlay label={gestureDebugLabel} /> : null}
+            </View>
+          ) : null}
+
+          <Modal visible={isFullScreen} animationType="slide" onRequestClose={() => setIsFullScreen(false)}>
+            <View style={[styles.modalContent, fullScreenOverlayStyle as any]}>
+              <View style={styles.modalHeader}>
+                <View style={styles.modalHeaderActions}>
+                  {renderMapTypeToggle()}
+                  <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(false)}>
+                    <Text style={styles.fullScreenButtonText}>Close</Text>
+                  </Pressable>
+                </View>
+              </View>
+              <View style={styles.modalMapWrapper}>
+                <Map
+                  id={FULLSCREEN_MAP_ID}
+                  style={mapCanvasStyle}
+                  defaultCenter={initialCenter}
+                  defaultZoom={DEFAULT_ZOOM}
+                  mapTypeId={mapTypeId}
+                  {...mapOptions}
+                  onClick={() => setSelectedId(null)}
+                >
+                  {showGestureDebug ? (
+                    <MapGestureProbe mapId={FULLSCREEN_MAP_ID} onEvent={handleGestureDebugEvent} />
+                  ) : null}
+                  <MapInstanceBridge
+                    mapId={FULLSCREEN_MAP_ID}
+                    onMapReady={(map) => {
+                      mapRef.current = map;
+                      if (hasFix && locationState.coords) {
+                        applyUserViewport(map, locationState.coords, isPrecise);
+                      } else {
+                        fitPinsToMap(map);
+                      }
+                    }}
+                  />
+                  {hasFix && locationState.coords ? (
+                    <UserLocationMarker
+                      position={locationState.coords}
+                      approximate={locationState.isApproximate}
+                    />
+                  ) : null}
+                  {renderMarkers()}
+                </Map>
+              </View>
+              <View style={styles.modalBottomControls}>
+                {renderLocationControlInline()}
+                {renderLocationNoticeInline()}
+                {renderSelectedCardInline()}
+                {showGestureDebug ? <MapGestureDebugOverlay label={gestureDebugLabel} /> : null}
+              </View>
+            </View>
+          </Modal>
         </View>
       </APIProvider>
     );
