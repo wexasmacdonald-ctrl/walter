@@ -47,6 +47,9 @@ const FORCE_WEB_LOCATION_DEBUG =
   typeof process !== 'undefined' && process.env.EXPO_PUBLIC_WEB_LOCATION_DEBUG === '1';
 const FORCE_WEB_MAP_GESTURE_DEBUG =
   typeof process !== 'undefined' && process.env.EXPO_PUBLIC_WEB_MAP_GESTURE_DEBUG === '1';
+const URL_DEBUG_FLAG =
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).get('mapDebug') === '1';
 const gestureProbeStyles = StyleSheet.create({
   overlay: {
     position: 'absolute',
@@ -459,7 +462,7 @@ export function MapScreen({
   );
 
   const showLocationDebug = __DEV__ || FORCE_WEB_LOCATION_DEBUG;
-  const showGestureDebug = __DEV__ || FORCE_WEB_MAP_GESTURE_DEBUG;
+  const showGestureDebug = __DEV__ || FORCE_WEB_MAP_GESTURE_DEBUG || URL_DEBUG_FLAG;
   const locationDebugLabel = showLocationDebug
     ? formatWebLocationDebug(locationState)
     : null;
