@@ -1,18 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { APIProvider, Map, Marker, useMap } from '@vis.gl/react-google-maps';
 
 import { useTheme } from '@/features/theme/theme-context';
 import { getGoogleMapsApiKey } from '@/features/route-planner/getGoogleMapsApiKey';
 import { useWebLocationController } from '@/features/route-planner/useWebLocationController';
-import type { WebLocationState } from '@/features/route-planner/web-location.types';
 
 import type { Stop } from './types';
 
@@ -36,45 +28,18 @@ type MapPin = {
   label: string;
   status: 'pending' | 'complete';
 };
-const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 };
-const DEFAULT_ZOOM = 12;
-const MIN_USER_ZOOM_APPROXIMATE = 14;
-const MIN_USER_ZOOM_PRECISE = 16;
-const FIT_BOUNDS_SUPPRESS_MS = 5000;
-const INLINE_MAP_ID = 'route-map-inline';
-const FULLSCREEN_MAP_ID = 'route-map-fullscreen';
-const FORCE_WEB_LOCATION_DEBUG =
-  typeof process !== 'undefined' && process.env.EXPO_PUBLIC_WEB_LOCATION_DEBUG === '1';
-const FORCE_WEB_MAP_GESTURE_DEBUG =
-  typeof process !== 'undefined' && process.env.EXPO_PUBLIC_WEB_MAP_GESTURE_DEBUG === '1';
-const URL_DEBUG_FLAG =
-  typeof window !== 'undefined' &&
-  new URLSearchParams(window.location.search).get('mapDebug') === '1';
-const HARD_SIMPLE_WEB_MAP_MODE = true;
-const gestureProbeStyles = StyleSheet.create({
-  overlay: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 56,
-    zIndex: 6,
-    alignItems: 'flex-start',
-  },
-  text: {
-    fontSize: 11,
-    lineHeight: 14,
-    color: '#111827',
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    maxWidth: 340,
-  },
-});
 
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
+const MAP_ID = 'route-map-v2';
+const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 };
+const DEFAULT_ZOOM = 12;
+const MIN_USER_ZOOM_APPROX = 14;
+const MIN_USER_ZOOM_PRECISE = 16;
+const FIT_BOUNDS_SUPPRESS_MS = 5000;
+
+const FORCE_WEB_LOCATION_DEBUG =
+  typeof process !== 'undefined' && process.env.EXPO_PUBLIC_WEB_LOCATION_DEBUG === '1';
+
 export function MapScreen({
   pins,
   loading = false,
@@ -87,50 +52,37 @@ export function MapScreen({
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [confirmed, setConfirmed] = useState<Record<string, number>>({});
-  const [actioningId, setActioningId] = useState<string | null>(null);
-  const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
-  // If this app is embedded cross-origin in the future, the parent iframe must include:
-  // allow="geolocation" and a compatible Permissions-Policy.
+  const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [confirmedAt, setConfirmedAt] = useState<Record<string, number>>({});
+
   const {
     startLocate,
     state: locationState,
     hasFix,
     isPrecise,
   } = useWebLocationController({ autoStart: false, pollIntervalMs: 60000 });
+
   const mapRef = useRef<google.maps.Map | null>(null);
+  const suppressFitUntilRef = useRef(0);
   const hasCenteredOnUserRef = useRef(false);
-  const suppressFitBoundsUntilRef = useRef(0);
-  const lastFittedPinsKeyRef = useRef<string | null>(null);
-  const mapCanvasStyle = useMemo<CSSProperties>(
-    () => ({
-      width: '100%',
-      height: '100%',
-    }),
-    []
-  );
-  const fullScreenOverlayStyle = useMemo<CSSProperties>(
-    () => ({
-      width: '100%',
-      height: '100%',
-    }),
-    []
-  );
+  const lastFitKeyRef = useRef<string | null>(null);
+
+  const mapCanvasStyle = useMemo<CSSProperties>(() => ({ width: '100%', height: '100%' }), []);
+
   const mapPins = useMemo<MapPin[]>(() => {
-    const normalized: MapPin[] = [];
+    const next: MapPin[] = [];
     pins.forEach((pin, index) => {
       const lat = toNumber(pin.lat);
       const lng = toNumber(pin.lng);
       if (lat === null || lng === null) {
         return;
       }
-
       const label =
         typeof pin.label === 'string' && pin.label.trim().length > 0
-          ? pin.label.trim()
+          ? pin.label.trim().slice(0, 4)
           : extractHouseNumber(pin.address) ?? String(index + 1);
-
-      normalized.push({
+      next.push({
         id: pin.id ?? String(index),
         position: { lat, lng },
         address: pin.address,
@@ -138,41 +90,59 @@ export function MapScreen({
         status: pin.status === 'complete' ? 'complete' : 'pending',
       });
     });
-    return normalized;
+    return next;
   }, [pins]);
+
+  const selectedPin = useMemo(
+    () => mapPins.find((pin) => pin.id === selectedId) ?? null,
+    [mapPins, selectedId]
+  );
+
+  const boundsKey = useMemo(
+    () => mapPins.map((pin) => `${pin.id}:${pin.position.lat.toFixed(6)}:${pin.position.lng.toFixed(6)}`).join('|'),
+    [mapPins]
+  );
 
   useEffect(() => {
-    const dropped = pins.filter((pin) => toNumber(pin.lat) === null || toNumber(pin.lng) === null);
-    if (dropped.length > 0) {
-      console.warn(
-        'Dropped pins missing lat/lng',
-        dropped.map((pin) => ({ id: pin.id, lat: pin.lat, lng: pin.lng, label: pin.label }))
-      );
+    if (selectedId && !mapPins.some((pin) => pin.id === selectedId)) {
+      setSelectedId(null);
     }
-  }, [pins]);
+  }, [mapPins, selectedId]);
 
-  const applyUserViewport = (
-    map: google.maps.Map | null,
-    coords: google.maps.LatLngLiteral,
-    precise: boolean
-  ) => {
-    if (!map) {
-      return;
+  useEffect(() => {
+    if (typeof exitFullScreenSignal === 'number') {
+      setIsFullScreen(false);
     }
-    map.panTo(coords);
-    const minZoom = precise ? MIN_USER_ZOOM_PRECISE : MIN_USER_ZOOM_APPROXIMATE;
-    const currentZoom = map.getZoom() ?? DEFAULT_ZOOM;
-    if (currentZoom < minZoom) {
-      map.setZoom(minZoom);
-    }
-    hasCenteredOnUserRef.current = true;
-    suppressFitBoundsUntilRef.current = Date.now() + FIT_BOUNDS_SUPPRESS_MS;
-  };
+  }, [exitFullScreenSignal]);
 
-  const handleStartLocate = useCallback(() => {
-    hasCenteredOnUserRef.current = false;
-    startLocate();
-  }, [startLocate]);
+  const fitPinsToMap = useCallback(
+    (map: google.maps.Map | null) => {
+      if (!map || mapPins.length === 0) {
+        return;
+      }
+      if (Date.now() < suppressFitUntilRef.current) {
+        return;
+      }
+      if (hasCenteredOnUserRef.current && hasFix) {
+        return;
+      }
+      if (lastFitKeyRef.current === boundsKey) {
+        return;
+      }
+
+      const bounds = new google.maps.LatLngBounds();
+      mapPins.forEach((pin) => bounds.extend(pin.position));
+      map.fitBounds(bounds);
+      lastFitKeyRef.current = boundsKey;
+    },
+    [boundsKey, hasFix, mapPins]
+  );
+
+  useEffect(() => {
+    if (mapRef.current) {
+      fitPinsToMap(mapRef.current);
+    }
+  }, [fitPinsToMap]);
 
   useEffect(() => {
     if (!hasFix || !locationState.coords || !mapRef.current) {
@@ -181,107 +151,49 @@ export function MapScreen({
     if (hasCenteredOnUserRef.current) {
       return;
     }
-    applyUserViewport(mapRef.current, locationState.coords, isPrecise);
+    const map = mapRef.current;
+    map.panTo(locationState.coords);
+    const minZoom = isPrecise ? MIN_USER_ZOOM_PRECISE : MIN_USER_ZOOM_APPROX;
+    const currentZoom = map.getZoom() ?? DEFAULT_ZOOM;
+    if (currentZoom < minZoom) {
+      map.setZoom(minZoom);
+    }
+    hasCenteredOnUserRef.current = true;
+    suppressFitUntilRef.current = Date.now() + FIT_BOUNDS_SUPPRESS_MS;
   }, [hasFix, isPrecise, locationState.coords]);
 
-  const selectedMarker = useMemo(
-    () => mapPins.find((marker) => marker.id === selectedId) ?? null,
-    [mapPins, selectedId]
-  );
-  const pinBoundsKey = useMemo(
-    () =>
-      mapPins
-        .map((pin) => `${pin.id}:${pin.position.lat.toFixed(6)}:${pin.position.lng.toFixed(6)}`)
-        .join('|'),
-    [mapPins]
-  );
-
-  const initialCenter = useMemo(() => {
-    if (selectedMarker) {
-      return selectedMarker.position;
-    }
-    if (mapPins.length > 0) {
-      return mapPins[0].position;
-    }
-    return DEFAULT_CENTER;
-  }, [mapPins, selectedMarker]);
-
-  const selectedMixTarget = isDark ? colors.text : colors.surface;
-  const selectedMixAmount = isDark ? 0.35 : 0.55;
-  const pinColor = colors.primary;
-  const confirmedColor = colors.success;
-  const selectedPinColor = useMemo(
-    () => mixHexColor(pinColor, selectedMixTarget, selectedMixAmount),
-    [pinColor, selectedMixTarget, selectedMixAmount]
-  );
-  const selectedConfirmedPinColor = useMemo(
-    () => mixHexColor(confirmedColor, selectedMixTarget, selectedMixAmount),
-    [confirmedColor, selectedMixTarget, selectedMixAmount]
-  );
-  const badgeLabelColor = isDark ? colors.text : colors.surface;
-  const badgeOutlineColor = isDark ? colors.text : colors.surface;
-
-  useEffect(() => {
-    if (selectedId && !mapPins.some((marker) => marker.id === selectedId)) {
-      setSelectedId(null);
-    }
-  }, [selectedId, mapPins]);
-
-  useEffect(() => {
-    if (typeof exitFullScreenSignal === 'number') {
-      setIsFullScreen(false);
-    }
-  }, [exitFullScreenSignal]);
-
-  const handleSelect = (id: string) => {
-    setSelectedId((prev) => (prev === id ? null : id));
-  };
-
-  const handleMarkerClick = (marker: MapPin) => {
-    handleSelect(marker.id);
-  };
-
-  const handleAdjustPin = (id: string) => {
-    if (isFullScreen) {
-      setIsFullScreen(false);
-    }
-    onAdjustPin?.(id);
+  const handleLocate = () => {
+    hasCenteredOnUserRef.current = false;
+    startLocate();
   };
 
   const handleConfirm = async (id: string) => {
-    if (actioningId) {
+    if (confirmingId) {
       return;
     }
-    setActioningId(id);
-    setConfirmed((prev) => ({ ...prev, [id]: Date.now() }));
+    setConfirmingId(id);
+    setConfirmedAt((prev) => ({ ...prev, [id]: Date.now() }));
     try {
       await onCompleteStop?.(id);
     } catch (error) {
-      console.warn('Failed to mark stop complete', error);
-      setConfirmed((prev) => {
+      console.warn('Failed to confirm stop', error);
+      setConfirmedAt((prev) => {
         const next = { ...prev };
         delete next[id];
         return next;
       });
     } finally {
-      setActioningId(null);
+      setConfirmingId(null);
+      setSelectedId(null);
     }
-    setSelectedId(null);
   };
 
   const handleUndo = async (id: string) => {
-    if (actioningId) {
+    if (confirmingId) {
       return;
     }
-
-    const shouldUndo =
-      typeof window !== 'undefined' ? window.confirm('Undo confirmation?') : true;
-    if (!shouldUndo) {
-      return;
-    }
-
-    setActioningId(id);
-    setConfirmed((prev) => {
+    setConfirmingId(id);
+    setConfirmedAt((prev) => {
       const next = { ...prev };
       delete next[id];
       return next;
@@ -289,257 +201,34 @@ export function MapScreen({
     try {
       await onUndoStop?.(id);
     } catch (error) {
-      console.warn('Failed to undo stop completion', error);
-      setConfirmed((prev) => ({ ...prev, [id]: Date.now() }));
+      console.warn('Failed to undo stop', error);
+      setConfirmedAt((prev) => ({ ...prev, [id]: Date.now() }));
     } finally {
-      setActioningId(null);
+      setConfirmingId(null);
+      setSelectedId(null);
     }
-    setSelectedId(null);
   };
 
-  const renderMarkers = () =>
-    mapPins.map((marker) => {
-      const isSelected = marker.id === selectedId;
-      const isConfirmed = marker.status === 'complete' || Boolean(confirmed[marker.id]);
-      const fillColor = isSelected
-        ? isConfirmed
-          ? selectedConfirmedPinColor
-          : selectedPinColor
-        : isConfirmed
-        ? confirmedColor
-        : pinColor;
+  const showLocationNotice =
+    locationState.statusMessage !== null &&
+    (locationState.status === 'denied' ||
+      locationState.status === 'timeout' ||
+      locationState.status === 'unavailable' ||
+      locationState.status === 'unsupported' ||
+      locationState.status === 'insecure_context' ||
+      locationState.status === 'error');
 
-      return (
-        <BadgeMarker
-          key={marker.id}
-          label={marker.label}
-          position={marker.position}
-          fill={fillColor}
-          labelColor={badgeLabelColor}
-          outlineColor={badgeOutlineColor}
-          selected={isSelected}
-          onPress={() => handleMarkerClick(marker)}
-        />
-      );
-    });
-
-  const canAdjustPin = typeof onAdjustPin === 'function';
-
-  const renderMapTypeToggle = () => (
-    <View style={styles.mapTypeToggle}>
-      <Pressable
-        style={[styles.mapTypeOption, mapType === 'standard' && styles.mapTypeOptionActive]}
-        onPress={() => setMapType('standard')}
-      >
-        <Text style={[styles.mapTypeOptionText, mapType === 'standard' && styles.mapTypeOptionTextActive]}>
-          Map
-        </Text>
-      </Pressable>
-      <Pressable
-        style={[styles.mapTypeOption, mapType === 'satellite' && styles.mapTypeOptionActive]}
-        onPress={() => setMapType('satellite')}
-      >
-        <Text style={[styles.mapTypeOptionText, mapType === 'satellite' && styles.mapTypeOptionTextActive]}>
-          Satellite
-        </Text>
-      </Pressable>
-    </View>
-  );
-
-  const mapTypeId = mapType === 'satellite' ? 'satellite' : 'roadmap';
-  // Use default Google styling for standard maps so base layers/buildings remain visible.
-  const mapStyle = useMemo<google.maps.MapTypeStyle[] | undefined>(() => undefined, []);
-  const mapOptions = useMemo<google.maps.MapOptions>(
-    () => ({
-      disableDefaultUI: true,
-      clickableIcons: false,
-      gestureHandling: 'greedy',
-      rotateControl: false,
-      fullscreenControl: false,
-      streetViewControl: false,
-      mapTypeControl: false,
-      tilt: 45,
-      styles: mapStyle,
-    }),
-    [mapStyle]
-  );
-
-  const showLocationDebug = __DEV__ || FORCE_WEB_LOCATION_DEBUG;
-  const showGestureDebug = __DEV__ || FORCE_WEB_MAP_GESTURE_DEBUG || URL_DEBUG_FLAG;
-  const locationDebugLabel = showLocationDebug
-    ? formatWebLocationDebug(locationState)
-    : null;
-  const [gestureDebugLabel, setGestureDebugLabel] = useState('waiting for map events...');
-
-  const renderLocationControlInline = () => (
-    <View style={styles.locationControlInline}>
-      <Pressable
-        style={[styles.locationButton, locationState.isLocating && styles.locationButtonDisabled]}
-        onPress={handleStartLocate}
-      >
-        <Text style={styles.locationButtonText}>
-          {locationState.isLocating ? 'Locating...' : 'Locate me'}
-        </Text>
-      </Pressable>
-      {showLocationDebug ? (
-        <Text style={styles.locationDebugTextInline} numberOfLines={3}>
-          {locationDebugLabel}
-        </Text>
-      ) : null}
-    </View>
-  );
-
-  const renderLocationNoticeInline = () => {
-    const shouldShowLocationNotice =
-      locationState.statusMessage !== null &&
-      (locationState.status === 'denied' ||
-        locationState.status === 'timeout' ||
-        locationState.status === 'unavailable' ||
-        locationState.status === 'unsupported' ||
-        locationState.status === 'insecure_context' ||
-        locationState.status === 'error');
-    if (!shouldShowLocationNotice) {
-      return null;
-    }
-    return (
-      <View style={styles.noticeStandalone}>
-        <Text style={styles.noticeText}>{locationState.statusMessage}</Text>
-      </View>
-    );
-  };
-
-  const renderSelectedCardInline = () => {
-    if (!selectedMarker) {
-      return null;
-    }
-    const isConfirmed = Boolean(confirmed[selectedMarker.id]);
-    return (
-      <View style={styles.inlineToastContainer}>
-        <View style={styles.toastCard}>
-          <Text style={styles.toastLabel}>{selectedMarker.label}</Text>
-          <Text style={styles.toastTitle} numberOfLines={2}>
-            {selectedMarker.address || 'Address unavailable'}
-          </Text>
-          <Text style={styles.toastStatus}>
-            {isConfirmed
-              ? 'Snow cleared. Tap undo to revert.'
-              : 'Tap "Snow cleared" once this stop is finished.'}
-          </Text>
-          <View style={styles.toastActions}>
-            {canAdjustPin ? (
-              <Pressable
-                style={[styles.toastButton, styles.toastButtonSecondary]}
-                onPress={() => handleAdjustPin(selectedMarker.id)}
-              >
-                <Text style={styles.toastButtonSecondaryText}>Adjust pin</Text>
-              </Pressable>
-            ) : null}
-            <Pressable
-              style={[styles.toastButton, styles.toastButtonGhost]}
-              onPress={() => setSelectedId(null)}
-            >
-              <Text style={styles.toastButtonGhostText}>Close</Text>
-            </Pressable>
-            {isConfirmed ? (
-              <Pressable
-                style={[styles.toastButton, styles.toastButtonDanger]}
-                onPress={() => handleUndo(selectedMarker.id)}
-                disabled={actioningId === selectedMarker.id}
-              >
-                <Text style={styles.toastButtonDangerText}>
-                  {actioningId === selectedMarker.id ? 'Updating...' : 'Undo'}
-                </Text>
-              </Pressable>
-            ) : (
-              <Pressable
-                style={[styles.toastButton, styles.toastButtonPrimary]}
-                onPress={() => handleConfirm(selectedMarker.id)}
-                disabled={actioningId === selectedMarker.id}
-              >
-                <Text style={styles.toastButtonPrimaryText}>
-                  {actioningId === selectedMarker.id ? 'Updating...' : 'Snow cleared'}
-                </Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
-      </View>
-    );
-  };
-
-  const handleGestureDebugEvent = useCallback(
-    (entry: { source: 'map' | 'dom'; name: string; center?: google.maps.LatLngLiteral; zoom?: number }) => {
-      if (!showGestureDebug) {
-        return;
-      }
-      const now = new Date().toLocaleTimeString();
-      const centerLabel =
-        entry.center === undefined
-          ? 'center:n/a'
-          : `center:${entry.center.lat.toFixed(5)},${entry.center.lng.toFixed(5)}`;
-      const zoomLabel = entry.zoom === undefined ? 'zoom:n/a' : `zoom:${entry.zoom}`;
-      setGestureDebugLabel(`${now} ${entry.source}:${entry.name} ${centerLabel} ${zoomLabel}`);
-    },
-    [showGestureDebug]
-  );
-
-  const fitPinsToMap = useCallback(
-    (map: google.maps.Map | null) => {
-      if (!map || mapPins.length === 0) {
-        return;
-      }
-      if (lastFittedPinsKeyRef.current === pinBoundsKey) {
-        return;
-      }
-      if (Date.now() < suppressFitBoundsUntilRef.current) {
-        return;
-      }
-      if (hasCenteredOnUserRef.current && hasFix) {
-        return;
-      }
-      const bounds = new google.maps.LatLngBounds();
-      mapPins.forEach((pin) => bounds.extend(pin.position));
-      map.fitBounds(bounds);
-      lastFittedPinsKeyRef.current = pinBoundsKey;
-    },
-    [hasFix, mapPins, pinBoundsKey]
-  );
-
-  // Some global CSS (e.g., img { max-width: 100% }) can distort Google map sprites.
-  // Keep native image sizing, but never override transforms (tiles need transforms for pan/zoom).
-  useEffect(() => {
-    if (typeof document === 'undefined') {
-      return;
-    }
-    const id = 'google-maps-image-reset';
-    if (document.getElementById(id)) {
-      return;
-    }
-    const style = document.createElement('style');
-    style.id = id;
-    style.innerHTML = `
-      .gm-style img { max-width: none !important; }
-    `;
-    document.head.appendChild(style);
-    return () => {
-      style.remove();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!mapRef.current) {
-      return;
-    }
-    fitPinsToMap(mapRef.current);
-  }, [fitPinsToMap]);
+  const activeContainerStyle = isFullScreen
+    ? [styles.container, styles.containerFullScreen]
+    : [styles.container];
+  const activeMapWrapStyle = isFullScreen ? [styles.mapWrap, styles.mapWrapFullScreen] : [styles.mapWrap];
 
   if (!GOOGLE_MAPS_API_KEY) {
     return (
       <View style={styles.container}>
         <View style={styles.banner}>
           <Text style={styles.bannerText}>
-            Google Maps API key for web is not configured. Set EXPO_PUBLIC_GOOGLE_API_KEY (or
-            GOOGLE_API_KEY) to render the interactive map.
+            Google Maps key missing. Set `EXPO_PUBLIC_GOOGLE_API_KEY` for web maps.
           </Text>
         </View>
       </View>
@@ -549,9 +238,9 @@ export function MapScreen({
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={styles.loadingState}>
+        <View style={styles.loadingCard}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.loadingText}>Geocoding addresses...</Text>
+          <Text style={styles.loadingText}>Loading map pins...</Text>
         </View>
       </View>
     );
@@ -560,480 +249,156 @@ export function MapScreen({
   if (!loading && mapPins.length === 0) {
     return (
       <View style={styles.container}>
-        <View style={styles.noticeStandalone}>
-          <Text style={styles.noticeText}>Pins appear after the locations finish loading.</Text>
+        <View style={styles.banner}>
+          <Text style={styles.bannerText}>No pin coordinates available yet.</Text>
         </View>
       </View>
-    );
-  }
-
-  if (HARD_SIMPLE_WEB_MAP_MODE) {
-    const activeMapId = isFullScreen ? FULLSCREEN_MAP_ID : INLINE_MAP_ID;
-    const activeMapWrapperStyle = isFullScreen ? styles.mapWrapperFullScreen : styles.mapWrapper;
-    return (
-      <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
-        <View style={[styles.container, isFullScreen ? styles.containerFullScreen : null]}>
-          {isFullScreen ? (
-            <View style={styles.fullScreenTopBar}>
-              {renderMapTypeToggle()}
-              <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(false)}>
-                <Text style={styles.fullScreenButtonText}>Close</Text>
-              </Pressable>
-            </View>
-          ) : (
-            <View style={styles.header}>
-              <View style={styles.headerActions}>
-                {renderMapTypeToggle()}
-                <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
-                  <Text style={styles.fullScreenButtonText}>Full Screen</Text>
-                </Pressable>
-              </View>
-            </View>
-          )}
-
-          <View style={styles.mapSection}>
-            <View style={activeMapWrapperStyle}>
-              <Map
-                id={activeMapId}
-                style={mapCanvasStyle}
-                defaultCenter={initialCenter}
-                defaultZoom={DEFAULT_ZOOM}
-                mapTypeId={mapTypeId}
-                {...mapOptions}
-                onClick={() => setSelectedId(null)}
-              >
-                {showGestureDebug ? (
-                  <MapGestureProbe mapId={activeMapId} onEvent={handleGestureDebugEvent} />
-                ) : null}
-                <MapInstanceBridge
-                  mapId={activeMapId}
-                  onMapReady={(map) => {
-                    mapRef.current = map;
-                    if (hasFix && locationState.coords) {
-                      applyUserViewport(map, locationState.coords, isPrecise);
-                    } else {
-                      fitPinsToMap(map);
-                    }
-                  }}
-                />
-                {hasFix && locationState.coords ? (
-                  <UserLocationMarker
-                    position={locationState.coords}
-                    approximate={locationState.isApproximate}
-                  />
-                ) : null}
-                {renderMarkers()}
-              </Map>
-            </View>
-            <View style={isFullScreen ? styles.fullScreenBottomPanel : null}>
-              {renderLocationControlInline()}
-              {renderLocationNoticeInline()}
-              {renderSelectedCardInline()}
-              {showGestureDebug ? <MapGestureDebugOverlay label={gestureDebugLabel} /> : null}
-            </View>
-          </View>
-        </View>
-      </APIProvider>
     );
   }
 
   return (
     <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <View style={styles.headerActions}>
-            {renderMapTypeToggle()}
-            <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(true)}>
-              <Text style={styles.fullScreenButtonText}>Full Screen</Text>
+      <View style={activeContainerStyle}>
+        <View style={styles.topRow}>
+          <View style={styles.mapTypeToggle}>
+            <Pressable
+              style={[styles.mapTypeButton, mapType === 'roadmap' && styles.mapTypeButtonActive]}
+              onPress={() => setMapType('roadmap')}
+            >
+              <Text style={[styles.mapTypeText, mapType === 'roadmap' && styles.mapTypeTextActive]}>Map</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.mapTypeButton, mapType === 'satellite' && styles.mapTypeButtonActive]}
+              onPress={() => setMapType('satellite')}
+            >
+              <Text style={[styles.mapTypeText, mapType === 'satellite' && styles.mapTypeTextActive]}>Satellite</Text>
             </Pressable>
           </View>
+          <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen((prev) => !prev)}>
+            <Text style={styles.fullScreenButtonText}>{isFullScreen ? 'Close' : 'Full Screen'}</Text>
+          </Pressable>
         </View>
 
-        {!isFullScreen ? (
-          <View style={styles.mapSection}>
-            <View style={styles.mapWrapper}>
-              <Map
-                id={INLINE_MAP_ID}
-                style={mapCanvasStyle}
-                defaultCenter={initialCenter}
-                defaultZoom={DEFAULT_ZOOM}
-                mapTypeId={mapTypeId}
-                {...mapOptions}
-                onClick={() => setSelectedId(null)}
-              >
-                {showGestureDebug ? (
-                  <MapGestureProbe mapId={INLINE_MAP_ID} onEvent={handleGestureDebugEvent} />
-                ) : null}
-                <MapInstanceBridge
-                  mapId={INLINE_MAP_ID}
-                  onMapReady={(map) => {
-                    mapRef.current = map;
-                    if (hasFix && locationState.coords) {
-                      applyUserViewport(map, locationState.coords, isPrecise);
-                    } else {
-                      fitPinsToMap(map);
-                    }
-                  }}
+        <View style={activeMapWrapStyle}>
+          <Map
+            id={MAP_ID}
+            style={mapCanvasStyle}
+            defaultCenter={mapPins[0]?.position ?? DEFAULT_CENTER}
+            defaultZoom={DEFAULT_ZOOM}
+            mapTypeId={mapType}
+            disableDefaultUI
+            gestureHandling="greedy"
+            clickableIcons={false}
+            streetViewControl={false}
+            fullscreenControl={false}
+            rotateControl={false}
+            mapTypeControl={false}
+            onClick={() => setSelectedId(null)}
+          >
+            <MapRefBridge
+              mapId={MAP_ID}
+              onMapReady={(map) => {
+                mapRef.current = map;
+                fitPinsToMap(map);
+              }}
+            />
+            {mapPins.map((pin) => {
+              const isSelected = pin.id === selectedId;
+              const isConfirmed = pin.status === 'complete' || Boolean(confirmedAt[pin.id]);
+              return (
+                <Marker
+                  key={pin.id}
+                  position={pin.position}
+                  onClick={() => setSelectedId(pin.id)}
+                  label={pin.label}
+                  zIndex={isSelected ? 5 : 3}
+                  opacity={isConfirmed ? 0.78 : 1}
                 />
-                {hasFix && locationState.coords ? (
-                  <UserLocationMarker
-                    position={locationState.coords}
-                    approximate={locationState.isApproximate}
-                  />
-                ) : null}
-                {renderMarkers()}
-              </Map>
-            </View>
-            {renderLocationControlInline()}
-            {renderLocationNoticeInline()}
-            {renderSelectedCardInline()}
-            {showGestureDebug ? <MapGestureDebugOverlay label={gestureDebugLabel} /> : null}
-          </View>
-        ) : null}
+              );
+            })}
+            {hasFix && locationState.coords ? (
+              <Marker
+                position={locationState.coords}
+                label="You"
+                zIndex={9}
+                opacity={locationState.isApproximate ? 0.72 : 1}
+              />
+            ) : null}
+          </Map>
+        </View>
 
-        <Modal visible={isFullScreen} animationType="slide" onRequestClose={() => setIsFullScreen(false)}>
-          <View style={[styles.modalContent, fullScreenOverlayStyle as any]}>
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderActions}>
-                {renderMapTypeToggle()}
-                <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(false)}>
-                  <Text style={styles.fullScreenButtonText}>Close</Text>
+        <View style={styles.bottomPanel}>
+          <View style={styles.locationRow}>
+            <Pressable
+              style={[styles.locateButton, locationState.isLocating && styles.locateButtonDisabled]}
+              onPress={handleLocate}
+            >
+              <Text style={styles.locateButtonText}>{locationState.isLocating ? 'Locating...' : 'Locate me'}</Text>
+            </Pressable>
+            {FORCE_WEB_LOCATION_DEBUG ? (
+              <Text style={styles.debugText} numberOfLines={2}>
+                {`state:${locationState.status} acc:${locationState.accuracyM === null ? 'n/a' : Math.round(locationState.accuracyM)}`}
+              </Text>
+            ) : null}
+          </View>
+
+          {showLocationNotice ? (
+            <View style={styles.noticeCard}>
+              <Text style={styles.noticeText}>{locationState.statusMessage}</Text>
+            </View>
+          ) : null}
+
+          {selectedPin ? (
+            <View style={styles.stopCard}>
+              <Text style={styles.stopLabel}>{selectedPin.label}</Text>
+              <Text style={styles.stopAddress} numberOfLines={2}>
+                {selectedPin.address || 'Address unavailable'}
+              </Text>
+              <View style={styles.actionsRow}>
+                {onAdjustPin ? (
+                  <Pressable style={[styles.actionBtn, styles.secondaryBtn]} onPress={() => onAdjustPin(selectedPin.id)}>
+                    <Text style={styles.secondaryBtnText}>Adjust pin</Text>
+                  </Pressable>
+                ) : null}
+                <Pressable style={[styles.actionBtn, styles.ghostBtn]} onPress={() => setSelectedId(null)}>
+                  <Text style={styles.ghostBtnText}>Close</Text>
                 </Pressable>
+                {selectedPin.status === 'complete' || Boolean(confirmedAt[selectedPin.id]) ? (
+                  <Pressable
+                    style={[styles.actionBtn, styles.warnBtn]}
+                    onPress={() => handleUndo(selectedPin.id)}
+                    disabled={confirmingId === selectedPin.id}
+                  >
+                    <Text style={styles.warnBtnText}>{confirmingId === selectedPin.id ? 'Updating...' : 'Undo'}</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    style={[styles.actionBtn, styles.primaryBtn]}
+                    onPress={() => handleConfirm(selectedPin.id)}
+                    disabled={confirmingId === selectedPin.id}
+                  >
+                    <Text style={styles.primaryBtnText}>{confirmingId === selectedPin.id ? 'Updating...' : 'Snow cleared'}</Text>
+                  </Pressable>
+                )}
               </View>
             </View>
-            <View style={styles.modalMapWrapper}>
-              <Map
-                id={FULLSCREEN_MAP_ID}
-                style={mapCanvasStyle}
-                defaultCenter={initialCenter}
-                defaultZoom={DEFAULT_ZOOM}
-                mapTypeId={mapTypeId}
-                {...mapOptions}
-                onClick={() => setSelectedId(null)}
-              >
-                {showGestureDebug ? (
-                  <MapGestureProbe mapId={FULLSCREEN_MAP_ID} onEvent={handleGestureDebugEvent} />
-                ) : null}
-                <MapInstanceBridge
-                  mapId={FULLSCREEN_MAP_ID}
-                  onMapReady={(map) => {
-                    mapRef.current = map;
-                    if (hasFix && locationState.coords) {
-                      applyUserViewport(map, locationState.coords, isPrecise);
-                    } else {
-                      fitPinsToMap(map);
-                    }
-                  }}
-                />
-                {hasFix && locationState.coords ? (
-                  <UserLocationMarker
-                    position={locationState.coords}
-                    approximate={locationState.isApproximate}
-                  />
-                ) : null}
-                {renderMarkers()}
-              </Map>
-            </View>
-            <View style={styles.modalBottomControls}>
-              {renderLocationControlInline()}
-              {renderLocationNoticeInline()}
-              {renderSelectedCardInline()}
-              {showGestureDebug ? <MapGestureDebugOverlay label={gestureDebugLabel} /> : null}
-            </View>
-          </View>
-        </Modal>
+          ) : null}
+        </View>
       </View>
     </APIProvider>
   );
 }
 
-type BadgeMarkerProps = {
-  label: string;
-  position: google.maps.LatLngLiteral;
-  fill: string;
-  labelColor: string;
-  outlineColor: string;
-  selected: boolean;
-  draggable?: boolean;
-  onPress: (event?: google.maps.MapMouseEvent) => void;
-  onDragEnd?: (event: google.maps.MapMouseEvent) => void;
-};
-
-type MarkerVisual = {
-  icon: google.maps.Icon;
-  zIndex: number;
-};
-
-function BadgeMarker({
-  label,
-  position,
-  fill,
-  labelColor,
-  outlineColor,
-  selected,
-  draggable = false,
-  onPress,
-  onDragEnd,
-}: BadgeMarkerProps) {
-  const [visual, setVisual] = useState<MarkerVisual | null>(null);
+function MapRefBridge({ mapId, onMapReady }: { mapId: string; onMapReady: (map: google.maps.Map) => void }) {
+  const map = useMap(mapId);
 
   useEffect(() => {
-    let cancelled = false;
-    let timeoutId: number | null = null;
-
-    const configure = () => {
-      const maps = (globalThis as any).google?.maps;
-      if (!maps) {
-        if (!cancelled) {
-          timeoutId = window.setTimeout(configure, 100);
-        }
-        return;
-      }
-
-      const glyph = label.trim().slice(0, 4);
-      const safeGlyph = glyph
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-
-      // Smaller, proportionally scaled badge to avoid cropping while reducing footprint.
-      const baseWidth = 72;
-      const baseHeight = 36;
-      const scaledWidth = selected ? 78 : 72;
-      const scaledHeight = Math.round(scaledWidth * (baseHeight / baseWidth));
-
-      const icon = {
-        url:
-          'data:image/svg+xml;charset=UTF-8,' +
-          encodeURIComponent(
-            `<svg xmlns="http://www.w3.org/2000/svg" width="${baseWidth}" height="${baseHeight}" viewBox="0 0 ${baseWidth} ${baseHeight}">
-              <g fill="none" fill-rule="evenodd">
-                <g transform="translate(4 4)">
-                  <rect width="64" height="28" rx="9" fill="${fill}" stroke="${outlineColor}" stroke-width="1.8"/>
-                  <text x="32" y="18" font-family="Arial, sans-serif" font-size="14" font-weight="700" text-anchor="middle" fill="${labelColor}">${safeGlyph}</text>
-                </g>
-              </g>
-            </svg>`
-          ),
-        size: new maps.Size(baseWidth, baseHeight),
-        scaledSize: new maps.Size(scaledWidth, scaledHeight),
-        anchor: new maps.Point(scaledWidth / 2, Math.round(scaledHeight * (30 / baseHeight))),
-      };
-
-      if (cancelled) {
-        return;
-      }
-
-      setVisual({
-        icon,
-        zIndex: selected ? 2 : 1,
-      });
-    };
-
-    configure();
-
-    return () => {
-      cancelled = true;
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-      }
-    };
-  }, [fill, label, labelColor, outlineColor, selected]);
-
-  if (!visual) {
-    return null;
-  }
-
-  return (
-    <Marker
-      position={position}
-      onClick={onPress}
-      onDragEnd={onDragEnd}
-      draggable={draggable}
-      icon={visual.icon}
-      zIndex={visual.zIndex}
-    />
-  );
-}
-
-function UserLocationMarker({
-  position,
-  approximate,
-}: {
-  position: google.maps.LatLngLiteral;
-  approximate: boolean;
-}) {
-  const [icons, setIcons] = useState<{
-    core: google.maps.Symbol;
-    ring: google.maps.Symbol | null;
-  } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    let timeoutId: number | null = null;
-
-    const configure = () => {
-      const maps = (globalThis as any).google?.maps;
-      if (!maps) {
-        if (!cancelled) {
-          timeoutId = window.setTimeout(configure, 100);
-        }
-        return;
-      }
-
-      if (cancelled) {
-        return;
-      }
-
-      const core: google.maps.Symbol = approximate
-        ? {
-            path: maps.SymbolPath.CIRCLE,
-            scale: 8,
-            fillColor: '#1A73E8',
-            fillOpacity: 0.74,
-            strokeColor: '#FFFFFF',
-            strokeOpacity: 0.9,
-            strokeWeight: 2.5,
-          }
-        : {
-            path: maps.SymbolPath.CIRCLE,
-            scale: 8,
-            fillColor: '#1A73E8',
-            fillOpacity: 0.95,
-            strokeColor: '#FFFFFF',
-            strokeOpacity: 1,
-            strokeWeight: 3,
-          };
-      const ring: google.maps.Symbol | null = approximate
-        ? {
-            path: maps.SymbolPath.CIRCLE,
-            scale: 18,
-            fillColor: '#1A73E8',
-            fillOpacity: 0.14,
-            strokeColor: '#1A73E8',
-            strokeOpacity: 0.28,
-            strokeWeight: 2,
-          }
-        : null;
-
-      setIcons({ core, ring });
-    };
-
-    configure();
-
-    return () => {
-      cancelled = true;
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-      }
-    };
-  }, [approximate]);
-
-  if (!icons) {
-    return null;
-  }
-
-  return (
-    <>
-      {icons.ring ? <Marker position={position} icon={icons.ring} zIndex={3} /> : null}
-      <Marker position={position} icon={icons.core} zIndex={4} />
-    </>
-  );
-}
-
-function MapInstanceBridge({
-  mapId,
-  onMapReady,
-}: {
-  mapId?: string;
-  onMapReady: (map: google.maps.Map) => void;
-}) {
-  const map = useMap(mapId ?? null);
-  const onMapReadyRef = useRef(onMapReady);
-
-  useEffect(() => {
-    onMapReadyRef.current = onMapReady;
-  }, [onMapReady]);
-
-  useEffect(() => {
-    if (!map) {
-      return;
+    if (map) {
+      onMapReady(map);
     }
-    onMapReadyRef.current(map);
-  }, [map]);
+  }, [map, onMapReady]);
 
   return null;
-}
-
-function MapGestureProbe({
-  mapId,
-  onEvent,
-}: {
-  mapId?: string;
-  onEvent: (entry: { source: 'map' | 'dom'; name: string; center?: google.maps.LatLngLiteral; zoom?: number }) => void;
-}) {
-  const map = useMap(mapId ?? null);
-  const onEventRef = useRef(onEvent);
-
-  useEffect(() => {
-    onEventRef.current = onEvent;
-  }, [onEvent]);
-
-  useEffect(() => {
-    if (!map) {
-      return;
-    }
-
-    const shouldLogToConsole = __DEV__ || FORCE_WEB_MAP_GESTURE_DEBUG || URL_DEBUG_FLAG;
-    const report = (source: 'map' | 'dom', name: string) => {
-      const center = map.getCenter()?.toJSON();
-      const zoom = map.getZoom() ?? undefined;
-      if (shouldLogToConsole) {
-        console.info(`[map-gesture] ${source}:${name}`, { center, zoom, mapId: mapId ?? 'default' });
-      }
-      onEventRef.current({ source, name, center, zoom });
-    };
-
-    const mapListeners = [
-      map.addListener('dragstart', () => report('map', 'dragstart')),
-      map.addListener('drag', () => report('map', 'drag')),
-      map.addListener('dragend', () => report('map', 'dragend')),
-      map.addListener('idle', () => report('map', 'idle')),
-      map.addListener('center_changed', () => report('map', 'center_changed')),
-      map.addListener('zoom_changed', () => report('map', 'zoom_changed')),
-    ];
-
-    const div = map.getDiv();
-    const domEvents = ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend', 'wheel'];
-    const domHandlers = domEvents.map((eventName) => {
-      const handler = () => report('dom', eventName);
-      div.addEventListener(eventName, handler, { passive: true });
-      return { eventName, handler };
-    });
-
-    report('map', 'probe_attached');
-
-    return () => {
-      mapListeners.forEach((listener) => listener.remove());
-      domHandlers.forEach(({ eventName, handler }) => {
-        div.removeEventListener(eventName, handler);
-      });
-    };
-  }, [map, mapId]);
-
-  return null;
-}
-
-function MapGestureDebugOverlay({ label }: { label: string }) {
-  return (
-    <View style={[gestureProbeStyles.overlay, { pointerEvents: 'none' } as const]}>
-      <Text numberOfLines={3} style={gestureProbeStyles.text}>
-        {label}
-      </Text>
-    </View>
-  );
 }
 
 function extractHouseNumber(address: string | null | undefined): string | null {
@@ -1042,410 +407,6 @@ function extractHouseNumber(address: string | null | undefined): string | null {
   }
   const match = address.trim().match(/^(\d+[A-Za-z0-9-]*)\b/);
   return match ? match[1] : null;
-}
-
-function formatWebLocationDebug(state: WebLocationState): string {
-  const accuracyLabel = state.accuracyM === null ? 'n/a' : `${Math.round(state.accuracyM)}m`;
-  const coordLabel =
-    state.coords === null
-      ? 'none'
-      : `${state.coords.lat.toFixed(5)},${state.coords.lng.toFixed(5)}`;
-  const errorLabel = state.lastErrorCode === null ? 'none' : String(state.lastErrorCode);
-  const updatedLabel =
-    state.lastUpdateAtMs === null ? 'never' : new Date(state.lastUpdateAtMs).toLocaleTimeString();
-  const nextPollLabel =
-    state.nextPollAtMs === null ? 'off' : `${Math.max(0, Math.ceil((state.nextPollAtMs - Date.now()) / 1000))}s`;
-  return `state:${state.status} acc:${accuracyLabel} fix:${coordLabel} approx:${state.isApproximate ? 'yes' : 'no'} err:${errorLabel} upd:${updatedLabel} poll:${nextPollLabel}`;
-}
-
-function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
-  const onPrimary = isDark ? colors.background : colors.surface;
-  const overlayBackground = hexToRgba(colors.surface, isDark ? 0.88 : 0.92);
-  const toastBackground = hexToRgba(colors.surface, isDark ? 0.9 : 0.96);
-  return StyleSheet.create({
-    container: {
-      marginTop: 48,
-    },
-    containerFullScreen: {
-      marginTop: 0,
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      zIndex: 2000,
-      backgroundColor: colors.surface,
-      padding: 12,
-      overflow: 'hidden',
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'flex-end',
-      marginBottom: 12,
-      gap: 16,
-    },
-    headerActions: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    fullScreenButton: {
-      paddingHorizontal: 14,
-      paddingVertical: 6,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.primary,
-      backgroundColor: colors.surface,
-    },
-    fullScreenButtonText: {
-      color: colors.primary,
-      fontWeight: '600',
-    },
-    mapWrapper: {
-      position: 'relative',
-      height: 280,
-      borderRadius: 16,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    mapWrapperFullScreen: {
-      flex: 1,
-      position: 'relative',
-      minHeight: 280,
-      borderRadius: 12,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    mapSection: {
-      gap: 10,
-      flex: 1,
-    },
-    fullScreenTopBar: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 8,
-      marginBottom: 8,
-    },
-    fullScreenBottomPanel: {
-      backgroundColor: hexToRgba(colors.surface, isDark ? 0.88 : 0.95),
-      borderRadius: 10,
-      padding: 8,
-      gap: 8,
-    },
-    mapOverlay: {
-      position: 'absolute',
-      inset: 0,
-      backgroundColor: overlayBackground,
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: 24,
-      gap: 12,
-    },
-    mapOverlayText: {
-      color: colors.text,
-      textAlign: 'center',
-    },
-    noticeOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      justifyContent: 'flex-end',
-      paddingHorizontal: 16,
-      paddingBottom: 16,
-    },
-    notice: {
-      padding: 12,
-      borderRadius: 8,
-      backgroundColor: colors.primaryMuted,
-      borderWidth: 1,
-      borderColor: colors.primary,
-    },
-    noticeStandalone: {
-      marginTop: 16,
-      marginHorizontal: 16,
-      padding: 16,
-      borderRadius: 8,
-      backgroundColor: colors.primaryMuted,
-      borderWidth: 1,
-      borderColor: colors.primary,
-    },
-    noticeText: {
-      color: colors.primary,
-      textAlign: 'center',
-    },
-    mapTypeToggle: {
-      flexDirection: 'row',
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: 'hidden',
-      width: 160,
-    },
-    mapTypeOption: {
-      flex: 1,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      backgroundColor: colors.surface,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    mapTypeOptionActive: {
-      backgroundColor: colors.primary,
-    },
-    mapTypeOptionText: {
-      fontWeight: '600',
-      color: colors.mutedText,
-    },
-    mapTypeOptionTextActive: {
-      color: onPrimary,
-    },
-    banner: {
-      padding: 16,
-      borderRadius: 8,
-      backgroundColor: colors.primaryMuted,
-      borderWidth: 1,
-      borderColor: colors.primary,
-    },
-    bannerText: {
-      color: colors.primary,
-    },
-    loadingState: {
-      marginTop: 16,
-      marginHorizontal: 16,
-      padding: 24,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 16,
-    },
-    loadingText: {
-      fontSize: 16,
-      color: colors.text,
-    },
-    toastOverlay: {
-      ...StyleSheet.absoluteFillObject,
-    },
-    toastContainer: {
-      position: 'absolute',
-      left: 16,
-      right: 16,
-      top: 72,
-      alignItems: 'flex-end',
-    },
-    toastContainerFullScreen: {
-      position: 'absolute',
-      left: 12,
-      right: 12,
-      top: 84,
-      alignItems: 'flex-end',
-    },
-    toastCard: {
-      padding: 16,
-      borderRadius: 16,
-      backgroundColor: toastBackground,
-      borderWidth: 1,
-      borderColor: colors.border,
-      gap: 12,
-      maxWidth: 360,
-    },
-    toastLabel: {
-      fontSize: 12,
-      fontWeight: '700',
-      color: colors.primary,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-    },
-    toastTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    toastStatus: {
-      fontSize: 13,
-      color: colors.mutedText,
-    },
-    toastActions: {
-      flexDirection: 'row',
-      justifyContent: 'flex-end',
-      flexWrap: 'wrap',
-      gap: 12,
-    },
-    toastButton: {
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      borderRadius: 999,
-      borderWidth: 1,
-    },
-    toastButtonGhost: {
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-    },
-    toastButtonGhostText: {
-      color: colors.mutedText,
-      fontWeight: '600',
-    },
-    toastButtonPrimary: {
-      borderColor: colors.primary,
-      backgroundColor: colors.primary,
-    },
-    toastButtonPrimaryText: {
-      color: onPrimary,
-      fontWeight: '600',
-    },
-    toastButtonSecondary: {
-      borderColor: colors.primary,
-      backgroundColor: colors.surface,
-    },
-    toastButtonSecondaryText: {
-      color: colors.primary,
-      fontWeight: '600',
-    },
-    toastButtonDanger: {
-      borderColor: colors.danger,
-      backgroundColor: colors.dangerMuted,
-    },
-    toastButtonDangerText: {
-      color: colors.danger,
-      fontWeight: '600',
-    },
-    modalContent: {
-      flex: 1,
-      backgroundColor: colors.surface,
-      position: 'relative',
-      overflow: 'hidden',
-    },
-    modalHeader: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      zIndex: 4,
-      paddingTop: 12,
-      paddingHorizontal: 12,
-      paddingBottom: 12,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'flex-end',
-      gap: 16,
-      backgroundColor: hexToRgba(colors.surface, isDark ? 0.72 : 0.8),
-    },
-    modalHeaderActions: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    modalMapWrapper: {
-      flex: 1,
-      margin: 0,
-      borderRadius: 0,
-      borderWidth: 0,
-      overflow: 'hidden',
-      position: 'relative',
-    },
-    modalBottomControls: {
-      paddingHorizontal: 12,
-      paddingBottom: 12,
-      gap: 8,
-      backgroundColor: hexToRgba(colors.surface, isDark ? 0.88 : 0.94),
-    },
-    inlineToastContainer: {
-      alignItems: 'flex-end',
-      paddingHorizontal: 4,
-    },
-    locationControlInline: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 8,
-      paddingHorizontal: 4,
-    },
-    locationButtonWrapper: {
-      position: 'absolute',
-      right: 12,
-      bottom: 12,
-      zIndex: 6,
-      alignItems: 'flex-end',
-    },
-    locationButtonWrapperFullScreen: {
-      position: 'absolute',
-      right: 12,
-      bottom: 16,
-      zIndex: 6,
-      alignItems: 'flex-end',
-    },
-    locationButton: {
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.primary,
-      backgroundColor: hexToRgba(colors.surface, isDark ? 0.86 : 0.94),
-    },
-    locationButtonDisabled: {
-      opacity: 0.7,
-    },
-    locationButtonText: {
-      color: colors.primary,
-      fontWeight: '700',
-    },
-    locationDebugText: {
-      marginTop: 6,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 8,
-      backgroundColor: hexToRgba(colors.surface, isDark ? 0.8 : 0.9),
-      borderWidth: 1,
-      borderColor: colors.border,
-      color: colors.mutedText,
-      fontSize: 11,
-      maxWidth: 220,
-      textAlign: 'right',
-    },
-    locationDebugTextInline: {
-      flex: 1,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 8,
-      backgroundColor: hexToRgba(colors.surface, isDark ? 0.8 : 0.9),
-      borderWidth: 1,
-      borderColor: colors.border,
-      color: colors.mutedText,
-      fontSize: 11,
-      textAlign: 'right',
-    },
-  });
-}
-
-function mixHexColor(base: string, mix: string, ratio: number): string {
-  const amount = Math.max(0, Math.min(1, ratio));
-  const [br, bg, bb] = parseHex(base);
-  const [mr, mg, mb] = parseHex(mix);
-  const r = Math.round(br + (mr - br) * amount);
-  const g = Math.round(bg + (mg - bg) * amount);
-  const b = Math.round(bb + (mb - bb) * amount);
-  return `rgb(${r}, ${g}, ${b})`;
-}
-
-function hexToRgba(hex: string, alpha: number): string {
-  const [r, g, b] = parseHex(hex);
-  const clampedAlpha = Math.max(0, Math.min(1, alpha));
-  return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`;
-}
-
-function parseHex(input: string): [number, number, number] {
-  const value = input.trim().replace(/^#/, '');
-  if (value.length !== 6) {
-    throw new Error(`Expected 6-digit hex color, received: ${input}`);
-  }
-  const r = Number.parseInt(value.slice(0, 2), 16);
-  const g = Number.parseInt(value.slice(2, 4), 16);
-  const b = Number.parseInt(value.slice(4, 6), 16);
-  return [r, g, b];
 }
 
 function toNumber(value: unknown): number | null {
@@ -1459,3 +420,206 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
+function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
+  const onPrimary = isDark ? colors.background : colors.surface;
+  return StyleSheet.create({
+    container: {
+      marginTop: 48,
+      gap: 10,
+    },
+    containerFullScreen: {
+      marginTop: 0,
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: colors.background,
+      padding: 12,
+      zIndex: 2000,
+    },
+    topRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    mapTypeToggle: {
+      flexDirection: 'row',
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+      width: 170,
+    },
+    mapTypeButton: {
+      flex: 1,
+      paddingVertical: 7,
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+    },
+    mapTypeButtonActive: {
+      backgroundColor: colors.primary,
+    },
+    mapTypeText: {
+      color: colors.mutedText,
+      fontWeight: '600',
+    },
+    mapTypeTextActive: {
+      color: onPrimary,
+    },
+    fullScreenButton: {
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+    },
+    fullScreenButtonText: {
+      color: colors.primary,
+      fontWeight: '700',
+    },
+    mapWrap: {
+      height: 300,
+      borderRadius: 14,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    mapWrapFullScreen: {
+      flex: 1,
+      minHeight: 280,
+      height: undefined,
+    },
+    bottomPanel: {
+      gap: 8,
+    },
+    locationRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    locateButton: {
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+    },
+    locateButtonDisabled: {
+      opacity: 0.7,
+    },
+    locateButtonText: {
+      color: colors.primary,
+      fontWeight: '700',
+    },
+    debugText: {
+      flex: 1,
+      fontSize: 11,
+      textAlign: 'right',
+      color: colors.mutedText,
+    },
+    noticeCard: {
+      padding: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryMuted,
+    },
+    noticeText: {
+      color: colors.primary,
+      textAlign: 'center',
+    },
+    stopCard: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      padding: 12,
+      gap: 8,
+    },
+    stopLabel: {
+      color: colors.primary,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      fontSize: 12,
+    },
+    stopAddress: {
+      color: colors.text,
+      fontWeight: '600',
+    },
+    actionsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      justifyContent: 'flex-end',
+    },
+    actionBtn: {
+      borderRadius: 999,
+      borderWidth: 1,
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+    },
+    primaryBtn: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary,
+    },
+    primaryBtnText: {
+      color: onPrimary,
+      fontWeight: '700',
+    },
+    warnBtn: {
+      borderColor: colors.danger,
+      backgroundColor: colors.dangerMuted,
+    },
+    warnBtnText: {
+      color: colors.danger,
+      fontWeight: '700',
+    },
+    secondaryBtn: {
+      borderColor: colors.primary,
+      backgroundColor: colors.surface,
+    },
+    secondaryBtnText: {
+      color: colors.primary,
+      fontWeight: '700',
+    },
+    ghostBtn: {
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    ghostBtnText: {
+      color: colors.mutedText,
+      fontWeight: '700',
+    },
+    loadingCard: {
+      marginTop: 16,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      padding: 24,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    loadingText: {
+      color: colors.text,
+      fontSize: 15,
+    },
+    banner: {
+      marginTop: 16,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryMuted,
+      padding: 14,
+    },
+    bannerText: {
+      color: colors.primary,
+    },
+  });
+}
