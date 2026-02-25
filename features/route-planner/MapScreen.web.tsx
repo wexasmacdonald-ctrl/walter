@@ -313,7 +313,7 @@ export function MapScreen({
                   onClick={() => setSelectedId(pin.id)}
                   icon={buildBadgePinIcon(pin.label, pinFill, isSelected)}
                   zIndex={isSelected ? 5 : 3}
-                  opacity={isConfirmed ? 0.78 : 1}
+                  opacity={1}
                 />
               );
             })}
