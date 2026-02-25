@@ -1216,19 +1216,21 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
               {renderExperienceContent(previousMode, { preview: true })}
             </Animated.View>
           ) : null}
-          <Animated.View
-            style={[
-              styles.currentStage,
-              !IS_WEB
-                ? {
-                    transform: [{ translateX: swipeTranslate }],
-                  }
-                : null,
-            ]}
-            {...(isDevUser ? panHandlers : {})}
-          >
-            {renderExperienceContent(experienceMode)}
-          </Animated.View>
+          {IS_WEB ? (
+            <View style={styles.currentStage}>{renderExperienceContent(experienceMode)}</View>
+          ) : (
+            <Animated.View
+              style={[
+                styles.currentStage,
+                {
+                  transform: [{ translateX: swipeTranslate }],
+                },
+              ]}
+              {...(isDevUser ? panHandlers : {})}
+            >
+              {renderExperienceContent(experienceMode)}
+            </Animated.View>
+          )}
         </View>
       </PlannerContainer>
     );
