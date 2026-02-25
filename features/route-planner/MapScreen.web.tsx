@@ -100,6 +100,7 @@ export function MapScreen({
   const mapRef = useRef<google.maps.Map | null>(null);
   const hasCenteredOnUserRef = useRef(false);
   const suppressFitBoundsUntilRef = useRef(0);
+  const lastFittedPinsKeyRef = useRef<string | null>(null);
   const mapCanvasStyle = useMemo<CSSProperties>(
     () => ({
       width: '100%',
@@ -192,6 +193,13 @@ export function MapScreen({
   const selectedMarker = useMemo(
     () => mapPins.find((marker) => marker.id === selectedId) ?? null,
     [mapPins, selectedId]
+  );
+  const pinBoundsKey = useMemo(
+    () =>
+      mapPins
+        .map((pin) => `${pin.id}:${pin.position.lat.toFixed(6)}:${pin.position.lng.toFixed(6)}`)
+        .join('|'),
+    [mapPins]
   );
 
   const initialCenter = useMemo(() => {
@@ -516,6 +524,9 @@ export function MapScreen({
       if (!map || mapPins.length === 0) {
         return;
       }
+      if (lastFittedPinsKeyRef.current === pinBoundsKey) {
+        return;
+      }
       if (Date.now() < suppressFitBoundsUntilRef.current) {
         return;
       }
@@ -525,8 +536,9 @@ export function MapScreen({
       const bounds = new google.maps.LatLngBounds();
       mapPins.forEach((pin) => bounds.extend(pin.position));
       map.fitBounds(bounds);
+      lastFittedPinsKeyRef.current = pinBoundsKey;
     },
-    [hasFix, mapPins]
+    [hasFix, mapPins, pinBoundsKey]
   );
 
   // Some global CSS (e.g., img { max-width: 100% }) can distort Google map sprites.
