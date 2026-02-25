@@ -331,9 +331,9 @@ export function MapScreen({
       variant === 'primary' ? styles.toastContainer : styles.toastContainerFullScreen;
 
     return (
-      <View style={[styles.toastOverlay, { pointerEvents: 'box-none' } as const]}>
+      <View style={[styles.toastOverlay, { pointerEvents: 'none' } as const]}>
         <View style={containerStyle}>
-          <View style={styles.toastCard}>
+          <View style={[styles.toastCard, { pointerEvents: 'auto' } as const]}>
             <Text style={styles.toastLabel}>{selectedMarker.label}</Text>
             <Text style={styles.toastTitle} numberOfLines={2}>
               {selectedMarker.address || 'Address unavailable'}
@@ -473,9 +473,13 @@ export function MapScreen({
         ? styles.locationButtonWrapper
         : [styles.locationButtonWrapperFullScreen, fullScreenLocateInsetStyle as any];
     return (
-      <View style={[wrapperStyle as any, { pointerEvents: 'box-none' } as const]}>
+      <View style={[wrapperStyle as any, { pointerEvents: 'none' } as const]}>
         <Pressable
-          style={[styles.locationButton, locationState.isLocating && styles.locationButtonDisabled]}
+          style={[
+            styles.locationButton,
+            { pointerEvents: 'auto' } as const,
+            locationState.isLocating && styles.locationButtonDisabled,
+          ]}
           onPress={handleStartLocate}
         >
           <Text style={styles.locationButtonText}>
@@ -1137,7 +1141,6 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     toastOverlay: {
       ...StyleSheet.absoluteFillObject,
-      pointerEvents: 'box-none',
     },
     toastContainer: {
       position: 'absolute',
