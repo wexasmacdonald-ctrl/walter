@@ -52,6 +52,7 @@ export function MapScreen({
   const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [confirmedAt, setConfirmedAt] = useState<Record<string, number>>({});
+  const rootElementId = 'web-map-v2-root';
 
   const {
     startLocate,
@@ -122,6 +123,20 @@ export function MapScreen({
       setIsFullScreen(false);
     }
   }, [exitFullScreenSignal]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const onFullscreenChange = () => {
+      const active = document.fullscreenElement !== null;
+      setIsFullScreen(active);
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof document === 'undefined' || !isFullScreen) {
@@ -220,6 +235,40 @@ export function MapScreen({
     : [styles.container];
   const activeMapWrapStyle = isFullScreen ? [styles.mapWrap, styles.mapWrapFullScreen] : [styles.mapWrap];
 
+  const handleToggleFullscreen = useCallback(async () => {
+    if (typeof document === 'undefined') {
+      setIsFullScreen((prev) => !prev);
+      return;
+    }
+
+    const rootEl = document.getElementById(rootElementId);
+    const canRequest = !!rootEl && typeof (rootEl as any).requestFullscreen === 'function';
+    const canExit = typeof document.exitFullscreen === 'function';
+
+    if (!isFullScreen) {
+      if (canRequest) {
+        try {
+          await (rootEl as any).requestFullscreen();
+          return;
+        } catch (error) {
+          console.warn('Fullscreen API request failed, using CSS fallback.', error);
+        }
+      }
+      setIsFullScreen(true);
+      return;
+    }
+
+    if (document.fullscreenElement && canExit) {
+      try {
+        await document.exitFullscreen();
+        return;
+      } catch (error) {
+        console.warn('Fullscreen API exit failed, using CSS fallback.', error);
+      }
+    }
+    setIsFullScreen(false);
+  }, [isFullScreen, rootElementId]);
+
   if (!GOOGLE_MAPS_API_KEY) {
     return (
       <View style={styles.container}>
@@ -255,7 +304,7 @@ export function MapScreen({
 
   return (
     <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
-      <View style={activeContainerStyle}>
+      <View nativeID={rootElementId} style={activeContainerStyle}>
         <View style={styles.topRow}>
           <View style={styles.mapTypeToggle}>
             <Pressable
@@ -271,7 +320,7 @@ export function MapScreen({
               <Text style={[styles.mapTypeText, mapType === 'satellite' && styles.mapTypeTextActive]}>Satellite</Text>
             </Pressable>
           </View>
-          <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen((prev) => !prev)}>
+          <Pressable style={styles.fullScreenButton} onPress={handleToggleFullscreen}>
             <Text style={styles.fullScreenButtonText}>{isFullScreen ? 'Close' : 'Full Screen'}</Text>
           </Pressable>
         </View>
