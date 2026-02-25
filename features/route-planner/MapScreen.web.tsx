@@ -933,9 +933,13 @@ function MapGestureProbe({
       return;
     }
 
+    const shouldLogToConsole = __DEV__ || FORCE_WEB_MAP_GESTURE_DEBUG || URL_DEBUG_FLAG;
     const report = (source: 'map' | 'dom', name: string) => {
       const center = map.getCenter()?.toJSON();
       const zoom = map.getZoom() ?? undefined;
+      if (shouldLogToConsole) {
+        console.info(`[map-gesture] ${source}:${name}`, { center, zoom, mapId: mapId ?? 'default' });
+      }
       onEventRef.current({ source, name, center, zoom });
     };
 
@@ -964,7 +968,7 @@ function MapGestureProbe({
         div.removeEventListener(eventName, handler);
       });
     };
-  }, [map]);
+  }, [map, mapId]);
 
   return null;
 }
