@@ -50,6 +50,7 @@ const FORCE_WEB_MAP_GESTURE_DEBUG =
 const URL_DEBUG_FLAG =
   typeof window !== 'undefined' &&
   new URLSearchParams(window.location.search).get('mapDebug') === '1';
+const HARD_SIMPLE_WEB_MAP_MODE = true;
 const gestureProbeStyles = StyleSheet.create({
   overlay: {
     position: 'absolute',
@@ -563,6 +564,66 @@ export function MapScreen({
           <Text style={styles.noticeText}>Pins appear after the locations finish loading.</Text>
         </View>
       </View>
+    );
+  }
+
+  if (HARD_SIMPLE_WEB_MAP_MODE) {
+    return (
+      <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
+        <View style={styles.container}>
+          <View style={styles.mapSection}>
+            <View style={styles.mapWrapper}>
+              <Map
+                id={INLINE_MAP_ID}
+                style={mapCanvasStyle}
+                defaultCenter={initialCenter}
+                defaultZoom={DEFAULT_ZOOM}
+                mapTypeId={mapTypeId}
+                gestureHandling="greedy"
+                disableDefaultUI={false}
+                clickableIcons={false}
+                rotateControl={false}
+                fullscreenControl={false}
+                streetViewControl={false}
+                mapTypeControl={false}
+              >
+                {showGestureDebug ? (
+                  <MapGestureProbe mapId={INLINE_MAP_ID} onEvent={handleGestureDebugEvent} />
+                ) : null}
+                <MapInstanceBridge
+                  mapId={INLINE_MAP_ID}
+                  onMapReady={(map) => {
+                    mapRef.current = map;
+                    fitPinsToMap(map);
+                  }}
+                />
+                {mapPins.map((pin) => (
+                  <Marker key={pin.id} position={pin.position} />
+                ))}
+                {hasFix && locationState.coords ? (
+                  <Marker position={locationState.coords} />
+                ) : null}
+              </Map>
+            </View>
+            <View style={styles.locationControlInline}>
+              <Pressable
+                style={[styles.locationButton, locationState.isLocating && styles.locationButtonDisabled]}
+                onPress={handleStartLocate}
+              >
+                <Text style={styles.locationButtonText}>
+                  {locationState.isLocating ? 'Locating...' : 'Locate me'}
+                </Text>
+              </Pressable>
+              {showLocationDebug ? (
+                <Text style={styles.locationDebugTextInline} numberOfLines={3}>
+                  {locationDebugLabel}
+                </Text>
+              ) : null}
+            </View>
+            {showGestureDebug ? <MapGestureDebugOverlay label={gestureDebugLabel} /> : null}
+          </View>
+        </View>
+      </APIProvider>
     );
   }
 
