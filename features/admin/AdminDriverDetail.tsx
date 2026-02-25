@@ -1189,13 +1189,19 @@ export function AdminDriverDetail({
                   ? 'Select a pin and choose Adjust pin to move it. Changes save after you press Save.'
                   : 'Assign stops to see pins here.'}
               </Text>
-              <MapScreen
-                pins={mapPins}
-                loading={loadingStops}
-                onAdjustPin={handleRequestPinAdjust}
-                exitFullScreenSignal={mapExitSignal}
-                onAdjustPinDrag={handleSavePinLocationDirect}
-              />
+              {Platform.OS === 'web' ? (
+                <Text style={styles.cardHint}>
+                  Opening map in isolated view for reliable drag on web.
+                </Text>
+              ) : (
+                <MapScreen
+                  pins={mapPins}
+                  loading={loadingStops}
+                  onAdjustPin={handleRequestPinAdjust}
+                  exitFullScreenSignal={mapExitSignal}
+                  onAdjustPinDrag={handleSavePinLocationDirect}
+                />
+              )}
               <Text style={styles.mapNote}>
               </Text>
             </View>
@@ -1397,6 +1403,36 @@ export function AdminDriverDetail({
         >
           <Text style={styles.listFabText}>Hide addresses</Text>
       </Pressable>
+      ) : null}
+
+      {Platform.OS === 'web' && mapExpanded ? (
+        <Modal
+          visible
+          animationType="slide"
+          onRequestClose={() => setMapExpanded(false)}
+        >
+          <View style={styles.webMapModalRoot}>
+            <View style={styles.webMapModalHeader}>
+              <Text style={styles.cardHeading}>Driver map</Text>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.secondaryChip,
+                  pressed && styles.secondaryChipPressed,
+                ]}
+                onPress={() => setMapExpanded(false)}
+              >
+                <Text style={styles.secondaryChipText}>Close map</Text>
+              </Pressable>
+            </View>
+            <MapScreen
+              pins={mapPins}
+              loading={loadingStops}
+              onAdjustPin={handleRequestPinAdjust}
+              exitFullScreenSignal={mapExitSignal}
+              onAdjustPinDrag={handleSavePinLocationDirect}
+            />
+          </View>
+        </Modal>
       ) : null}
 
       {pinEditor
@@ -1660,6 +1696,20 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       marginTop: 8,
       color: colors.mutedText,
       fontSize: 12,
+    },
+    webMapModalRoot: {
+      flex: 1,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 12,
+      paddingTop: 12,
+      paddingBottom: 16,
+      gap: 8,
+    },
+    webMapModalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
     },
     accountActions: {
       flexDirection: 'row',
