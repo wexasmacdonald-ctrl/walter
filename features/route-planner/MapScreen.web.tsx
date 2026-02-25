@@ -320,6 +320,7 @@ export function MapScreen({
             {hasFix && locationState.coords ? (
               <Marker
                 position={locationState.coords}
+                icon={buildUserBlueDotIcon()}
                 zIndex={9}
                 title="Your location"
               />
@@ -435,6 +436,12 @@ function escapeSvgText(input: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function buildUserBlueDotIcon(): string {
+  const size = 24;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#1A73E8" stroke="#FFFFFF" stroke-width="4"/></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
