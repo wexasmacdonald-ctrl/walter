@@ -69,6 +69,20 @@ export function MapScreen({
   const lastFitKeyRef = useRef<string | null>(null);
 
   const mapCanvasStyle = useMemo<CSSProperties>(() => ({ width: '100%', height: '100%' }), []);
+  const fullScreenViewportStyle = useMemo<CSSProperties>(
+    () => ({
+      position: 'fixed',
+      inset: 0,
+      width: '100vw',
+      height: '100dvh',
+      zIndex: 2147483000,
+      paddingTop: 'env(safe-area-inset-top)',
+      paddingRight: 'env(safe-area-inset-right)',
+      paddingBottom: 'env(safe-area-inset-bottom)',
+      paddingLeft: 'env(safe-area-inset-left)',
+    }),
+    []
+  );
 
   const mapPins = useMemo<MapPin[]>(() => {
     const next: MapPin[] = [];
@@ -114,6 +128,20 @@ export function MapScreen({
       setIsFullScreen(false);
     }
   }, [exitFullScreenSignal]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || !isFullScreen) {
+      return;
+    }
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousDocOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousDocOverflow;
+    };
+  }, [isFullScreen]);
 
   const fitPinsToMap = useCallback(
     (map: google.maps.Map | null) => {
@@ -219,7 +247,7 @@ export function MapScreen({
       locationState.status === 'error');
 
   const activeContainerStyle = isFullScreen
-    ? [styles.container, styles.containerFullScreen]
+    ? [styles.container, styles.containerFullScreen, fullScreenViewportStyle as any]
     : [styles.container];
   const activeMapWrapStyle = isFullScreen ? [styles.mapWrap, styles.mapWrapFullScreen] : [styles.mapWrap];
 
@@ -453,14 +481,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     containerFullScreen: {
       marginTop: 0,
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
       backgroundColor: colors.background,
       padding: 12,
-      zIndex: 2000,
+      minHeight: 0,
     },
     topRow: {
       flexDirection: 'row',
