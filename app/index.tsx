@@ -928,7 +928,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
       }),
     [animateBackNavigation, canGoBack, resetSwipePosition, screenWidth, swipeTranslate]
   );
-  const panHandlers = isDevUser ? panResponder.panHandlers : {};
+  const panHandlers = isDevUser && !IS_WEB ? panResponder.panHandlers : {};
 
   const sections: {
     key: AdminSectionKey;
