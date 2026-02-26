@@ -43,16 +43,13 @@ export function MapScreen({
   onCompleteStop,
   onUndoStop,
   onAdjustPin,
-  exitFullScreenSignal,
 }: MapScreenProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
-  const [isFullScreen, setIsFullScreen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mapType, setMapType] = useState<'roadmap' | 'satellite'>('roadmap');
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [confirmedAt, setConfirmedAt] = useState<Record<string, number>>({});
-  const rootElementId = 'web-map-v2-root';
   const isMobileWebClient = useMemo(() => detectMobileWebClient(), []);
 
   const {
@@ -120,12 +117,6 @@ export function MapScreen({
   }, [mapPins, selectedId]);
 
   useEffect(() => {
-    if (typeof exitFullScreenSignal === 'number') {
-      setIsFullScreen(false);
-    }
-  }, [exitFullScreenSignal]);
-
-  useEffect(() => {
     if (!isMobileWebClient) {
       stop();
     }
@@ -133,20 +124,6 @@ export function MapScreen({
 
   useEffect(() => {
     if (typeof document === 'undefined') {
-      return;
-    }
-    const onFullscreenChange = () => {
-      const active = document.fullscreenElement !== null;
-      setIsFullScreen(active);
-    };
-    document.addEventListener('fullscreenchange', onFullscreenChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', onFullscreenChange);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof document === 'undefined' || !isFullScreen) {
       return;
     }
     const previousBodyOverflow = document.body.style.overflow;
@@ -157,7 +134,7 @@ export function MapScreen({
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousDocOverflow;
     };
-  }, [isFullScreen]);
+  }, []);
 
   const fitPinsToMap = useCallback(
     (map: google.maps.Map | null) => {
@@ -234,44 +211,8 @@ export function MapScreen({
       locationState.status === 'insecure_context' ||
       locationState.status === 'error');
 
-  const activeContainerStyle = isFullScreen
-    ? [styles.container, styles.containerFullScreen, fullScreenViewportStyle as any]
-    : [styles.container];
-  const activeMapWrapStyle = isFullScreen ? [styles.mapWrap, styles.mapWrapFullScreen] : [styles.mapWrap];
-
-  const handleToggleFullscreen = useCallback(async () => {
-    if (typeof document === 'undefined') {
-      setIsFullScreen((prev) => !prev);
-      return;
-    }
-
-    const rootEl = document.getElementById(rootElementId);
-    const canRequest = !!rootEl && typeof (rootEl as any).requestFullscreen === 'function';
-    const canExit = typeof document.exitFullscreen === 'function';
-
-    if (!isFullScreen) {
-      if (canRequest) {
-        try {
-          await (rootEl as any).requestFullscreen();
-          return;
-        } catch (error) {
-          console.warn('Fullscreen API request failed, using CSS fallback.', error);
-        }
-      }
-      setIsFullScreen(true);
-      return;
-    }
-
-    if (document.fullscreenElement && canExit) {
-      try {
-        await document.exitFullscreen();
-        return;
-      } catch (error) {
-        console.warn('Fullscreen API exit failed, using CSS fallback.', error);
-      }
-    }
-    setIsFullScreen(false);
-  }, [isFullScreen, rootElementId]);
+  const activeContainerStyle = [styles.container, styles.containerFullScreen, fullScreenViewportStyle as any];
+  const activeMapWrapStyle = [styles.mapWrap, styles.mapWrapFullScreen];
 
   if (!GOOGLE_MAPS_API_KEY) {
     return (
@@ -308,7 +249,7 @@ export function MapScreen({
 
   return (
     <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
-      <View nativeID={rootElementId} style={activeContainerStyle}>
+      <View style={activeContainerStyle}>
         <View style={activeMapWrapStyle}>
           <Map
             id={MAP_ID}
@@ -371,9 +312,6 @@ export function MapScreen({
                 <Text style={[styles.mapTypeText, mapType === 'satellite' && styles.mapTypeTextActive]}>Satellite</Text>
               </Pressable>
             </View>
-            <Pressable style={styles.fullScreenButton} onPress={handleToggleFullscreen}>
-              <Text style={styles.fullScreenButtonText}>{isFullScreen ? 'Close' : 'Full Screen'}</Text>
-            </Pressable>
           </View>
         </View>
 
@@ -543,18 +481,6 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     mapTypeTextActive: {
       color: onPrimary,
-    },
-    fullScreenButton: {
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.primary,
-      backgroundColor: isDark ? 'rgba(15,23,42,0.86)' : 'rgba(255,255,255,0.92)',
-      paddingHorizontal: 14,
-      paddingVertical: 7,
-    },
-    fullScreenButtonText: {
-      color: colors.primary,
-      fontWeight: '700',
     },
     mapWrap: {
       height: 300,
