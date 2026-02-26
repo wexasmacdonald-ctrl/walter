@@ -1428,6 +1428,7 @@ export function AdminDriverDetail({
               pins={mapPins}
               loading={loadingStops}
               onAdjustPin={handleRequestPinAdjust}
+              onCloseMap={() => setMapExpanded(false)}
               exitFullScreenSignal={mapExitSignal}
               onAdjustPinDrag={handleSavePinLocationDirect}
             />

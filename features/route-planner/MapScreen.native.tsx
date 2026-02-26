@@ -100,6 +100,7 @@ export type MapScreenProps = {
   onCompleteStop?: (stopId: string) => Promise<void> | void;
   onUndoStop?: (stopId: string) => Promise<void> | void;
   onAdjustPin?: (stopId: string) => void;
+  onCloseMap?: () => void;
   onAdjustPinDrag?: (stopId: string, coordinate: LatLng) => Promise<void> | void;
   exitFullScreenSignal?: number;
 };
@@ -290,9 +291,21 @@ export function MapScreen({
     isPrewarming: isAndroidPinPrewarming,
     getIconUri,
   } = useAndroidPinIconRegistry(androidVisuals, {
-    concurrency: 3,
+    concurrency: 2,
     debug: __DEV__,
   });
+
+  useEffect(() => {
+    if (isFullScreen) {
+      // Fullscreen map remounts each open; force a fresh fit pass.
+      setDidFitModalMarkers(false);
+      return;
+    }
+
+    // Inline map is unmounted while fullscreen is open on Android. Reset fit state on return.
+    setMapReady(false);
+    setDidFitMarkers(false);
+  }, [isFullScreen]);
 
   const handleSelect = (id: string) => {
     setSelectedId((prev) => (prev === id ? null : id));
@@ -532,34 +545,38 @@ export function MapScreen({
       </View>
 
       <View style={styles.mapWrapper}>
-        <MapView
-          ref={mapRef}
-          provider={mapProvider}
-          style={styles.map}
-          mapType={resolvedMapType}
-          showsUserLocation={locationPermissionGranted}
-          showsCompass
-          showsMyLocationButton={locationPermissionGranted}
-          showsBuildings
-          customMapStyle={mapCustomStyle}
-          userInterfaceStyle={isDark ? 'dark' : 'light'}
-          onMapReady={() => {
-            setMapReady(true);
-            if (coordinates.length > 0 && !didFitMarkers) {
-              fitToMarkers(mapRef.current, coordinates);
-              setDidFitMarkers(true);
-            }
-          }}
-          onPress={(event: MapPressEvent) => {
-            if (event.nativeEvent.action !== 'marker-press') {
-              setSelectedId(null);
-            }
-          }}
-        >
-          {renderMarkers()}
-        </MapView>
-        {renderOverlay()}
-        {renderToast('primary')}
+        {!isFullScreen ? (
+          <>
+            <MapView
+              ref={mapRef}
+              provider={mapProvider}
+              style={styles.map}
+              mapType={resolvedMapType}
+              showsUserLocation={locationPermissionGranted}
+              showsCompass
+              showsMyLocationButton={locationPermissionGranted}
+              showsBuildings
+              customMapStyle={mapCustomStyle}
+              userInterfaceStyle={isDark ? 'dark' : 'light'}
+              onMapReady={() => {
+                setMapReady(true);
+                if (coordinates.length > 0 && !didFitMarkers) {
+                  fitToMarkers(mapRef.current, coordinates);
+                  setDidFitMarkers(true);
+                }
+              }}
+              onPress={(event: MapPressEvent) => {
+                if (event.nativeEvent.action !== 'marker-press') {
+                  setSelectedId(null);
+                }
+              }}
+            >
+              {renderMarkers()}
+            </MapView>
+            {renderOverlay()}
+            {renderToast('primary')}
+          </>
+        ) : null}
       </View>
 
       <Modal visible={isFullScreen} animationType="slide" onRequestClose={() => setIsFullScreen(false)}>

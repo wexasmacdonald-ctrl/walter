@@ -14,6 +14,7 @@ export type MapScreenProps = {
   onCompleteStop?: (stopId: string) => Promise<void> | void;
   onUndoStop?: (stopId: string) => Promise<void> | void;
   onAdjustPin?: (stopId: string) => void;
+  onCloseMap?: () => void;
   onAdjustPinDrag?: (
     stopId: string,
     coordinate: { latitude: number; longitude: number }
@@ -43,6 +44,7 @@ export function MapScreen({
   onCompleteStop,
   onUndoStop,
   onAdjustPin,
+  onCloseMap,
 }: MapScreenProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -312,6 +314,11 @@ export function MapScreen({
                 <Text style={[styles.mapTypeText, mapType === 'satellite' && styles.mapTypeTextActive]}>Satellite</Text>
               </Pressable>
             </View>
+            {onCloseMap ? (
+              <Pressable style={styles.closeMapButton} onPress={onCloseMap}>
+                <Text style={styles.closeMapButtonText}>Close map</Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
 
@@ -457,6 +464,18 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       justifyContent: 'space-between',
       gap: 8,
       pointerEvents: 'box-none',
+    },
+    closeMapButton: {
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: isDark ? 'rgba(15,23,42,0.86)' : 'rgba(255,255,255,0.92)',
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+    },
+    closeMapButtonText: {
+      color: colors.text,
+      fontWeight: '700',
     },
     mapTypeToggle: {
       flexDirection: 'row',
