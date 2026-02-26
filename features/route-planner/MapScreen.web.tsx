@@ -53,11 +53,13 @@ export function MapScreen({
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [confirmedAt, setConfirmedAt] = useState<Record<string, number>>({});
   const rootElementId = 'web-map-v2-root';
+  const isMobileWebClient = useMemo(() => detectMobileWebClient(), []);
 
   const {
+    stop,
     state: locationState,
     hasFix,
-  } = useWebLocationController({ autoStart: true, pollIntervalMs: 60000 });
+  } = useWebLocationController({ autoStart: isMobileWebClient, pollIntervalMs: 60000 });
 
   const mapRef = useRef<google.maps.Map | null>(null);
   const lastFitKeyRef = useRef<string | null>(null);
@@ -122,6 +124,12 @@ export function MapScreen({
       setIsFullScreen(false);
     }
   }, [exitFullScreenSignal]);
+
+  useEffect(() => {
+    if (!isMobileWebClient) {
+      stop();
+    }
+  }, [isMobileWebClient, stop]);
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -217,6 +225,7 @@ export function MapScreen({
   };
 
   const showLocationNotice =
+    isMobileWebClient &&
     locationState.statusMessage !== null &&
     (locationState.status === 'denied' ||
       locationState.status === 'timeout' ||
@@ -338,7 +347,7 @@ export function MapScreen({
                 />
               );
             })}
-            {hasFix && locationState.coords ? (
+            {isMobileWebClient && hasFix && locationState.coords ? (
               <Marker
                 position={locationState.coords}
                 icon={buildUserBlueDotIcon()}
@@ -369,7 +378,7 @@ export function MapScreen({
         </View>
 
         <View style={styles.bottomPanel}>
-          {FORCE_WEB_LOCATION_DEBUG ? (
+          {FORCE_WEB_LOCATION_DEBUG && isMobileWebClient ? (
             <Text style={styles.debugText} numberOfLines={2}>
               {`state:${locationState.status} acc:${locationState.accuracyM === null ? 'n/a' : Math.round(locationState.accuracyM)}`}
             </Text>
@@ -474,6 +483,17 @@ function buildUserBlueDotIcon(): string {
   const size = 24;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#1A73E8" stroke="#FFFFFF" stroke-width="4"/></svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function detectMobileWebClient(): boolean {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') {
+    return false;
+  }
+  const ua = navigator.userAgent || '';
+  const mobileUa = /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(ua);
+  const coarsePointer =
+    typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+  return mobileUa || coarsePointer;
 }
 
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
