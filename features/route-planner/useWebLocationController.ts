@@ -360,9 +360,10 @@ export function useWebLocationController(
             ...prev,
             status: 'unavailable',
             isLocating: false,
-            statusMessage: 'Location is unavailable. Check GPS/network and retry.',
+            statusMessage: 'Location is unavailable. Retrying automatically.',
             lastErrorCode: code,
           }));
+          startPolling();
           return;
         }
 
@@ -371,9 +372,10 @@ export function useWebLocationController(
             ...prev,
             status: 'timeout',
             isLocating: false,
-            statusMessage: 'Location timed out. Move outdoors and tap "Locate me" again.',
+            statusMessage: 'Location timed out. Retrying automatically.',
             lastErrorCode: code,
           }));
+          startPolling();
           return;
         }
 
@@ -381,9 +383,10 @@ export function useWebLocationController(
           ...prev,
           status: 'error',
           isLocating: false,
-          statusMessage: 'Could not determine location. Tap "Locate me" to retry.',
+          statusMessage: 'Could not determine location. Retrying automatically.',
           lastErrorCode: null,
         }));
+        startPolling();
       }
     },
     [
