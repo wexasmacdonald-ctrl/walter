@@ -55,10 +55,11 @@ export function MapScreen({
   const isMobileWebClient = useMemo(() => detectMobileWebClient(), []);
 
   const {
+    startLocate,
     stop,
     state: locationState,
     hasFix,
-  } = useWebLocationController({ autoStart: isMobileWebClient, pollIntervalMs: 60000 });
+  } = useWebLocationController({ autoStart: false, pollIntervalMs: 60000 });
 
   const mapRef = useRef<google.maps.Map | null>(null);
   const lastFitKeyRef = useRef<string | null>(null);
@@ -119,10 +120,12 @@ export function MapScreen({
   }, [mapPins, selectedId]);
 
   useEffect(() => {
-    if (!isMobileWebClient) {
+    if (isMobileWebClient) {
+      startLocate();
+    } else {
       stop();
     }
-  }, [isMobileWebClient, stop]);
+  }, [isMobileWebClient, startLocate, stop]);
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -436,9 +439,15 @@ function detectMobileWebClient(): boolean {
   }
   const ua = navigator.userAgent || '';
   const mobileUa = /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(ua);
+  if (mobileUa) {
+    return true;
+  }
+  if (typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 0) {
+    return true;
+  }
   const coarsePointer =
-    typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-  return mobileUa || coarsePointer;
+    typeof window.matchMedia === 'function' && window.matchMedia('(any-pointer: coarse)').matches;
+  return coarsePointer;
 }
 
 function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
