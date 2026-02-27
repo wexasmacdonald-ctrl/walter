@@ -63,6 +63,8 @@ export function MapScreen({
 
   const mapRef = useRef<google.maps.Map | null>(null);
   const lastFitKeyRef = useRef<string | null>(null);
+  const lastLocateAttemptAtRef = useRef(0);
+  const mapInteractionListenersRef = useRef<google.maps.MapsEventListener[]>([]);
 
   const mapCanvasStyle = useMemo<CSSProperties>(() => ({ width: '100%', height: '100%' }), []);
   const fullScreenViewportStyle = useMemo<CSSProperties>(
@@ -119,13 +121,25 @@ export function MapScreen({
     }
   }, [mapPins, selectedId]);
 
-  useEffect(() => {
-    if (isMobileWebClient) {
-      startLocate();
-    } else {
-      stop();
+  const triggerLocate = useCallback(() => {
+    if (!isMobileWebClient) {
+      return;
     }
-  }, [isMobileWebClient, startLocate, stop]);
+    const now = Date.now();
+    if (now - lastLocateAttemptAtRef.current < 8000) {
+      return;
+    }
+    lastLocateAttemptAtRef.current = now;
+    startLocate();
+  }, [isMobileWebClient, startLocate]);
+
+  useEffect(() => {
+    if (!isMobileWebClient) {
+      stop();
+      return;
+    }
+    triggerLocate();
+  }, [isMobileWebClient, stop, triggerLocate]);
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -138,6 +152,13 @@ export function MapScreen({
     return () => {
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousDocOverflow;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      mapInteractionListenersRef.current.forEach((listener) => listener.remove());
+      mapInteractionListenersRef.current = [];
     };
   }, []);
 
@@ -276,6 +297,15 @@ export function MapScreen({
               onMapReady={(map) => {
                 mapRef.current = map;
                 fitPinsToMap(map);
+                mapInteractionListenersRef.current.forEach((listener) => listener.remove());
+                mapInteractionListenersRef.current = [
+                  map.addListener('click', () => {
+                    triggerLocate();
+                  }),
+                  map.addListener('dragstart', () => {
+                    triggerLocate();
+                  }),
+                ];
               }}
             />
             {mapPins.map((pin) => {
