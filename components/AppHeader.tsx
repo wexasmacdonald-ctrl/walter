@@ -133,8 +133,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
       borderRadius: 999,
       borderWidth: 1,
       borderColor: colors.primary,
-      paddingHorizontal: 12,
-      paddingVertical: 4,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      minHeight: 36,
       backgroundColor: colors.primary,
     },
     returnButtonPressed: {

@@ -24,8 +24,8 @@ export function LoginScreen() {
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const isWeb = Platform.OS === 'web';
   const heroGradient = isDark
-    ? ['#050816', '#0b132b', '#050816']
-    : ['#eef2fb', '#ffffff', '#eef2fb'];
+    ? ['#050816', '#0b132b', '#050816'] as const
+    : ['#eef2fb', '#ffffff', '#eef2fb'] as const;
 
   const { signIn, register } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -282,7 +282,7 @@ export function LoginScreen() {
                     autoCorrect={false}
                     textContentType="username"
                     keyboardType="email-address"
-                    placeholder="driver@example.com"
+                    placeholder="you@example.com"
                     placeholderTextColor={placeholderColor}
                     style={styles.input}
                     editable={!loginSubmitting}
@@ -319,7 +319,7 @@ export function LoginScreen() {
                   </View>
                   <View>
                     <Text style={styles.rememberLabel}>Keep me logged in on this device</Text>
-                    <Text style={styles.rememberHint}>Leave unchecked to sign out automatically.</Text>
+                    <Text style={styles.rememberHint}>Uncheck to sign out when you close the app.</Text>
                   </View>
                 </Pressable>
                 {loginError ? <Text style={styles.error}>{loginError}</Text> : null}

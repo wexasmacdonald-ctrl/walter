@@ -49,7 +49,7 @@ export default function LegalDocumentScreen() {
           setContent(text.replace(/\r\n/g, '\n'));
         }
       } catch (loadError) {
-        console.warn('Failed to load legal document', loadError);
+        if (__DEV__) console.warn('Failed to load legal document', loadError);
         if (!cancelled) {
           setError(
             loadError instanceof Error

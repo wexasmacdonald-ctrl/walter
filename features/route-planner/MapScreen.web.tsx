@@ -35,7 +35,7 @@ const MAP_ID = 'route-map-v2';
 const DEFAULT_CENTER: google.maps.LatLngLiteral = { lat: 44.9778, lng: -93.265 };
 const DEFAULT_ZOOM = 12;
 
-const FORCE_WEB_LOCATION_DEBUG =
+const FORCE_WEB_LOCATION_DEBUG = __DEV__ &&
   typeof process !== 'undefined' && process.env.EXPO_PUBLIC_WEB_LOCATION_DEBUG === '1';
 
 export function MapScreen({
@@ -194,7 +194,7 @@ export function MapScreen({
     try {
       await onCompleteStop?.(id);
     } catch (error) {
-      console.warn('Failed to confirm stop', error);
+      if (__DEV__) console.warn('Failed to confirm stop', error);
       setConfirmedAt((prev) => {
         const next = { ...prev };
         delete next[id];
@@ -219,7 +219,7 @@ export function MapScreen({
     try {
       await onUndoStop?.(id);
     } catch (error) {
-      console.warn('Failed to undo stop', error);
+      if (__DEV__) console.warn('Failed to undo stop', error);
       setConfirmedAt((prev) => ({ ...prev, [id]: Date.now() }));
     } finally {
       setConfirmingId(null);
@@ -245,7 +245,7 @@ export function MapScreen({
       <View style={styles.container}>
         <View style={styles.banner}>
           <Text style={styles.bannerText}>
-            Google Maps key missing. Set `EXPO_PUBLIC_GOOGLE_API_KEY` for web maps.
+            Map is temporarily unavailable. Please try again later.
           </Text>
         </View>
       </View>
@@ -257,7 +257,7 @@ export function MapScreen({
       <View style={styles.container}>
         <View style={styles.loadingCard}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.loadingText}>Loading map pins...</Text>
+          <Text style={styles.loadingText}>Loading map...</Text>
         </View>
       </View>
     );
@@ -267,7 +267,7 @@ export function MapScreen({
     return (
       <View style={styles.container}>
         <View style={styles.banner}>
-          <Text style={styles.bannerText}>No pin coordinates available yet.</Text>
+          <Text style={styles.bannerText}>No locations to show yet. Load addresses to see them on the map.</Text>
         </View>
       </View>
     );
@@ -397,7 +397,7 @@ export function MapScreen({
                     onPress={() => handleConfirm(selectedPin.id)}
                     disabled={confirmingId === selectedPin.id}
                   >
-                    <Text style={styles.primaryBtnText}>{confirmingId === selectedPin.id ? 'Updating...' : 'Snow cleared'}</Text>
+                    <Text style={styles.primaryBtnText}>{confirmingId === selectedPin.id ? 'Updating...' : 'Mark cleared'}</Text>
                   </Pressable>
                 )}
               </View>

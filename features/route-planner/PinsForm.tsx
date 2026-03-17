@@ -30,41 +30,24 @@ function extractHouseNumber(address: string): string | null {
   return match ? match[1] : null;
 }
 
-type ParsedAddresses = {
-  uniqueLines: string[];
-  duplicates: Array<{ value: string; count: number }>;
-};
-
-function parseAddressInput(value: string): ParsedAddresses {
-  const lines = value.split('\n');
-  const seen = new Map<string, { canonical: string; count: number }>();
-  const uniqueLines: string[] = [];
-
-  lines.forEach((line) => {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      return;
-    }
-    const key = trimmed.toLowerCase();
-    const entry = seen.get(key);
-    if (!entry) {
-      seen.set(key, { canonical: trimmed, count: 1 });
-      uniqueLines.push(trimmed);
-    } else {
-      entry.count += 1;
-    }
-  });
-
-  const duplicates = Array.from(seen.values())
-    .filter((entry) => entry.count > 1)
-    .map((entry) => ({ value: entry.canonical, count: entry.count }));
-
-  return { uniqueLines, duplicates };
+function normalizeAddressForGeocoding(address: string): string {
+  const trimmed = address.trim();
+  // Convert leading house-number ranges like "230-235 Main St" to "230 Main St"
+  // because geocoders usually resolve a single civic number.
+  const rangeMatch = trimmed.match(
+    /^(\d+[A-Za-z]?)\s*[-\u2010-\u2015]\s*(\d+[A-Za-z]?)\b(.*)$/
+  );
+  if (!rangeMatch) {
+    return trimmed;
+  }
+  const [, first, , rest = ''] = rangeMatch;
+  const tail = rest.replace(/\s+/g, ' ').trim();
+  return tail.length > 0 ? `${first} ${tail}` : first;
 }
 
 type ParsedAddresses = {
   uniqueLines: string[];
-  duplicates: Array<{ value: string; count: number }>;
+  duplicates: { value: string; count: number }[];
 };
 
 function parseAddressInput(value: string): ParsedAddresses {
@@ -118,7 +101,7 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
     ? user?.businessName
       ? `${user.businessName} · Business tier (unlimited)`
       : 'Business tier · Unlimited stops'
-    : 'Free tier · 30 new stops every 24 hours · Use Settings to unlock the business tier.';
+    : 'Free plan · 30 new stops every 24 hours · Use Settings to unlock the business plan.';
 
   useEffect(() => {
     setSelected((prev) => {
@@ -310,14 +293,7 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
     onLoadingChange?.(true);
     setState({ type: 'idle' });
 
-    const normalized = addresses.map((address) => {
-      const match = address.trim().match(/^(\d+)[\-�?"](\d+)(.*)$/);
-      if (!match) {
-        return address;
-      }
-      const [, first, , rest = ''] = match;
-      return `${first}${rest}`;
-    });
+    const normalized = addresses.map(normalizeAddressForGeocoding);
 
     try {
       const response = await fetch(`${API_BASE}/geocode`, {
@@ -347,25 +323,25 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
               ? resetDate.toLocaleTimeString()
               : null;
           const friendly = resetLabel
-            ? `Daily limit reached on the free plan. Try again after ${resetLabel} or enter a workspace invite code in Settings to unlock unlimited usage.`
-            : 'Daily limit reached on the free plan. Enter a workspace invite code in Settings to unlock unlimited usage.';
+            ? `Daily limit reached on the free plan. Try again after ${resetLabel} or upgrade your plan in Settings for unlimited stops.`
+            : 'Daily limit reached on the free plan. Upgrade your plan in Settings for unlimited stops.';
           throw new Error(friendly);
         }
         throw new Error(
-          typeof payload?.error === 'string'
-            ? `${payload.error}: ${payload.message ?? 'Request failed.'}`
-            : `HTTP ${response.status}: ${text || 'Request failed'}`
+          typeof payload?.message === 'string'
+            ? payload.message
+            : 'Unable to process addresses. Please check your input and try again.'
         );
       }
 
       if (!payload || !Array.isArray(payload.pins)) {
-        throw new Error('Unexpected response from geocode endpoint.');
+        throw new Error('Something went wrong while loading addresses. Please try again.');
       }
 
-      const houseNumbers = normalized.map((address) => extractHouseNumber(address));
+      const houseNumbers = addresses.map((address) => extractHouseNumber(address));
       const nextPins: Stop[] = payload.pins.map((pin: any, index: number) => ({
         id: String(pin?.id ?? index + 1),
-        address: String(pin?.address ?? ''),
+        address: addresses[index] ?? String(pin?.address ?? ''),
         lat: typeof pin?.lat === 'number' ? pin.lat : undefined,
         lng: typeof pin?.lng === 'number' ? pin.lng : undefined,
         label:
@@ -412,14 +388,14 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
 
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>Load Addresses Onto The Map</Text>
+      <Text style={styles.heading}>Load addresses</Text>
       <View style={styles.planBanner}>
         <Text style={styles.planBannerText}>{planSummary}</Text>
       </View>
       {showInput ? (
         <>
           <Text style={styles.instructions}>
-            Paste each address on its own line and we&apos;ll drop a pin for every match.
+            Enter one address per line. Each address will appear as a pin on the map.
           </Text>
           <TextInput
             multiline
@@ -441,7 +417,7 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
                   {dup.count > 1 ? ` (x${dup.count})` : ''}
                 </Text>
               ))}
-              <Text style={styles.duplicateHint}>Duplicates are ignored when geocoding.</Text>
+              <Text style={styles.duplicateHint}>Duplicate addresses are automatically skipped.</Text>
               <Pressable
                 style={({ pressed }) => [
                   styles.duplicateButton,
@@ -485,7 +461,7 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
       <View style={styles.resultContainer}>
         {loading && <ActivityIndicator color={colors.primary} />}
         {!loading && state.type === 'success' && (
-          <Text style={styles.successText}>Loaded {state.count} pins.</Text>
+          <Text style={styles.successText}>Loaded {state.count} addresses.</Text>
         )}
         {!loading && state.type === 'error' && (
           <Text style={styles.errorText}>{state.message}</Text>
@@ -783,8 +759,10 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       borderRadius: 999,
       borderWidth: 1,
       borderColor: colors.primary,
-      paddingVertical: 6,
-      paddingHorizontal: 14,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      minHeight: 44,
+      justifyContent: 'center' as const,
       backgroundColor: colors.primary,
     },
     duplicateButtonPressed: {
@@ -947,8 +925,10 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     addressActionButton: {
       borderRadius: 999,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      minHeight: 44,
+      justifyContent: 'center' as const,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,

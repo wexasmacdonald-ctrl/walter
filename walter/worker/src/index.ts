@@ -232,8 +232,6 @@ type WorkspaceAccessRequestRow = {
 };
 
 const MAX_ADDRESSES = 150;
-const DEFAULT_ADMIN_IDENTIFIER = 'admin@example.com';
-const DEFAULT_ADMIN_PASSWORD = 'AdminPass';
 const MAPBOX_BATCH_LIMIT = 1000;
 const MAPBOX_FORWARD_ENDPOINT =
   'https://api.mapbox.com/search/geocode/v6/forward?limit=1';
@@ -263,6 +261,151 @@ const STATUS_ACTIVE = 'active';
 const STATUS_DEV_ACTIVE = 'dev-active';
 
 const ADMIN_EQUIVALENT_ROLES: UserRole[] = ['admin', 'dev'];
+
+const LEGAL_PAGE_STYLE = `
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 720px; margin: 0 auto; padding: 40px 24px; color: #1f2937; line-height: 1.7; }
+  h1 { font-size: 24px; margin-bottom: 8px; }
+  h2 { font-size: 18px; margin-top: 32px; }
+  p, li { font-size: 15px; }
+  ul, ol { padding-left: 24px; }
+  a { color: #2563eb; }
+`;
+
+const PRIVACY_POLICY_HTML = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blow-Grid Privacy Policy</title><style>${LEGAL_PAGE_STYLE}</style></head>
+<body>
+<h1>Blow-Grid Privacy Policy</h1>
+
+<h2>Scope and Acceptance</h2>
+<p>This Privacy Policy describes how Blow-Grid (the "App") collects, uses, discloses, retains, and protects information when you access or use the App on any platform, including iOS, Android, and the web. By using the App, you acknowledge that you have read and understood this Policy.</p>
+
+<h2>Definitions</h2>
+<ol>
+<li>"Personal Information" means information that identifies or can reasonably be linked to an identifiable individual (for example, name, email, or phone number).</li>
+<li>"Route Data" means records stored in the App, such as assigned addresses, stops, and task statuses.</li>
+<li>"Service Providers" are trusted third parties that host, process, transmit, store, or otherwise handle data strictly on our behalf to deliver the App.</li>
+</ol>
+
+<h2>Information We Process</h2>
+<ol>
+<li><strong>Account Details:</strong> name or alias, email address or phone number, workspace or company, and role (admin, driver, or developer).</li>
+<li><strong>Credentials:</strong> hashed passwords (never stored in plain text) and session tokens.</li>
+<li><strong>Route Data:</strong> addresses or stops assigned to you, any admin-supplied lists, and progress updates; we may normalize, deduplicate, or geocode addresses to operate the service.</li>
+<li><strong>Activity and Diagnostics:</strong> login timestamps ("last active"), error codes, device or OS version, installation identifiers, and basic usage needed to operate and troubleshoot the App.</li>
+<li><strong>Location:</strong> when you grant foreground device location permission, we read your current GPS position to show your dot on the map. This location is used in-session and is not stored or sent to our servers for tracking.</li>
+<li><strong>Billing Flow Metadata:</strong> when you start a subscription checkout on the web, we exchange customer and workspace identifiers with our payment processor; payment card data is collected and stored by the processor (not by us).</li>
+</ol>
+<p>If we handle push notifications, we store the device token only to deliver messages. We do not run advertising or cross-app tracking.</p>
+
+<h2>Purposes of Processing</h2>
+<p>We handle information to create and manage accounts, authenticate access, display and synchronize assigned stops, support administrators, secure the App, prevent abuse (including rate limits and deduplication), diagnose issues, fulfill subscription billing via the web, and satisfy legal requirements.</p>
+
+<h2>Workspace Confidentiality</h2>
+<p>Workspace data (including routes, addresses, customer information, and operational details) must be kept confidential and used only for internal business purposes. Unauthorized disclosure may lead to suspension of access and potential legal claims.</p>
+
+<h2>Legal or Contractual Basis</h2>
+<p>Processing is necessary to perform agreements with users, to pursue our legitimate interests in delivering and safeguarding the App, and to meet applicable legal obligations.</p>
+
+<h2>Disclosures to Service Providers</h2>
+<p>Information may be shared with Service Providers solely to operate the App, including database and API platforms, hosting or CDN services, map and geocoding providers, payment processors, and diagnostic services. Service Providers follow our instructions and cannot use data for their own purposes.</p>
+
+<h2>International Processing</h2>
+<p>Primary hosting occurs in Canada. Some processing may take place in the United States via Service Providers, with appropriate safeguards applied where required.</p>
+
+<h2>Retention</h2>
+<ol>
+<li>Account, credential, and Route Data are kept until the account is deleted by you or an administrator.</li>
+<li>Security and activity logs are retained for up to 30 days before deletion.</li>
+<li>Backups are purged on the next scheduled cycle (within 30 days) after an account is deleted.</li>
+</ol>
+
+<h2>Your Controls and Rights</h2>
+<ol>
+<li>You can delete your account and data in-app; password re-entry confirms identity.</li>
+<li>You may access or update account details in the App or by contacting us.</li>
+</ol>
+
+<h2>Security</h2>
+<p>We apply administrative, technical, and physical safeguards including password hashing, encrypted transport (HTTPS/TLS), and role-based access controls.</p>
+
+<h2>Children</h2>
+<p>The App is not directed to children under 13. If you believe a child under 13 has used the App, notify us and we will remove the data.</p>
+
+<h2>Changes</h2>
+<p>We may revise this Policy to reflect operational, legal, or regulatory updates. Material updates will be communicated through reasonable notice.</p>
+
+<h2>Contact</h2>
+<p>Effective: December 2, 2025<br>
+MacDonald AI, Ottawa, Ontario, Canada<br>
+Data controller: Joseph MacDonald<br>
+Requests: <a href="mailto:campbell@macdonaldautomation.com">campbell@macdonaldautomation.com</a></p>
+</body>
+</html>`;
+
+const TERMS_OF_USE_HTML = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blow-Grid Terms of Use</title><style>${LEGAL_PAGE_STYLE}</style></head>
+<body>
+<h1>Blow-Grid \u2014 Terms of Use</h1>
+<p><strong>Effective date:</strong> December 2, 2025<br>
+<strong>Owner:</strong> MacDonald AI, Ottawa, Ontario, Canada<br>
+<strong>Contact:</strong> <a href="mailto:campbell@macdonaldautomation.com">campbell@macdonaldautomation.com</a></p>
+
+<p>These Terms of Use (the \u201cTerms\u201d) govern your access to and use of the Blow-Grid application and related services (the \u201cApp\u201d). \u201cWe,\u201d \u201cus,\u201d and \u201cour\u201d mean MacDonald AI. \u201cYou\u201d means the individual or entity using the App. By installing, accessing, or using the App, you agree to these Terms.</p>
+
+<h2>1. Acceptance</h2>
+<p>Installing, accessing, or using the App means you accept and agree to be bound by these Terms.</p>
+
+<h2>2. Eligibility</h2>
+<p>The App may be used only by individuals who receive an account or invite from an organization or administrator. The App is not directed to children under 13.</p>
+
+<h2>3. Accounts and Security</h2>
+<p>You are responsible for safeguarding your login credentials and all activity under your account. We may suspend or terminate accounts that violate these Terms or threaten the security of the App.</p>
+
+<h2>4. License</h2>
+<p>We grant you a limited, revocable, non-exclusive, non-transferable license to install and use the App for your personal or business use.</p>
+
+<h2>5. Acceptable Use</h2>
+<p>You agree not to: copy, modify, reverse engineer the App; bypass security controls; misuse maps or geocoding; interfere with the App or other users; or violate third-party terms.</p>
+
+<h2>6. Stored Data</h2>
+<p>Addresses and stops belong to the account holder or supplier. We may normalize, deduplicate, or geocode addresses to operate the service. You can request deletion of your account and data through in-app tools.</p>
+
+<h2>7. Workspace Confidentiality</h2>
+<p>You must treat all workspace data as confidential and use it only for internal business purposes. Unauthorized disclosure may lead to suspension of access and legal claims.</p>
+
+<h2>8. Your Data and Privacy</h2>
+<p>Our <a href="/privacy">Privacy Policy</a> explains what we collect and how we use it. You can review, correct, or delete your account and data inside the App.</p>
+
+<h2>9. Third-Party Services</h2>
+<p>The App relies on service providers including database platforms, hosting providers, map and geocoding services, and web-based payment processors.</p>
+
+<h2>10. Updates and Availability</h2>
+<p>We may update the App automatically. Features, tiers, limits, or eligibility may change at any time. The App may be unavailable during maintenance or outages.</p>
+
+<h2>11. Fees</h2>
+<p>The App may offer free and paid business tiers. Billing is managed on the web. The mobile app does not process in-app purchases. Pricing may change at any time.</p>
+
+<h2>12. Disclaimers</h2>
+<p>The App is provided \u201cas is\u201d and \u201cas available,\u201d without warranties of any kind. You use the App at your own risk.</p>
+
+<h2>13. Limitation of Liability</h2>
+<p>MacDonald AI is not liable for indirect, incidental, or consequential damages. Total liability is limited to the greater of CAD $100 or amounts paid in the three months before the claim.</p>
+
+<h2>14. App Store Terms</h2>
+<p>If you downloaded the App from Apple\u2019s App Store or Google Play: (a) the applicable store\u2019s terms also apply to your use of the App; and (b) where those store terms impose additional requirements, you agree to comply with them. Apple and Google are not responsible for providing support for the App unless required by their own terms.</p>
+
+<h2>15. Governing Law</h2>
+<p>These Terms are governed by the laws of Ontario, Canada. Courts in Ottawa, Ontario have exclusive jurisdiction.</p>
+
+<h2>16. Changes</h2>
+<p>We may revise these Terms. Material changes will be communicated with reasonable notice.</p>
+
+<p><strong>MacDonald AI</strong><br>Ottawa, Ontario, Canada<br><a href="mailto:campbell@macdonaldautomation.com">campbell@macdonaldautomation.com</a></p>
+</body>
+</html>`;
+
 const BILLING_SUCCESS_HTML = `<!doctype html>
 <html lang="en">
   <head>
@@ -330,12 +473,13 @@ const BILLING_SUCCESS_HTML = `<!doctype html>
         function notify() {
           var sessionId = new URLSearchParams(window.location.search).get('session_id');
           if (window.opener && typeof window.opener.postMessage === 'function') {
+            var targetOrigin = document.referrer ? new URL(document.referrer).origin : '*';
             window.opener.postMessage(
               {
                 type: 'billingUpdated',
                 sessionId: sessionId || null,
               },
-              '*'
+              targetOrigin
             );
           }
           setTimeout(function () {
@@ -444,6 +588,18 @@ export default {
 
     if (request.method === 'GET' && url.pathname === '/health') {
       return respond({ ok: true });
+    }
+
+    if (request.method === 'GET' && url.pathname === '/privacy') {
+      return new Response(PRIVACY_POLICY_HTML, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      });
+    }
+
+    if (request.method === 'GET' && url.pathname === '/terms') {
+      return new Response(TERMS_OF_USE_HTML, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      });
     }
 
     if (request.method === 'GET' && url.pathname === '/billing/success') {
@@ -1430,6 +1586,11 @@ async function verifyStripeSignature(
   if (!parsed) {
     return false;
   }
+  // Reject signatures older than 5 minutes to prevent replay attacks
+  const timestampSeconds = Number(parsed.timestamp);
+  if (Number.isNaN(timestampSeconds) || Math.abs(Date.now() / 1000 - timestampSeconds) > 300) {
+    return false;
+  }
   const encoder = new TextEncoder();
   const signedPayload = `${parsed.timestamp}.${new TextDecoder().decode(rawBody)}`;
   const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
@@ -1725,12 +1886,6 @@ async function handleAuthLogin(
   env: Env,
   respond: (data: unknown, status?: number) => Response
 ): Promise<Response> {
-  console.log('authLogin env', {
-    hasUrl: Boolean(env.SUPABASE_URL),
-    serviceKeyLength: env.SUPABASE_SERVICE_KEY?.length ?? null,
-    serviceRoleLength: env.SUPABASE_SERVICE_ROLE?.length ?? null,
-    jwtLength: env.JWT_SIGNING_KEY?.length ?? null,
-  });
   if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_KEY ?? env.SUPABASE_SERVICE_ROLE) || !env.JWT_SIGNING_KEY) {
     return respond(
       {
@@ -1773,30 +1928,7 @@ async function handleAuthLogin(
   }
 
   if (!user) {
-    if (identifier.toLowerCase() === DEFAULT_ADMIN_IDENTIFIER.toLowerCase()) {
-      try {
-        const passwordHash = await hashPassword(DEFAULT_ADMIN_PASSWORD);
-        const payload: SupabaseInsertPayload = {
-          id: crypto.randomUUID(),
-          full_name: 'Admin',
-          email_or_phone: DEFAULT_ADMIN_IDENTIFIER,
-          role: 'admin',
-          status: 'active',
-          password_hash: passwordHash,
-          must_change_password: false,
-          business_tier: 'business',
-          business_name: 'Default Workspace',
-          workspace_id: null,
-        };
-        await supabaseInsert(env, 'users', payload);
-        user = await fetchUserById(env, payload.id);
-      } catch (seedError) {
-        console.error('Failed to seed default admin account', seedError);
-      }
-    }
-    if (!user) {
-      return respond({ error: 'INVALID_CREDENTIALS' }, 401);
-    }
+    return respond({ error: 'INVALID_CREDENTIALS' }, 401);
   }
 
   if (!isAllowedStatus(user.status)) {
@@ -4741,7 +4873,16 @@ async function geocodeBatch(
   const successes: GeocodeSuccess[] = [];
   const failures: GeocodeFailure[] = [];
 
-  (parsed?.batch ?? []).forEach((result: any, index: number) => {
+  const results: any[] =
+    Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.batch)
+      ? parsed.batch
+      : Array.isArray(parsed?.results)
+      ? parsed.results
+      : [];
+
+  results.forEach((result: any, index: number) => {
     const address = addresses[index];
     const coords = extractCoordinates(result?.features?.[0]);
     if (coords) {
@@ -4777,7 +4918,7 @@ function createBodySnippet(source: string | null | undefined, maxLength = 400): 
   if (!source) {
     return undefined;
   }
-  return source.length > maxLength ? `${source.slice(0, maxLength)}â€¦` : source;
+  return source.length > maxLength ? `${source.slice(0, maxLength)}...` : source;
 }
 
 function extractCoordinates(node: any): { lat: number; lng: number } | null {
@@ -4807,6 +4948,23 @@ function extractCoordinates(node: any): { lat: number; lng: number } | null {
 
   if (typeof node.latitude === 'number' && typeof node.longitude === 'number') {
     return { lat: node.latitude, lng: node.longitude };
+  }
+
+  const propCoords = node.properties?.coordinates;
+  if (
+    propCoords &&
+    typeof propCoords.latitude === 'number' &&
+    typeof propCoords.longitude === 'number'
+  ) {
+    return { lat: propCoords.latitude, lng: propCoords.longitude };
+  }
+
+  if (typeof node.lat === 'number' && typeof node.lng === 'number') {
+    return { lat: node.lat, lng: node.lng };
+  }
+
+  if (typeof node.lat === 'number' && typeof node.lon === 'number') {
+    return { lat: node.lat, lng: node.lon };
   }
 
   return null;

@@ -14,7 +14,7 @@ export function StopLocationEditor({
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       return require('react-native-maps') as typeof import('react-native-maps');
     } catch (error) {
-      console.warn('react-native-maps unavailable; rendering fallback stop editor', error);
+      if (__DEV__) console.warn('react-native-maps unavailable; rendering fallback stop editor', error);
       return null;
     }
   }, []);

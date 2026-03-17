@@ -37,6 +37,13 @@ tail-*.json
 .DS_Store
 *.pem
 
+# debug/crash logs
+_tmp_*.txt
+crash.txt
+dump.txt
+out.txt
+*-repro-*.txt
+
 # local env files
 .env*.local
 .env.local

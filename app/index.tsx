@@ -38,11 +38,10 @@ import { getFriendlyError } from '@/features/shared/get-friendly-error';
 import { ChevronIcon } from '@/components/icons/ChevronIcon';
 import { BriefcaseIcon } from '@/components/icons/BriefcaseIcon';
 
-const SHOW_DEV_TEST_SCREEN = false;
-
-const FORCE_DEV_MINIMAL_UI = false;
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const IS_WEB = Platform.OS === 'web';
+const ENABLE_NATIVE_BACK_SWIPE = false;
+const BACK_SWIPE_EDGE_WIDTH = 28;
 const REFRESH_COLORS = ['#1d4ed8', '#3b82f6'];
 const REFRESH_OFFSET = Platform.select({ ios: 64, android: 0 }) ?? 0;
 
@@ -69,26 +68,6 @@ TextComponent.defaultProps.selectable = true;
 function PinPlannerApp() {
   const { status, user } = useAuth();
 
-  if (FORCE_DEV_MINIMAL_UI) {
-    return (
-      <SafeAreaView
-        style={{
-          flex: 1,
-          backgroundColor: '#eef2ff',
-          padding: 16,
-          justifyContent: 'center',
-          gap: 12,
-        }}
-      >
-        <AppHeader />
-        <Text style={{ fontSize: 20, fontWeight: '700', color: '#1d4ed8' }}>DEV MINIMAL UI</Text>
-        <Text style={{ color: '#475569' }}>
-          If this screen renders, the JS bundle is running. Set FORCE_DEV_MINIMAL_UI to false to restore the full app.
-        </Text>
-      </SafeAreaView>
-    );
-  }
-
   if (status === 'loading') {
     return <LoadingScreen />;
   }
@@ -101,23 +80,6 @@ function PinPlannerApp() {
 }
 
 export default function PinPlannerRoot() {
-  if (SHOW_DEV_TEST_SCREEN) {
-    return (
-      <SafeAreaView
-        style={{
-          flex: 1,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#eef2ff',
-        }}
-      >
-        <Text style={{ fontSize: 20, fontWeight: '700', color: '#1d4ed8' }}>DEV TEST SCREEN</Text>
-        <Text style={{ marginTop: 8, color: '#334155' }}>
-          If you see this, routing/rendering is working. Toggle SHOW_DEV_TEST_SCREEN off after verifying.
-        </Text>
-      </SafeAreaView>
-    );
-  }
   return (
     <AppErrorBoundary>
       <PinPlannerApp />
@@ -138,7 +100,7 @@ class AppErrorBoundary extends React.Component<{ children: ReactNode }, ErrorBou
   }
 
   componentDidCatch(error: Error) {
-    console.error('App error boundary caught', error);
+    if (__DEV__) console.error('App error boundary caught', error);
   }
 
   render() {
@@ -148,13 +110,14 @@ class AppErrorBoundary extends React.Component<{ children: ReactNode }, ErrorBou
           <AppHeader />
           <View style={[styles.loadingContainer]}>
             <Text style={[styles.loadingText]}>Something went wrong.</Text>
-            <Text style={[styles.loadingText]}>{String(this.state.error.message)}</Text>
+            <Text style={[styles.loadingText]}>Please try again or restart the app.</Text>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Try again"
               onPress={() => this.setState({ error: null })}
               style={({ pressed }) => [
                 styles.pillButton,
-                { borderColor: '#000', backgroundColor: '#000' },
+                { borderColor: '#2196f3', backgroundColor: '#2196f3' },
                 pressed && styles.pillButtonPressed,
               ]}
             >
@@ -338,11 +301,11 @@ function CompanyShowcase({
   const [expandedId, setExpandedId] = useState<string | null>(activeWorkspaceId ?? null);
   const renderCardMeta = (company: WorkspaceSummary) => {
     if (!company.createdAt) {
-      return 'Invite-ready';
+      return 'Ready to set up';
     }
     const created = new Date(company.createdAt);
     if (Number.isNaN(created.getTime())) {
-      return 'Invite-ready';
+      return 'Ready to set up';
     }
     return `Launched ${created.toLocaleDateString(undefined, {
       month: 'short',
@@ -363,7 +326,7 @@ function CompanyShowcase({
             Company accounts
           </Text>
           <Text style={[styles.companyShowcaseSubtitle, { color: colors.mutedText }]}>
-            Tap any card to jump into that tenant operations cockpit.
+            Select a company to manage its drivers, routes, and settings.
           </Text>
         </View>
         <View style={styles.companyShowcaseActions}>{allowCreate && onCreate ? (
@@ -393,7 +356,7 @@ function CompanyShowcase({
           <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text></View>
       ) : companies.length === 0 ? (
         <View style={styles.companyEmpty}>
-          <Text style={{ color: colors.mutedText }}>No companies yet. Create one to begin.</Text>
+          <Text style={{ color: colors.mutedText }}>You haven't set up a company yet. Create one to start managing your drivers and routes.</Text>
           {allowCreate && onCreate ? (
             <Pressable
               accessibilityRole="button"
@@ -405,7 +368,7 @@ function CompanyShowcase({
               ]}
             >
               <Text style={[styles.companyCardButtonText, { color: colors.surface }]}>
-                Launch workspace
+                Create company
               </Text>
             </Pressable>
           ) : null}
@@ -473,7 +436,7 @@ function CompanyShowcase({
                       ]}
                     >
                       <Text style={[styles.companyCardButtonText, { color: colors.surface }]}>
-                        Enter account
+                        Open dashboard
                       </Text>
                     </Pressable>
                   </View>
@@ -525,7 +488,7 @@ function PlannerScreen() {
     try {
       await refreshSession();
     } catch (error) {
-      console.warn('Session refresh failed', error);
+      if (__DEV__) console.warn('Session refresh failed', error);
     } finally {
       bumpRefreshSignal();
       await delay(600);
@@ -538,7 +501,7 @@ function PlannerScreen() {
       <SafeAreaView style={[styles.safeArea, styles.loadingScreen]}>
         <AppHeader />
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>No user loaded (status {status})</Text>
+          <Text style={styles.loadingText}>Unable to load your account. Please sign in again.</Text>
         </View>
       </SafeAreaView>
     );
@@ -642,7 +605,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
         setBillingStatus(null);
         setBillingError(null);
       } else {
-        console.error('Failed to load billing status', error);
+        if (__DEV__) console.error('Failed to load billing status', error);
         setBillingStatus(null);
         setBillingError('Could not load billing status.');
       }
@@ -898,6 +861,9 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
           if (!canGoBack) {
             return false;
           }
+          if (gesture.x0 > BACK_SWIPE_EDGE_WIDTH) {
+            return false;
+          }
           const { dx, dy } = gesture;
           if (dx <= 0) {
             return false;
@@ -928,7 +894,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
       }),
     [animateBackNavigation, canGoBack, resetSwipePosition, screenWidth, swipeTranslate]
   );
-  const panHandlers = isDevUser && !IS_WEB ? panResponder.panHandlers : {};
+  const panHandlers = isDevUser && !IS_WEB && ENABLE_NATIVE_BACK_SWIPE ? panResponder.panHandlers : {};
 
   const sections: {
     key: AdminSectionKey;
@@ -940,14 +906,14 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
   }[] = [
     {
       key: 'teamAccess' as const,
-      title: 'Team roster & access',
-      description: 'Promote trusted drivers to admin and review who can manage the workspace.',
+      title: 'Admin team',
+      description: 'See who has admin access and approve new requests.',
       visible: true,
       content: (
         <View style={styles.sectionStack}>
           <InfoBanner
             title="Manage admin access"
-            message="Promote drivers from the driver directory. Use this roster to audit admins or remove old teammates."
+            message="Review your admin team below. You can promote drivers to admin from the driver list, or remove access here."
           />
           {hasWorkspaceContext ? (
             <View style={styles.sectionSpacer}>
@@ -957,7 +923,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
           ) : (
             <InfoBanner
               title="Workspace required"
-              message="Pick a workspace to review and prune its admin roster."
+              message="Select a company first to manage its admin team."
               tone="warning"
             />
           )}
@@ -967,14 +933,14 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
     {
       key: 'driverDirectory' as const,
       title: 'Driver directory',
-      description: 'Assign drivers, edit profiles, or impersonate accounts.',
+      description: 'Add and manage drivers for your company.',
       visible: true,
       content: hasWorkspaceContext ? (
         <AdminDriverManager onSelectDriver={setActiveDriverId} refreshSignal={refreshSignal} />
       ) : (
         <InfoBanner
           title="Select a workspace first"
-          message="Use the workspace directory to open a company before editing driver stop lists."
+          message="Select a company first to manage its drivers."
           tone="warning"
         />
       ),
@@ -983,7 +949,7 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
       key: 'devOps' as const,
       title: 'Developer operations',
       description: 'Workspace selection, impersonation, and driver assignment tools.',
-      visible: isDevUser,
+      visible: __DEV__ && isDevUser,
       content: (
         <View style={styles.sectionStack}>
           <InfoBanner
@@ -1146,43 +1112,15 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
   };
 
 
-  const previousMode =
-    previousModeRef.current ??
-    (isDevUser
-      ? experienceHistory.length > 0
-        ? experienceHistory[experienceHistory.length - 1]
-        : experienceMode !== 'home'
-        ? 'home'
-        : null
-      : null);
-  const previousTranslate = useMemo(
-    () =>
-      swipeTranslate.interpolate({
-        inputRange: [0, screenWidth],
-        outputRange: [-40, 0],
-        extrapolate: 'clamp',
-      }),
-    [screenWidth, swipeTranslate]
-  );
-  const previousOpacity = useMemo(
-    () =>
-      swipeTranslate.interpolate({
-        inputRange: [0, screenWidth * 0.4],
-        outputRange: [0, 0.35],
-        extrapolate: 'clamp',
-      }),
-    [screenWidth, swipeTranslate]
-  );
-
   let content: ReactNode;
   try {
     content = !billingActive && !billingLoading && !canSkipBillingGate ? (
       <SafeAreaView style={[styles.safeArea, styles.loadingScreen]}>
         <AppHeader rightSlot={menuTrigger} />
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Billing inactive.</Text>
+          <Text style={styles.loadingText}>Your subscription is not active.</Text>
           <Text style={[styles.loadingText, { marginTop: 8 }]}>
-            Activate billing to create routes and manage drivers.
+            Open Settings to set up billing.
           </Text>
           {billingError ? (
             <Text style={[styles.loadingText, { color: colors.danger }]}>{billingError}</Text>
@@ -1202,21 +1140,10 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
     ) : (
       <PlannerContainer headerRight={menuTrigger}>
         <View style={styles.experienceStage}>
-          {previousMode && !IS_WEB ? (
-            <Animated.View
-              style={[
-                styles.previousStage,
-                {
-                  transform: [{ translateX: previousTranslate }],
-                  opacity: previousOpacity,
-                  pointerEvents: 'none',
-                },
-              ]}
-            >
-              {renderExperienceContent(previousMode, { preview: true })}
-            </Animated.View>
-          ) : null}
+          {null}
           {IS_WEB ? (
+            <View style={styles.currentStage}>{renderExperienceContent(experienceMode)}</View>
+          ) : !ENABLE_NATIVE_BACK_SWIPE ? (
             <View style={styles.currentStage}>{renderExperienceContent(experienceMode)}</View>
           ) : (
             <Animated.View
@@ -1235,13 +1162,13 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
       </PlannerContainer>
     );
   } catch (error) {
-    console.error('AdminPlanner render error', error);
+    if (__DEV__) console.error('AdminPlanner render error', error);
     content = (
       <SafeAreaView style={[styles.safeArea, styles.loadingScreen]}>
         <AppHeader />
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Render error</Text>
-          <Text style={styles.loadingText}>{String((error as Error).message ?? error)}</Text>
+          <Text style={styles.loadingText}>Something went wrong.</Text>
+          <Text style={styles.loadingText}>Please restart the app and try again.</Text>
         </View>
       </SafeAreaView>
     );
@@ -1349,7 +1276,7 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
       const workspace = await createWorkspace({ name: trimmed, numberOfDrivers: seatCount });
       setWorkspaceNameInput(workspace.name);
       setWorkspaceDriverSeats(String(seatCount));
-      Alert.alert('Workspace created', `${workspace.name} is live on the free tier.`);
+      Alert.alert('Workspace created', `${workspace.name} has been created. You can start adding drivers now.`);
     } catch (error) {
       Alert.alert(
         'Workspace not created',
@@ -1370,8 +1297,8 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
   }[] = [
     {
       key: 'driverPlan' as const,
-      title: 'Assignments & stops',
-      description: "Review today's manifest. Dispatch manages edits for you.",
+      title: 'Your stops',
+      description: "View the addresses assigned to you. Your admin updates this list.",
       visible: true,
       content: <DriverStopsPanel refreshSignal={refreshSignal} />,
     },
@@ -1402,7 +1329,7 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
             <View style={styles.sectionHeaderText}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>Request access to a company</Text>
               <Text style={[styles.sectionDescription, { color: colors.mutedText }]}>
-                Enter the email or phone number of an admin at the company. We will notify their admin inbox to approve
+                Enter the email or phone number of an admin at the company. We will notify their administrator to approve
                 your access.
               </Text>
             </View>
@@ -1457,9 +1384,9 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
             ]}
           >
             <View style={styles.sectionHeaderText}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Create your workspace</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Create your company</Text>
               <Text style={[styles.sectionDescription, { color: colors.mutedText }]}>
-                Launch a free-tier workspace and upgrade later when you are ready to scale.
+                Set up your company for free. You can upgrade anytime as your team grows.
               </Text>
             </View>
             <View style={styles.workspaceForm}>
@@ -1483,7 +1410,7 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
               <TextInput
                 value={workspaceDriverSeats}
                 onChangeText={(value) => setWorkspaceDriverSeats(value.replace(/[^0-9]/g, ''))}
-                placeholder="Driver seats (e.g. 5)"
+                placeholder="Number of drivers (e.g. 5)"
                 placeholderTextColor={colors.mutedText}
                 style={[
                   styles.input,
@@ -1508,11 +1435,11 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
                 ]}
               >
                 <Text style={[styles.pillButtonText, { color: colors.surface }]}>
-                  {creatingWorkspace ? 'Creating workspace...' : 'Create workspace free'}
+                  {creatingWorkspace ? 'Creating workspace...' : 'Create company'}
                 </Text>
               </Pressable>
               <Text style={[styles.sectionDescription, { color: colors.mutedText }]}>
-                Free trial tier by default. Invite admins and drivers once you are set up.
+                Your company starts on the free plan. Add admins and drivers to get started.
               </Text>
             </View>
           </View>

@@ -32,7 +32,7 @@ export function StopLocationEditor({
     return (
       <View style={[styles.container, styles.center]}>
         <Text style={styles.notice}>
-          Google Maps API key missing. Set EXPO_PUBLIC_GOOGLE_API_KEY to adjust pins.
+          Map is temporarily unavailable.
         </Text>
       </View>
     );

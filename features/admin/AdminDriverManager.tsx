@@ -80,7 +80,7 @@ export function AdminDriverManager({
         const results = await authApi.searchDrivers(token, trimmed, workspaceId ?? undefined);
         setSuggestions(results);
       } catch (err) {
-        console.warn('Driver suggestion search failed', err);
+        if (__DEV__) console.warn('Driver suggestion search failed', err);
         setSuggestions([]);
       } finally {
         setSuggestionsLoading(false);
@@ -148,12 +148,12 @@ export function AdminDriverManager({
 
   const confirmAssign = (driver: DriverLookupResult) => {
     if (!workspaceId || !token) {
-      setSearchError('Select a workspace to assign drivers.');
+      setSearchError('Select a company to assign drivers.');
       return;
     }
     Alert.alert(
-      'Add driver to workspace',
-      `Add ${driver.fullName || driver.emailOrPhone} to ${workspaceName || 'this workspace'}?`,
+      'Add driver to company',
+      `Add ${driver.fullName || driver.emailOrPhone} to ${workspaceName || 'this company'}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -167,12 +167,12 @@ export function AdminDriverManager({
 
   const confirmDetach = (driver: DriverLookupResult) => {
     if (!workspaceId || !token) {
-      setSearchError('Select a workspace to manage drivers.');
+      setSearchError('Select a company to manage drivers.');
       return;
     }
     Alert.alert(
       'Remove driver',
-      `Remove ${driver.fullName || driver.emailOrPhone} from ${workspaceName || 'this workspace'}?`,
+      `Remove ${driver.fullName || driver.emailOrPhone} from ${workspaceName || 'this company'}?`,
       [
         { text: 'Keep', style: 'cancel' },
         {
@@ -266,7 +266,7 @@ export function AdminDriverManager({
       return null;
     }
     if (!workspaceId) {
-      return <Text style={styles.lookupHint}>Select a workspace to manage drivers.</Text>;
+      return <Text style={styles.lookupHint}>Select a company to manage drivers.</Text>;
     }
     if (!lookupResult.workspaceId) {
       return (
@@ -282,7 +282,7 @@ export function AdminDriverManager({
             onPress={() => confirmAssign(lookupResult)}
           >
             <Text style={styles.primaryLabel}>
-              Add to {workspaceName || 'workspace'}
+              Add to {workspaceName || 'company'}
             </Text>
           </Pressable>
           <Pressable
@@ -335,7 +335,7 @@ export function AdminDriverManager({
     return (
       <View style={styles.lookupActions}>
         <Text style={styles.lookupHint}>
-          Already assigned to {lookupResult.workspaceName || 'another workspace'}.
+          Already assigned to {lookupResult.workspaceName || 'another company'}.
         </Text>
         <Pressable
           style={({ pressed }) => [
@@ -357,7 +357,7 @@ export function AdminDriverManager({
     <View style={styles.container}>
       <Text style={styles.heading}>Driver roster</Text>
       <Text style={styles.description}>
-        Manage drivers in your workspace. Driver search is limited to developer accounts.
+        View and manage drivers in your company.
       </Text>
       {showDriverSearch ? (
         <View style={styles.searchCard}>
@@ -434,8 +434,8 @@ export function AdminDriverManager({
               <Text style={styles.lookupSub}>{lookupResult.emailOrPhone}</Text>
               <Text style={styles.lookupHint}>
                 {lookupResult.workspaceId
-                  ? `Assigned to ${lookupResult.workspaceName || 'a workspace'}`
-                  : 'Not assigned to any workspace.'}
+                  ? `Assigned to ${lookupResult.workspaceName || 'a company'}`
+                  : 'Not assigned to any company.'}
               </Text>
               <View style={styles.lookupActions}>{renderLookupActions()}</View>
             </View>
@@ -449,7 +449,7 @@ export function AdminDriverManager({
             <ActivityIndicator color={colors.primary} />
           </View>
         ) : drivers.length === 0 ? (
-          <Text style={styles.emptyText}>No drivers yet. Create one above.</Text>
+          <Text style={styles.emptyText}>No drivers yet. Drivers will appear here once they create an account and join your company.</Text>
         ) : (
           <ScrollView style={styles.driverList}>
             {drivers.map((driver) => (
@@ -597,7 +597,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       gap: 20,
     },
     driverColumn: {
-      width: 220,
+      flex: 1,
+      minWidth: 200,
+      maxWidth: 320,
       gap: 12,
     },
     editorColumn: {

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -10,9 +10,12 @@ import {
 
 import { useAuth } from './auth-context';
 import { getFriendlyError } from '@/features/shared/get-friendly-error';
+import { useTheme } from '@/features/theme/theme-context';
 
 export function ChangePasswordCard() {
   const { changePassword } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -62,7 +65,7 @@ export function ChangePasswordCard() {
   return (
     <View style={styles.card}>
       <Text style={styles.title}>Change password</Text>
-      <Text style={styles.subtitle}>Update your password any time. Make sure to share the change if someone else manages your login.</Text>
+      <Text style={styles.subtitle}>You can update your password at any time.</Text>
       <View style={styles.fieldGroup}>
         <Text style={styles.label}>Current password</Text>
         <TextInput
@@ -72,10 +75,12 @@ export function ChangePasswordCard() {
           secureTextEntry
           style={styles.input}
           placeholder="Current password"
+          placeholderTextColor={colors.mutedText}
           editable={!loading}
           returnKeyType="next"
           onSubmitEditing={() => newPasswordRef.current?.focus()}
           blurOnSubmit={false}
+          accessibilityLabel="Current password"
         />
       </View>
       <View style={styles.fieldRow}>
@@ -88,24 +93,28 @@ export function ChangePasswordCard() {
             secureTextEntry
             style={styles.input}
             placeholder="New password"
+            placeholderTextColor={colors.mutedText}
             editable={!loading}
             returnKeyType="next"
             onSubmitEditing={() => confirmPasswordRef.current?.focus()}
             blurOnSubmit={false}
+            accessibilityLabel="New password"
           />
         </View>
         <View style={styles.fieldColumn}>
-          <Text style={styles.label}>Confirm</Text>
+          <Text style={styles.label}>Confirm new password</Text>
           <TextInput
             ref={confirmPasswordRef}
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             secureTextEntry
             style={styles.input}
-            placeholder="Confirm"
+            placeholder="Confirm new password"
+            placeholderTextColor={colors.mutedText}
             editable={!loading}
             returnKeyType="done"
             onSubmitEditing={handleSubmit}
+            accessibilityLabel="Confirm new password"
           />
         </View>
       </View>
@@ -115,74 +124,80 @@ export function ChangePasswordCard() {
         style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
         onPress={handleSubmit}
         disabled={loading}
+        accessibilityRole="button"
+        accessibilityLabel="Update password"
       >
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonLabel}>Update password</Text>}
+        {loading ? <ActivityIndicator color={colors.surface} /> : <Text style={styles.buttonLabel}>Update password</Text>}
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#cbd5f5',
-    backgroundColor: '#fff',
-    padding: 20,
-    gap: 16,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#0f172a',
-  },
-  subtitle: {
-    color: '#475569',
-    lineHeight: 20,
-  },
-  fieldGroup: {
-    gap: 6,
-  },
-  fieldRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  fieldColumn: {
-    flex: 1,
-    gap: 6,
-  },
-  label: {
-    fontWeight: '600',
-    color: '#1e293b',
-  },
-  input: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#cbd5f5',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    backgroundColor: '#f8fafc',
-    color: '#0f172a',
-  },
-  error: {
-    color: '#dc2626',
-  },
-  success: {
-    color: '#16a34a',
-  },
-  button: {
-    backgroundColor: '#1d4ed8',
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  buttonPressed: {
-    opacity: 0.85,
-  },
-  buttonLabel: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-});
+function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
+  return StyleSheet.create({
+    card: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      padding: 20,
+      gap: 16,
+    },
+    title: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    subtitle: {
+      color: colors.mutedText,
+      lineHeight: 20,
+    },
+    fieldGroup: {
+      gap: 6,
+    },
+    fieldRow: {
+      flexDirection: 'row',
+      gap: 12,
+    },
+    fieldColumn: {
+      flex: 1,
+      gap: 6,
+    },
+    label: {
+      fontWeight: '600',
+      color: colors.text,
+    },
+    input: {
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 16,
+      backgroundColor: isDark ? colors.background : '#f8fafc',
+      color: colors.text,
+    },
+    error: {
+      color: colors.danger,
+    },
+    success: {
+      color: colors.success ?? '#16a34a',
+    },
+    button: {
+      backgroundColor: colors.primary,
+      borderRadius: 10,
+      paddingVertical: 12,
+      minHeight: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    buttonPressed: {
+      opacity: 0.85,
+    },
+    buttonLabel: {
+      color: colors.surface,
+      fontWeight: '600',
+      fontSize: 16,
+    },
+  });
+}

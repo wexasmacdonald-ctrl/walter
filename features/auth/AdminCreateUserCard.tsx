@@ -76,7 +76,7 @@ export function AdminCreateUserCard({ onUserCreated }: AdminCreateUserCardProps)
     try {
       await shareCredentials(details);
     } catch (shareError) {
-      console.warn('Failed to share credentials', shareError);
+      if (__DEV__) console.warn('Failed to share credentials', shareError);
       Alert.alert(
         'Message not shared',
         'Credentials were created, but the share sheet could not open. Copy the password above or try again.'
@@ -96,7 +96,7 @@ export function AdminCreateUserCard({ onUserCreated }: AdminCreateUserCardProps)
       await Clipboard.setStringAsync(passwordToCopy);
       Alert.alert('Copied', 'Temporary password copied to your clipboard.');
     } catch (copyError) {
-      console.warn('Failed to copy credentials', copyError);
+      if (__DEV__) console.warn('Failed to copy credentials', copyError);
       Alert.alert('Copy failed', 'Copy manually from the password field.');
     } finally {
       setCopying(false);
@@ -150,8 +150,7 @@ export function AdminCreateUserCard({ onUserCreated }: AdminCreateUserCardProps)
     <View style={styles.card}>
       <Text style={styles.title}>Create login</Text>
       <Text style={styles.subtitle}>
-        Generate credentials for another admin or developer. Drivers should be added from the driver
-        roster instead of getting a manual login.
+        Create a login for another admin. Drivers are added through the driver list.
       </Text>
       <View style={styles.fieldGroup}>
         <Text style={styles.label}>Name</Text>
@@ -200,7 +199,7 @@ export function AdminCreateUserCard({ onUserCreated }: AdminCreateUserCardProps)
         <Text style={styles.roleHint}>
           {role === 'admin'
             ? 'Admins can manage drivers, addresses, and credentials.'
-            : 'Developers get admin powers but stay hidden from the admin roster.'}
+            : 'Developers have full admin access but are hidden from the admin list.'}
         </Text>
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}

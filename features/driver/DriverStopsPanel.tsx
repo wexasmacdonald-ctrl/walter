@@ -100,7 +100,7 @@ export function DriverStopsPanel({ refreshSignal }: DriverStopsPanelProps) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.heading}>Your run</Text>
+        <Text style={styles.heading}>Your route</Text>
         <Pressable style={styles.refreshButton} onPress={refreshStops} disabled={loading}>
           {loading ? (
             <ActivityIndicator color={colors.primary} />
@@ -128,16 +128,16 @@ export function DriverStopsPanel({ refreshSignal }: DriverStopsPanelProps) {
         </Pressable>
         {listOpen ? (
           stops.length === 0 ? (
-            <Text style={styles.emptyText}>No addresses assigned yet.</Text>
+            <Text style={styles.emptyText}>No stops assigned yet. Your admin will add addresses for you.</Text>
           ) : (
             <ScrollView style={styles.list}>
               {stops.map((stop, index) => {
-                const statusLabel = stop.status === 'complete' ? 'Cleared' : 'Pending';
+                const statusLabel = stop.status === 'complete' ? 'Cleared' : 'Not cleared';
                 return (
                   <View key={stop.id} style={styles.listRow}>
                     <View style={styles.listRowMain}>
                       <Text style={styles.listRowIndex}>{index + 1}</Text>
-                      <Text style={styles.listRowAddress}>{stop.address}</Text>
+                      <Text style={styles.listRowAddress} numberOfLines={2}>{stop.address}</Text>
                     </View>
                     <Text style={[styles.listRowStatus, stop.status === 'complete' && styles.listRowStatusDone]}>
                       {statusLabel}
@@ -183,7 +183,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
       borderColor: colors.primary,
       borderRadius: 9999,
       paddingHorizontal: 16,
-      paddingVertical: 6,
+      paddingVertical: 10,
+      minHeight: 44,
+      justifyContent: 'center' as const,
       backgroundColor: colors.primaryMuted,
     },
     refreshText: {

@@ -88,7 +88,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           setThemeState(system);
         }
       } catch (error) {
-        console.warn('Failed to load theme preference', error);
+        if (__DEV__) console.warn('Failed to load theme preference', error);
       }
     })();
     return () => {
@@ -101,7 +101,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     try {
       await AsyncStorage.setItem(THEME_STORAGE_KEY, next);
     } catch (error) {
-      console.warn('Failed to persist theme preference', error);
+      if (__DEV__) console.warn('Failed to persist theme preference', error);
     }
   }, []);
 

@@ -24,9 +24,9 @@ import type { AuthUser, BusinessTier } from '@/features/auth/types';
 import type { OrgBillingStatus, SyncDriverSeatResult } from '@/features/auth/api';
 import { API_BASE } from '@/features/route-planner/api';
 
-const isIOS = Platform.OS === 'ios';
+const isNativeMobile = Platform.OS === 'ios' || Platform.OS === 'android';
 const EXISTING_CUSTOMER_NOTICE =
-  'This mobile app is for existing customers. Ask your administrator to manage billing on the web dashboard.';
+  'Your subscription is managed by your company\u2019s administrator.';
 
 type SettingsMenuProps = {
   userName: string | null | undefined;
@@ -118,7 +118,7 @@ export function SettingsMenu({
   const [teamCodeMessage, setTeamCodeMessage] = useState<string | null>(null);
   const showTeamCodeForm = false; // invite codes removed; drivers now request access via admins
   const currentWorkspaceId = billingStatus?.orgId ?? workspaceId ?? null;
-  const showDevTools = userRole === 'dev' && (!!onBootstrapWorkspace || !!onAttachWorkspace);
+  const showDevTools = __DEV__ && userRole === 'dev' && (!!onBootstrapWorkspace || !!onAttachWorkspace);
   const normalizedPlanTier =
     billingStatus?.planTier ??
     (billingStatus?.numberOfDrivers
@@ -141,7 +141,7 @@ export function SettingsMenu({
         : billingStatus?.numberOfDrivers
           ? `Up to ${billingStatus.numberOfDrivers} drivers`
           : 'Custom driver cap'
-    : '30 stops / 24 hrs';
+    : '30 stops per day';
   const [devWorkspaceName, setDevWorkspaceName] = useState('');
   const [devBootstrapStatus, setDevBootstrapStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [devBootstrapMessage, setDevBootstrapMessage] = useState<string | null>(null);
@@ -329,7 +329,7 @@ export function SettingsMenu({
     }
     const contact = profileContact.trim();
     if (!contact) {
-      setProfileError('Email or phone cannot be empty.');
+      setProfileError('Please enter your email address or phone number.');
       return;
     }
 
@@ -409,7 +409,7 @@ export function SettingsMenu({
     }
     const trimmed = teamCode.trim();
     if (!trimmed) {
-      setTeamCodeError('Enter your workspace invite code.');
+      setTeamCodeError('Enter your company invite code.');
       return;
     }
     setTeamCodeStatus('loading');
@@ -421,8 +421,8 @@ export function SettingsMenu({
       setTeamCodeStatus('success');
       setTeamCodeMessage(
         updated.businessName
-          ? `${updated.businessName} workspace unlocked.`
-          : 'Business tier unlocked for your account.'
+          ? `${updated.businessName} company unlocked.`
+          : 'Your account has been upgraded to the business plan.'
       );
     } catch (error) {
       const message =
@@ -437,21 +437,21 @@ export function SettingsMenu({
   const handleBootstrapWorkspace = useCallback(async () => {
     if (!onBootstrapWorkspace) {
       setDevBootstrapStatus('error');
-      setDevBootstrapMessage('Bootstrap endpoint unavailable.');
+      setDevBootstrapMessage('This feature is not available right now.');
       return;
     }
     const trimmed = devWorkspaceName.trim();
     setDevBootstrapStatus('loading');
     setDevBootstrapMessage(null);
     try {
-      await onBootstrapWorkspace({ name: trimmed || `Workspace ${new Date().toISOString()}` });
+      await onBootstrapWorkspace({ name: trimmed || `Company ${new Date().toISOString()}` });
       setDevBootstrapStatus('success');
-      setDevBootstrapMessage('Workspace created and attached.');
+      setDevBootstrapMessage('Company created and attached.');
       setDevWorkspaceName('');
       await onRefreshBillingStatus?.();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Failed to bootstrap workspace.';
+        error instanceof Error ? error.message : 'Failed to create company.';
       setDevBootstrapStatus('error');
       setDevBootstrapMessage(message);
     }
@@ -460,13 +460,13 @@ export function SettingsMenu({
   const handleAttachWorkspace = useCallback(async () => {
     if (!onAttachWorkspace) {
       setDevAttachStatus('error');
-      setDevAttachMessage('Attach endpoint unavailable.');
+      setDevAttachMessage('This feature is not available right now.');
       return;
     }
     const trimmed = devAttachWorkspaceId.trim();
     if (!trimmed) {
       setDevAttachStatus('error');
-      setDevAttachMessage('Enter a workspace ID.');
+      setDevAttachMessage('Enter a company ID.');
       return;
     }
     setDevAttachStatus('loading');
@@ -474,12 +474,12 @@ export function SettingsMenu({
     try {
       await onAttachWorkspace({ workspaceId: trimmed });
       setDevAttachStatus('success');
-      setDevAttachMessage('Workspace attached to your account.');
+      setDevAttachMessage('Company attached to your account.');
       setDevAttachWorkspaceId('');
       await onRefreshBillingStatus?.();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Failed to attach workspace.';
+        error instanceof Error ? error.message : 'Failed to attach company.';
       setDevAttachStatus('error');
       setDevAttachMessage(message);
     }
@@ -487,7 +487,7 @@ export function SettingsMenu({
 
   const handleStartCheckout = useCallback(
     async (seatCountOverride?: number) => {
-      if (isIOS) {
+      if (isNativeMobile) {
         setDriverSeatMessage(EXISTING_CUSTOMER_NOTICE);
         return;
       }
@@ -495,7 +495,7 @@ export function SettingsMenu({
         return;
       }
       if (!currentWorkspaceId || !token) {
-        Alert.alert('Workspace required', 'Join or create a workspace before updating billing.');
+        Alert.alert('Company required', 'Create or join a company before managing billing.');
         return;
       }
       const seatCount =
@@ -527,10 +527,10 @@ export function SettingsMenu({
         }
 
         if (!resp.ok || !data?.checkoutUrl) {
-          console.error('Billing error', resp.status, data ?? text);
+          if (__DEV__) console.error('Billing error', resp.status, data ?? text);
           const message =
             data?.message ??
-            (resp.status === 400 ? 'Workspace not ready for billing.' : 'Could not start checkout.');
+            (resp.status === 400 ? 'Company not ready for billing.' : 'Could not start checkout.');
           Alert.alert('Billing error', message);
           return;
         }
@@ -542,7 +542,7 @@ export function SettingsMenu({
         });
         await onRefreshBillingStatus?.();
       } catch (error) {
-        console.error('Checkout request failed', error);
+        if (__DEV__) console.error('Checkout request failed', error);
         Alert.alert('Error', 'Network error talking to billing.');
       } finally {
         setCheckoutLoading(false);
@@ -561,7 +561,7 @@ export function SettingsMenu({
     try {
       const result = await onSyncDriverSeats();
       if (result.action === 'checkout') {
-        if (isIOS) {
+        if (isNativeMobile) {
           setDriverSeatMessage(EXISTING_CUSTOMER_NOTICE);
         } else {
           setDriverSeatMessage('Redirecting to billing checkout for updated seats.');
@@ -586,14 +586,14 @@ export function SettingsMenu({
   const renderMainView = () => (
     <>
     <View style={styles.profileCard}>
-      <Text style={styles.profileName}>{userName ? userName : 'Signed user'}</Text>
+      <Text style={styles.profileName}>{userName ? userName : 'Your account'}</Text>
       <Text style={styles.profileRole}>{userRole}</Text>
       <Text style={styles.profilePlan}>
         {businessTier === 'business'
-            ? `Workspace: ${businessName?.trim() || 'Business workspace'}`
+            ? `Company: ${businessName?.trim() || 'Business company'}`
             : businessName?.trim()
-            ? `Workspace: ${businessName} (free tier)`
-            : 'No workspace selected'}
+            ? `Company: ${businessName} (free tier)`
+            : 'No company selected'}
         </Text>
       </View>
 
@@ -611,13 +611,13 @@ export function SettingsMenu({
             </View>
           <Text style={styles.planDescription}>
             {businessTier === 'business'
-              ? 'Your workspace includes unlimited stops.'
-              : 'Free accounts can geocode up to 30 new stops every 24 hours. Upgrade your workspace to business for unlimited stops.'}
+              ? 'Your company includes unlimited stops.'
+              : 'Free accounts can geocode up to 30 new stops every 24 hours. Upgrade your company to business for unlimited stops.'}
           </Text>
           <Text style={styles.planTeamName}>
             {businessName?.trim()
-          ? `Workspace: ${businessName}`
-            : 'Add a workspace name from Account details.'}
+          ? `Company: ${businessName}`
+            : 'Add a company name from Account details.'}
       </Text>
       {billingLoading ? (
         <Text style={styles.profilePlan}>Checking billing status…</Text>
@@ -636,7 +636,7 @@ export function SettingsMenu({
             <View style={styles.driverSeatBlock}>
               <Text style={styles.driverSeatTitle}>Driver seats & billing</Text>
               <Text style={styles.driverSeatHint}>
-                Keep your seat allowance aligned with the people you’ve added to this workspace. We’ll open Stripe only
+                Keep your seat allowance aligned with the people you’ve added to this company. We’ll open Stripe only
                 when the plan needs to change.
               </Text>
               <View style={styles.driverSeatMetaRow}>
@@ -673,7 +673,7 @@ export function SettingsMenu({
                     <Text style={styles.driverSeatButtonText}>Sync with members</Text>
                   )}
                 </Pressable>
-                {!isIOS ? (
+                {!isNativeMobile ? (
                   <Pressable
                     style={({ pressed }) => [
                       styles.driverSeatSecondaryButton,
@@ -691,16 +691,16 @@ export function SettingsMenu({
                   </Pressable>
                 ) : null}
               </View>
-              {isIOS ? (
+              {isNativeMobile ? (
                 <Text style={styles.driverSeatHint}>{EXISTING_CUSTOMER_NOTICE}</Text>
               ) : null}
             </View>
           ) : null}
           {showTeamCodeForm ? (
             <View style={styles.teamCodeBlock}>
-              <Text style={styles.formLabel}>Workspace invite code</Text>
+              <Text style={styles.formLabel}>Company invite code</Text>
               <Text style={styles.teamCodeHint}>
-                Enter the workspace invite code from your dispatcher to join their workspace and unlock
+                Enter the company invite code from your dispatcher to join their company and unlock
                 the business tier.
               </Text>
               <TextInput
@@ -721,7 +721,7 @@ export function SettingsMenu({
                 autoCapitalize="characters"
                 autoCorrect={false}
                 accessible
-                accessibilityLabel="Workspace invite code"
+                accessibilityLabel="Company invite code"
               />
               {teamCodeError ? <Text style={styles.errorText}>{teamCodeError}</Text> : null}
               {teamCodeStatus === 'success' && teamCodeMessage ? (
@@ -740,7 +740,7 @@ export function SettingsMenu({
                   <ActivityIndicator color={colors.surface} />
                 ) : (
                   <Text style={styles.teamCodeButtonText}>
-                    {businessTier === 'business' ? 'Refresh workspace access' : 'Join workspace'}
+                    {businessTier === 'business' ? 'Refresh company access' : 'Join company'}
                   </Text>
                 )}
               </Pressable>
@@ -750,13 +750,13 @@ export function SettingsMenu({
             <View style={styles.devSection}>
               <Text style={styles.sectionTitle}>Developer tools</Text>
               <View style={styles.devCard}>
-                <Text style={styles.devLabel}>Current workspace ID</Text>
+                <Text style={styles.devLabel}>Current company ID</Text>
                 <Text style={styles.devValue}>{currentWorkspaceId ?? 'None assigned'}</Text>
 
-                <Text style={styles.devLabel}>Create & attach workspace</Text>
+                <Text style={styles.devLabel}>Create & attach company</Text>
                 <TextInput
                   style={styles.devInput}
-                  placeholder="Workspace name"
+                  placeholder="Company name"
                   placeholderTextColor={colors.mutedText}
                   value={devWorkspaceName}
                   onChangeText={(text) => {
@@ -776,7 +776,7 @@ export function SettingsMenu({
                   disabled={devBootstrapStatus === 'loading'}
                 >
                   <Text style={styles.devButtonText}>
-                    {devBootstrapStatus === 'loading' ? 'Creating…' : 'Create workspace'}
+                    {devBootstrapStatus === 'loading' ? 'Creating…' : 'Create company'}
                   </Text>
                 </Pressable>
                 {devBootstrapMessage ? (
@@ -789,10 +789,10 @@ export function SettingsMenu({
                   </Text>
                 ) : null}
 
-                <Text style={styles.devLabel}>Attach existing workspace</Text>
+                <Text style={styles.devLabel}>Attach existing company</Text>
                 <TextInput
                   style={styles.devInput}
-                  placeholder="Workspace ID (UUID)"
+                  placeholder="Company ID (UUID)"
                   placeholderTextColor={colors.mutedText}
                   autoCapitalize="none"
                   value={devAttachWorkspaceId}
@@ -813,7 +813,7 @@ export function SettingsMenu({
                   disabled={devAttachStatus === 'loading'}
                 >
                   <Text style={styles.devButtonText}>
-                    {devAttachStatus === 'loading' ? 'Attaching…' : 'Attach workspace'}
+                    {devAttachStatus === 'loading' ? 'Attaching…' : 'Attach company'}
                   </Text>
                 </Pressable>
                 {devAttachMessage ? (
@@ -946,12 +946,12 @@ export function SettingsMenu({
             />
           </View>
           <View style={styles.formField}>
-            <Text style={styles.formLabel}>Workspace name</Text>
+            <Text style={styles.formLabel}>Company name</Text>
             <TextInput
               style={styles.formInput}
               value={profileBusinessName}
               onChangeText={setProfileBusinessName}
-              placeholder="Workspace name"
+              placeholder="Company name"
               autoCapitalize="words"
               placeholderTextColor={colors.mutedText}
             />

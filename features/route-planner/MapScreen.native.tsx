@@ -10,11 +10,11 @@ import {
   Text,
   View,
 } from 'react-native';
-import * as Location from 'expo-location';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/features/theme/theme-context';
 import type { LatLng, MapPressEvent } from 'react-native-maps';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Circle, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import type { Stop } from './types';
 import pinBlue from '@/assets/pins/pin-blue.png';
 import pinGreen from '@/assets/pins/pin-green.png';
@@ -27,6 +27,7 @@ import {
   type AndroidPinTheme,
 } from './marker-icon-cache';
 import { useAndroidPinIconRegistry } from './useAndroidPinIconRegistry';
+import { useAndroidFusedLocationController } from './useAndroidFusedLocationController';
 
 const GOOGLE_DARK_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#0b1220' }] },
@@ -123,9 +124,15 @@ export function MapScreen({
   // onAdjustPinDrag exists for feature parity with web; native map remains modal-driven for now.
 }: MapScreenProps) {
   const { colors, isDark } = useTheme();
-  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
-  const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
-  const [permissionDenied, setPermissionDenied] = useState(false);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(colors, isDark, insets.top), [colors, isDark, insets.top]);
+  const isAndroid = Platform.OS === 'android';
+  const {
+    start: restartAndroidLocation,
+    state: androidLocation,
+    hasFix: hasAndroidLocationFix,
+    isPrecise: isAndroidLocationPrecise,
+  } = useAndroidFusedLocationController();
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<Record<string, number>>({});
@@ -138,6 +145,7 @@ export function MapScreen({
   const mapRef = useRef<MapView | null>(null);
   const modalMapRef = useRef<MapView | null>(null);
   const mapProvider = PROVIDER_GOOGLE;
+  const useNativeUserLocationLayer = !isAndroid;
 
   const resolvedMapType = useMemo(() => {
     if (mapType === 'satellite') {
@@ -156,48 +164,116 @@ export function MapScreen({
     return GOOGLE_DARK_MAP_STYLE;
   }, [isDark, mapProvider, mapType]);
 
-  useEffect(() => {
-    let mounted = true;
+  const renderOverlay = () => {
+    if (loading) {
+      return (
+        <View style={styles.mapOverlay}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.mapOverlayText}>Loading pins...</Text>
+        </View>
+      );
+    }
 
-    async function requestLocation() {
-      try {
-        // Check existing permission before asking.
-        let perm = await Location.getForegroundPermissionsAsync();
-        if (!mounted) return;
-        let status = perm.status;
-        if (status !== 'granted' && perm.canAskAgain) {
-          perm = await Location.requestForegroundPermissionsAsync();
-          if (!mounted) return;
-          status = perm.status;
-        }
+    if (Platform.OS === 'android' && isAndroidPinPrewarming && markers.length > 0) {
+      return (
+        <View style={styles.mapOverlay}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={styles.mapOverlayText}>Setting up the map...</Text>
+        </View>
+      );
+    }
 
-        if (status === 'granted') {
-          setLocationPermissionGranted(true);
-          try {
-            const position = await Location.getCurrentPositionAsync({});
-            if (!mounted) return;
-            void position.coords.latitude;
-            void position.coords.longitude;
-          } catch (error) {
-            console.warn('Failed to get current position', error);
-          }
-        } else {
-          setPermissionDenied(true);
-          setLocationPermissionGranted(false);
-        }
-      } catch (error) {
-        console.warn('Location permission request failed', error);
-        setPermissionDenied(true);
-        setLocationPermissionGranted(false);
+    if (markers.length === 0) {
+      return (
+        <View style={styles.notice}>
+          <Text style={styles.noticeText}>Pins will appear once addresses are loaded.</Text>
+        </View>
+      );
+    }
+
+    if (isAndroid) {
+      if (androidLocation.status === 'denied') {
+        return (
+          <View style={styles.notice}>
+            <Text style={styles.noticeText}>Permission denied.</Text>
+            <Pressable style={styles.noticeAction} onPress={() => void restartAndroidLocation()}>
+              <Text style={styles.noticeActionText}>Retry location</Text>
+            </Pressable>
+          </View>
+        );
+      }
+
+      if (androidLocation.status === 'settings_required' || androidLocation.status === 'unavailable') {
+        return (
+          <View style={styles.notice}>
+            <Text style={styles.noticeText}>{androidLocation.message ?? 'Please enable GPS in your device settings.'}</Text>
+            <Pressable style={styles.noticeAction} onPress={() => void restartAndroidLocation()}>
+              <Text style={styles.noticeActionText}>Enable GPS</Text>
+            </Pressable>
+          </View>
+        );
+      }
+
+      if (androidLocation.status === 'error') {
+        return (
+          <View style={styles.notice}>
+            <Text style={styles.noticeText}>{androidLocation.message ?? 'Couldn\'t get your location. Tap to try again.'}</Text>
+            <Pressable style={styles.noticeAction} onPress={() => void restartAndroidLocation()}>
+              <Text style={styles.noticeActionText}>Retry location</Text>
+            </Pressable>
+          </View>
+        );
+      }
+
+      if (androidLocation.isLocating && !hasAndroidLocationFix) {
+        return (
+          <View style={styles.notice}>
+            <Text style={styles.noticeText}>Locating...</Text>
+          </View>
+        );
+      }
+
+      if (hasAndroidLocationFix && !isAndroidLocationPrecise) {
+        return (
+          <View style={styles.notice}>
+            <Text style={styles.noticeText}>Getting a more accurate location...</Text>
+          </View>
+        );
       }
     }
 
-    requestLocation();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    return null;
+  };
 
+  const renderFallbackUserLocation = () => {
+    if (!isAndroid || !hasAndroidLocationFix || !androidLocation.coords) {
+      return null;
+    }
+
+    const radius = Math.max(androidLocation.accuracyM ?? 30, 30);
+
+    return (
+      <>
+        {!isAndroidLocationPrecise ? (
+          <Circle
+            center={{ latitude: androidLocation.coords.lat, longitude: androidLocation.coords.lng }}
+            radius={radius}
+            strokeColor="rgba(37, 99, 235, 0.45)"
+            fillColor="rgba(37, 99, 235, 0.18)"
+            strokeWidth={1}
+          />
+        ) : null}
+        <Marker
+          coordinate={{ latitude: androidLocation.coords.lat, longitude: androidLocation.coords.lng }}
+          anchor={{ x: 0.5, y: 0.5 }}
+        >
+          <View style={styles.fallbackDotOuter}>
+            <View style={styles.fallbackDotInner} />
+          </View>
+        </Marker>
+      </>
+    );
+  };
   const markers = useMemo<RouteMarker[]>(() => {
     return pins
       .filter((pin): pin is Stop & { lat: number; lng: number } => typeof pin.lat === 'number' && typeof pin.lng === 'number')
@@ -320,7 +396,7 @@ export function MapScreen({
     try {
       await onCompleteStop?.(id);
     } catch (error) {
-      console.warn('Failed to mark stop complete', error);
+      if (__DEV__) console.warn('Failed to mark stop complete', error);
       setConfirmed((prev) => {
         const next = { ...prev };
         delete next[id];
@@ -351,7 +427,7 @@ export function MapScreen({
           try {
             await onUndoStop?.(id);
           } catch (error) {
-            console.warn('Failed to undo stop completion', error);
+            if (__DEV__) console.warn('Failed to undo stop completion', error);
             setConfirmed((prev) => ({ ...prev, [id]: Date.now() }));
           } finally {
             setActioningId(null);
@@ -429,7 +505,7 @@ export function MapScreen({
               {selectedMarker.address || 'Address unavailable'}
             </Text>
         {isConfirmed ? (
-          <Text style={styles.toastStatus}>Snow cleared. Tap undo to revert.</Text>
+          <Text style={styles.toastStatus}>Marked as cleared. Tap Undo to change it back.</Text>
         ) : null}
       <View style={styles.toastActions}>
         {canAdjustPin ? (
@@ -463,7 +539,7 @@ export function MapScreen({
                   disabled={actioningId === selectedMarker.id}
                 >
                   <Text style={styles.toastButtonPrimaryText}>
-                    {actioningId === selectedMarker.id ? 'Updating...' : 'Snow cleared'}
+                    {actioningId === selectedMarker.id ? 'Updating...' : 'Mark cleared'}
                   </Text>
                 </Pressable>
               )}
@@ -472,44 +548,6 @@ export function MapScreen({
         </View>
       </View>
     );
-  };
-
-  const renderOverlay = () => {
-    if (loading) {
-      return (
-        <View style={styles.mapOverlay}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={styles.mapOverlayText}>Loading pins...</Text>
-        </View>
-      );
-    }
-
-    if (Platform.OS === 'android' && isAndroidPinPrewarming && markers.length > 0) {
-      return (
-        <View style={styles.mapOverlay}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={styles.mapOverlayText}>Preparing numbered pins...</Text>
-        </View>
-      );
-    }
-
-    if (markers.length === 0) {
-      return (
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>Pins appear after the locations finish loading.</Text>
-        </View>
-      );
-    }
-
-    if (permissionDenied) {
-      return (
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>Location permission denied. Map still works; enable it to show your dot.</Text>
-        </View>
-      );
-    }
-
-    return null;
   };
 
   const renderMapTypeToggle = () => (
@@ -552,9 +590,9 @@ export function MapScreen({
               provider={mapProvider}
               style={styles.map}
               mapType={resolvedMapType}
-              showsUserLocation={locationPermissionGranted}
+              showsUserLocation={useNativeUserLocationLayer}
               showsCompass
-              showsMyLocationButton={locationPermissionGranted}
+              showsMyLocationButton={useNativeUserLocationLayer}
               showsBuildings
               customMapStyle={mapCustomStyle}
               userInterfaceStyle={isDark ? 'dark' : 'light'}
@@ -571,6 +609,7 @@ export function MapScreen({
                 }
               }}
             >
+              {renderFallbackUserLocation()}
               {renderMarkers()}
             </MapView>
             {renderOverlay()}
@@ -584,7 +623,7 @@ export function MapScreen({
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderActions}>
               {renderMapTypeToggle()}
-              <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(false)}>
+              <Pressable style={styles.fullScreenButton} onPress={() => setIsFullScreen(false)} accessibilityRole="button" accessibilityLabel="Close full screen map">
                 <Text style={styles.fullScreenButtonText}>Close</Text>
               </Pressable>
             </View>
@@ -595,9 +634,9 @@ export function MapScreen({
               provider={mapProvider}
               style={styles.map}
               mapType={resolvedMapType}
-              showsUserLocation={locationPermissionGranted}
+              showsUserLocation={useNativeUserLocationLayer}
               showsCompass
-              showsMyLocationButton={locationPermissionGranted}
+              showsMyLocationButton={useNativeUserLocationLayer}
               showsBuildings
               customMapStyle={mapCustomStyle}
               userInterfaceStyle={isDark ? 'dark' : 'light'}
@@ -613,6 +652,7 @@ export function MapScreen({
                 }
               }}
             >
+              {renderFallbackUserLocation()}
               {renderMarkers()}
             </MapView>
             {renderOverlay()}
@@ -643,7 +683,7 @@ function fitToMarkers(map: MapView | null, coords: LatLng[]) {
   });
 }
 
-function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean) {
+function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boolean, topInset: number = 48) {
   const onPrimary = isDark ? colors.background : colors.surface;
   const overlayBackground = hexToRgba(colors.surface, isDark ? 0.9 : 0.85);
   const toastBackground = hexToRgba(colors.surface, isDark ? 0.9 : 0.96);
@@ -664,8 +704,10 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       gap: 8,
     },
     fullScreenButton: {
-      paddingHorizontal: 14,
-      paddingVertical: 6,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      minHeight: 44,
+      justifyContent: 'center' as const,
       borderRadius: 999,
       borderWidth: 1,
       borderColor: colors.primary,
@@ -710,6 +752,22 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     noticeText: {
       color: colors.primary,
       textAlign: 'center',
+    },
+    noticeAction: {
+      alignSelf: 'center',
+      marginTop: 10,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      borderRadius: 999,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      minHeight: 44,
+      justifyContent: 'center' as const,
+      backgroundColor: colors.surface,
+    },
+    noticeActionText: {
+      color: colors.primary,
+      fontWeight: '700',
     },
     toastOverlay: {
       ...StyleSheet.absoluteFillObject,
@@ -803,7 +861,7 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       backgroundColor: colors.surface,
     },
     modalHeader: {
-      paddingTop: 48,
+      paddingTop: topInset + 8,
       paddingHorizontal: 24,
       paddingBottom: 16,
       borderBottomWidth: 1,
@@ -837,8 +895,9 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     mapTypeOption: {
       flex: 1,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      minHeight: 44,
       backgroundColor: colors.surface,
       alignItems: 'center',
       justifyContent: 'center',
@@ -874,6 +933,24 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       includeFontPadding: false,
       lineHeight: 14,
     },
+    fallbackDotOuter: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      backgroundColor: 'rgba(37, 99, 235, 0.3)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.85)',
+    },
+    fallbackDotInner: {
+      width: 9,
+      height: 9,
+      borderRadius: 4.5,
+      backgroundColor: '#2563eb',
+      borderWidth: 1,
+      borderColor: '#ffffff',
+    },
   });
 }
 
@@ -887,7 +964,7 @@ function parseHex(input: string): [number, number, number] {
   const value = input.trim().replace(/^#/, '');
   const normalized = value.length === 3 ? value.split('').map((c) => c + c).join('') : value;
   if (normalized.length !== 6 || /[^0-9a-f]/i.test(normalized)) {
-    console.warn(`Invalid hex color "${input}", defaulting to black.`);
+    if (__DEV__) console.warn(`Invalid hex color "${input}", defaulting to black.`);
     return [0, 0, 0];
   }
   const r = Number.parseInt(normalized.slice(0, 2), 16);

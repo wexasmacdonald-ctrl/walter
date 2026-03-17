@@ -634,7 +634,7 @@ export function AdminDriverDetail({
                   Alert.alert('Copied', 'Temporary password placed on your clipboard.');
                 })
                 .catch((copyError) => {
-                  console.warn('Failed to copy temp password', copyError);
+                  if (__DEV__) console.warn('Failed to copy temp password', copyError);
                   Alert.alert(
                     'Copy failed',
                     `Copy manually:\n\n${tempPassword}`
@@ -1191,7 +1191,7 @@ export function AdminDriverDetail({
               </Text>
               {Platform.OS === 'web' ? (
                 <Text style={styles.cardHint}>
-                  Opening map in isolated view for reliable drag on web.
+                  Tap a stop below to view it on the map.
                 </Text>
               ) : (
                 <MapScreen
@@ -1911,8 +1911,10 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     dangerChip: {
       borderRadius: 999,
-      paddingVertical: 6,
-      paddingHorizontal: 14,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      minHeight: 44,
+      justifyContent: 'center' as const,
       backgroundColor: colors.dangerMuted,
       borderWidth: 1,
       borderColor: colors.danger,
@@ -1983,8 +1985,10 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     primaryChip: {
       borderRadius: 999,
-      paddingVertical: 6,
-      paddingHorizontal: 16,
+      paddingVertical: 10,
+      paddingHorizontal: 18,
+      minHeight: 44,
+      justifyContent: 'center' as const,
       backgroundColor: colors.primary,
     },
     primaryChipPressed: {
@@ -1996,8 +2000,10 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
     secondaryChip: {
       borderRadius: 999,
-      paddingVertical: 6,
-      paddingHorizontal: 16,
+      paddingVertical: 10,
+      paddingHorizontal: 18,
+      minHeight: 44,
+      justifyContent: 'center' as const,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,

@@ -39,12 +39,18 @@ type PinIconRendererModule = {
 };
 
 const MODULE_NAME = 'PinIconRenderer';
-const TEMPLATE_VERSION = 'v2';
+const TEMPLATE_VERSION = 'v3';
 const DEFAULT_CONCURRENCY = 3;
 
-const descriptorCache = new Map<AndroidPinVisualKey, AndroidPinIconDescriptor>();
-const inflightCache = new Map<AndroidPinVisualKey, Promise<AndroidPinIconDescriptor | null>>();
-const failureLogged = new Set<AndroidPinVisualKey>();
+const descriptorCache = new Map<string, AndroidPinIconDescriptor>();
+const inflightCache = new Map<string, Promise<AndroidPinIconDescriptor | null>>();
+const failureLogged = new Set<string>();
+
+function buildRegistryCacheKey(label: string, status: MarkerStatus, theme: AndroidPinTheme): string {
+  const normalizedLabel = normalizeMarkerLabel(label) || '?';
+  const visualKey = buildAndroidPinVisualKey(normalizedLabel, status, theme);
+  return `${visualKey}|${TEMPLATE_VERSION}`;
+}
 
 function getNativeModule(): PinIconRendererModule | null {
   if (Platform.OS !== 'android') {
@@ -56,18 +62,19 @@ function getNativeModule(): PinIconRendererModule | null {
 }
 
 async function generateDescriptor(
-  key: AndroidPinVisualKey,
+  cacheKey: string,
+  visualKey: AndroidPinVisualKey,
   label: string,
   status: MarkerStatus,
   theme: AndroidPinTheme,
   debug: boolean
 ): Promise<AndroidPinIconDescriptor | null> {
-  const cached = descriptorCache.get(key);
+  const cached = descriptorCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
-  const existingPromise = inflightCache.get(key);
+  const existingPromise = inflightCache.get(cacheKey);
   if (existingPromise) {
     return existingPromise;
   }
@@ -81,27 +88,27 @@ async function generateDescriptor(
     try {
       const uri = await nativeModule.generatePinIcon(label, status, theme, TEMPLATE_VERSION);
       const descriptor: AndroidPinIconDescriptor = {
-        key,
+        key: visualKey,
         uri,
         width: ANDROID_PIN_ICON_WIDTH,
         height: ANDROID_PIN_ICON_HEIGHT,
       };
-      descriptorCache.set(key, descriptor);
+      descriptorCache.set(cacheKey, descriptor);
       return descriptor;
     } catch (error) {
-      if (debug && !failureLogged.has(key)) {
-        failureLogged.add(key);
-        console.warn('[MapPins] Pin icon generation failed', { key, error });
+      if (debug && !failureLogged.has(cacheKey)) {
+        failureLogged.add(cacheKey);
+        if (__DEV__) console.warn('[MapPins] Pin icon generation failed', { cacheKey, error });
       }
       return null;
     }
   })();
 
-  inflightCache.set(key, work);
+  inflightCache.set(cacheKey, work);
   try {
     return await work;
   } finally {
-    inflightCache.delete(key);
+    inflightCache.delete(cacheKey);
   }
 }
 
@@ -119,9 +126,9 @@ export function useAndroidPinIconRegistry(
 
     for (const visual of visuals) {
       const normalizedLabel = normalizeMarkerLabel(visual.label) || '?';
-      const key = buildAndroidPinVisualKey(normalizedLabel, visual.status, visual.theme);
-      if (!dedup.has(key)) {
-        dedup.set(key, {
+      const visualKey = buildAndroidPinVisualKey(normalizedLabel, visual.status, visual.theme);
+      if (!dedup.has(visualKey)) {
+        dedup.set(visualKey, {
           label: normalizedLabel,
           status: visual.status,
           theme: visual.theme,
@@ -129,7 +136,11 @@ export function useAndroidPinIconRegistry(
       }
     }
 
-    return Array.from(dedup.entries()).map(([key, value]) => ({ key, ...value }));
+    return Array.from(dedup.entries()).map(([visualKey, value]) => ({
+      visualKey,
+      cacheKey: buildRegistryCacheKey(value.label, value.status, value.theme),
+      ...value,
+    }));
   }, [visuals]);
 
   useEffect(() => {
@@ -147,17 +158,20 @@ export function useAndroidPinIconRegistry(
 
     let cancelled = false;
 
-    const seeded = uniqueVisuals.reduce<Record<AndroidPinVisualKey, AndroidPinIconDescriptor>>((acc, visual) => {
-      const cached = descriptorCache.get(visual.key);
-      if (cached) {
-        acc[visual.key] = cached;
-      }
-      return acc;
-    }, {});
+    const seeded = uniqueVisuals.reduce<Record<AndroidPinVisualKey, AndroidPinIconDescriptor>>(
+      (acc, visual) => {
+        const cached = descriptorCache.get(visual.cacheKey);
+        if (cached) {
+          acc[visual.visualKey] = cached;
+        }
+        return acc;
+      },
+      {}
+    );
 
     setDescriptors(seeded);
 
-    const queue = uniqueVisuals.filter((visual) => !seeded[visual.key]);
+    const queue = uniqueVisuals.filter((visual) => !seeded[visual.visualKey]);
     if (queue.length === 0) {
       setIsPrewarming(false);
       return;
@@ -166,6 +180,7 @@ export function useAndroidPinIconRegistry(
     setIsPrewarming(true);
 
     const workerCount = Math.min(concurrency, queue.length);
+    const resolved: Record<AndroidPinVisualKey, AndroidPinIconDescriptor> = { ...seeded };
     const runWorker = async () => {
       while (!cancelled) {
         const next = queue.shift();
@@ -174,7 +189,8 @@ export function useAndroidPinIconRegistry(
         }
 
         const descriptor = await generateDescriptor(
-          next.key,
+          next.cacheKey,
+          next.visualKey,
           next.label,
           next.status,
           next.theme,
@@ -184,21 +200,13 @@ export function useAndroidPinIconRegistry(
         if (cancelled || !descriptor) {
           continue;
         }
-
-        setDescriptors((prev) => {
-          if (prev[next.key]) {
-            return prev;
-          }
-          return {
-            ...prev,
-            [next.key]: descriptor,
-          };
-        });
+        resolved[next.visualKey] = descriptor;
       }
     };
 
     Promise.all(Array.from({ length: workerCount }, () => runWorker())).finally(() => {
       if (!cancelled) {
+        setDescriptors(resolved);
         setIsPrewarming(false);
       }
     });
@@ -213,8 +221,9 @@ export function useAndroidPinIconRegistry(
     isPrewarming,
     getIconUri: (label, status, theme) => {
       const normalizedLabel = normalizeMarkerLabel(label) || '?';
-      const key = buildAndroidPinVisualKey(normalizedLabel, status, theme);
-      return descriptors[key]?.uri ?? descriptorCache.get(key)?.uri ?? null;
+      const visualKey = buildAndroidPinVisualKey(normalizedLabel, status, theme);
+      const cacheKey = buildRegistryCacheKey(normalizedLabel, status, theme);
+      return descriptors[visualKey]?.uri ?? descriptorCache.get(cacheKey)?.uri ?? null;
     },
   };
 }

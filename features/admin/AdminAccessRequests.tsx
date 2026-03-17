@@ -75,7 +75,7 @@ export function AdminAccessRequests({ refreshSignal }: AdminAccessRequestsProps)
     <View style={styles.card}>
       <Text style={styles.heading}>Access requests</Text>
       <Text style={styles.description}>
-        Drivers who want to join this workspace using an admin email or phone number.
+        Drivers who have requested to join your company.
       </Text>
       {loading ? (
         <View style={styles.row}>
@@ -83,15 +83,15 @@ export function AdminAccessRequests({ refreshSignal }: AdminAccessRequestsProps)
           <Text style={styles.subtle}>Loading requests...</Text>
         </View>
       ) : requests.length === 0 ? (
-        <Text style={styles.subtle}>No pending requests.</Text>
+        <Text style={styles.subtle}>No pending access requests.</Text>
       ) : (
         requests.map((request) => {
           const buttonBusy = resolvingId === request.id;
           return (
             <View key={request.id} style={styles.requestRow}>
               <View style={styles.requestInfo}>
-                <Text style={styles.name}>{request.requesterName || 'Driver'}</Text>
-                <Text style={styles.subtle}>{request.requesterContact || 'No contact on file'}</Text>
+                <Text style={styles.name} numberOfLines={1}>{request.requesterName || 'Driver'}</Text>
+                <Text style={styles.subtle} numberOfLines={1}>{request.requesterContact || 'No contact on file'}</Text>
                 {request.createdAt ? (
                   <Text style={styles.timestamp}>Requested on {new Date(request.createdAt).toLocaleString()}</Text>
                 ) : null}
@@ -100,6 +100,8 @@ export function AdminAccessRequests({ refreshSignal }: AdminAccessRequestsProps)
                 <Pressable
                   onPress={() => void handleResolve(request, 'decline')}
                   disabled={buttonBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel="Decline access request"
                   style={({ pressed }) => [
                     styles.actionButton,
                     styles.secondary,
@@ -112,6 +114,8 @@ export function AdminAccessRequests({ refreshSignal }: AdminAccessRequestsProps)
                 <Pressable
                   onPress={() => void handleResolve(request, 'approve')}
                   disabled={buttonBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel="Approve access request"
                   style={({ pressed }) => [
                     styles.actionButton,
                     styles.primary,

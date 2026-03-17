@@ -11,7 +11,7 @@ export default ({ config }) => {
     name: 'Blow-Grid',
     slug: 'my-app',
     version: '1.0.10',
-    orientation: 'portrait',
+    orientation: 'default',
     icon: './assets/images/icon.png',
     scheme: 'blowgrid',
     userInterfaceStyle: 'automatic',
@@ -19,13 +19,13 @@ export default ({ config }) => {
     newArchEnabled: true,
     ios: {
       bundleIdentifier: 'com.macdonaldautomation.blowpin',
-      supportsTablet: false,
+      supportsTablet: true,
       config: {
         googleMapsApiKey: iosGoogleMapsApiKey,
       },
       infoPlist: {
         NSLocationWhenInUseUsageDescription:
-          'Allow my-app to access your location to show your position on the map.',
+          'Blow-Grid uses your location to show where you are relative to your stops on the map.',
         ITSAppUsesNonExemptEncryption: false,
       },
     },
@@ -85,7 +85,7 @@ export default ({ config }) => {
         'expo-location',
         {
           locationAlwaysAndWhenInUsePermission:
-            'Allow my-app to access your location so we can display nearby stops.',
+            'Blow-Grid uses your location to show where you are relative to your stops on the map.',
         },
       ],
       [

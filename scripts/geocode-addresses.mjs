@@ -44,7 +44,7 @@ async function delay(ms) {
 async function geocode(address) {
   const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`;
   const res = await fetch(url, {
-    headers: { "User-Agent": "expo-route-planner/1.0 (brad@example.com)" }
+    headers: { "User-Agent": "blow-grid/1.0 (campbell@macdonaldautomation.com)" }
   });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);

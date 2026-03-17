@@ -90,7 +90,7 @@ export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
   const confirmDeleteAccount = (admin: AdminSummary) => {
     Alert.alert(
       'Delete account?',
-      `This permanently deletes ${admin.fullName || admin.emailOrPhone}. This action cannot be undone.`,
+      `This will permanently delete the account for ${admin.fullName || admin.emailOrPhone}. This action cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -116,7 +116,7 @@ export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
       ) : error ? (
         <Text style={styles.error}>{error}</Text>
       ) : formattedAdmins.length === 0 ? (
-        <Text style={styles.muted}>No admins to display.</Text>
+        <Text style={styles.muted}>No admins found. Promote a driver to admin from the driver list.</Text>
       ) : (
         formattedAdmins.map((admin) => (
           <View key={admin.id} style={styles.adminRow}>
@@ -124,8 +124,8 @@ export function AdminTeamList({ refreshSignal }: AdminTeamListProps) {
               <Text style={styles.badgeText}>{getInitials(admin)}</Text>
             </View>
             <View style={styles.info}>
-              <Text style={styles.name}>{admin.fullName || admin.emailOrPhone}</Text>
-              <Text style={styles.muted}>{admin.emailOrPhone}</Text>
+              <Text style={styles.name} numberOfLines={1}>{admin.fullName || admin.emailOrPhone}</Text>
+              <Text style={styles.muted} numberOfLines={1}>{admin.emailOrPhone}</Text>
             </View>
             {canDeleteAccounts ? (
               <Pressable
@@ -217,8 +217,10 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.danger,
     },
     deleteButton: {
-      paddingVertical: 6,
-      paddingHorizontal: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      minHeight: 44,
+      justifyContent: 'center' as const,
       borderRadius: 999,
       borderWidth: 1,
       borderColor: colors.danger,

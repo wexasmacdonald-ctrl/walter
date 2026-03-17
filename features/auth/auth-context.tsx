@@ -142,7 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setImpersonatorSession(parsedImpersonator);
             }
           } catch (error) {
-            console.warn('Failed to parse impersonator session', error);
+            if (__DEV__) console.warn('Failed to parse impersonator session', error);
             await AsyncStorage.removeItem(IMPERSONATOR_STORAGE_KEY);
           }
         }
@@ -172,7 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await persistSession({ token: parsed.token, user: adjustedUser }, { remember: true });
         }
       } catch (error) {
-        console.warn('Failed to load auth session', error);
+        if (__DEV__) console.warn('Failed to load auth session', error);
       } finally {
         if (!cancelled) {
           setStatus('ready');
