@@ -10,7 +10,7 @@ export default ({ config }) => {
     ...config,
     name: 'Blow-Grid',
     slug: 'my-app',
-    version: '1.0.10',
+    version: '1.1.0',
     orientation: 'default',
     icon: './assets/images/icon.png',
     scheme: 'blowgrid',
@@ -31,7 +31,7 @@ export default ({ config }) => {
     },
     android: {
       package: 'com.macdonaldautomation.blowpin',
-      versionCode: 21,
+      versionCode: 22,
       adaptiveIcon: {
         backgroundColor: '#E6F4FE',
         foregroundImage: './assets/images/android-icon-foreground.png',
