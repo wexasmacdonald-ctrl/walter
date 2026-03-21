@@ -32,7 +32,7 @@ export default ({ config }) => {
     },
     android: {
       package: 'com.macdonaldautomation.blowpin',
-      versionCode: 23,
+      versionCode: 24,
       adaptiveIcon: {
         backgroundColor: '#E6F4FE',
         foregroundImage: './assets/images/android-icon-foreground.png',

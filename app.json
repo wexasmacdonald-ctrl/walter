@@ -3,7 +3,7 @@
     "name": "Blow-Grid",
     "slug": "my-app",
     "android": {
-      "versionCode": 23
+      "versionCode": 24
     }
   }
 }
