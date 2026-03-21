@@ -75,7 +75,8 @@ export function MapScreen({
   const mapRef = useRef<MapView | null>(null);
   const didFitRef = useRef(false);
 
-  const mapProvider = PROVIDER_GOOGLE;
+  // Use Apple Maps on iOS (no API key needed), Google Maps on Android
+  const mapProvider = isAndroid ? PROVIDER_GOOGLE : undefined;
   const resolvedMapType = useMemo(() => {
     if (mapType === 'satellite') return 'satellite';
     if (isAndroid) return 'standard';
@@ -83,9 +84,10 @@ export function MapScreen({
   }, [isDark, mapType, isAndroid]);
 
   const mapCustomStyle = useMemo(() => {
-    if (!mapProvider || mapType !== 'standard' || !isDark) return undefined;
+    // Only apply custom dark style on Android (Google Maps). Apple Maps handles dark mode natively.
+    if (!isAndroid || mapType !== 'standard' || !isDark) return undefined;
     return GOOGLE_DARK_MAP_STYLE;
-  }, [isDark, mapProvider, mapType]);
+  }, [isDark, mapType, isAndroid]);
 
   const markers = useMemo<RouteMarker[]>(() => {
     return pins
@@ -299,11 +301,11 @@ export function MapScreen({
                 const isSelected = marker.id === selectedId;
                 return (
                   <Marker
-                    key={`${marker.id}:${status}`}
+                    key={`${marker.id}:${status}:${isSelected ? 's' : 'n'}`}
                     coordinate={marker.coordinate}
                     onPress={() => handleSelect(marker.id)}
                     anchor={{ x: 0.5, y: 0.5 }}
-                    tracksViewChanges={false}
+                    tracksViewChanges={Platform.OS === 'ios'}
                   >
                     <View
                       style={[
