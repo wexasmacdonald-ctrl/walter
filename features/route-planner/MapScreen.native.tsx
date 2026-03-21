@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/features/theme/theme-context';
 import type { LatLng, MapPressEvent } from 'react-native-maps';
-import MapView, { Circle, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import type { Stop } from './types';
 
 const GOOGLE_DARK_MAP_STYLE = [
