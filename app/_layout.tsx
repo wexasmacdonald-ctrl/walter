@@ -1,12 +1,12 @@
 import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { Stack, usePathname } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
+import * as NavigationBar from 'expo-navigation-bar';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import 'react-native-reanimated';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Text, View } from 'react-native';
+import { Platform, StatusBar, Text, View } from 'react-native';
 
 import { AuthProvider } from '@/features/auth/auth-context';
 import { ThemeProvider, useTheme } from '@/features/theme/theme-context';
@@ -48,7 +48,6 @@ function NavigationBridge() {
       <GlobalScreenWrapper>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" options={{ animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="map-app" options={{ animation: 'fade' }} />
           <Stack.Screen name="legal/[doc]" />
         </Stack>
         <DevErrorOverlay />
@@ -80,9 +79,18 @@ function GlobalScreenWrapper({ children }: { children: ReactNode }) {
 
 function StatusBarController() {
   const { isDark, colors } = useTheme();
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+    void NavigationBar.setBackgroundColorAsync(colors.background);
+    void NavigationBar.setButtonStyleAsync(isDark ? 'light' : 'dark');
+  }, [colors.background, isDark]);
+
   return (
     <StatusBar
-      style={isDark ? 'light' : 'dark'}
+      barStyle={isDark ? 'light-content' : 'dark-content'}
       backgroundColor={colors.background}
       translucent={false}
     />

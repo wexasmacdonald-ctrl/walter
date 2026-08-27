@@ -24,6 +24,7 @@ import com.facebook.react.common.ReleaseLevel
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
 import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.uimanager.ViewManager
+import com.macdonaldautomation.blowpin.location.AndroidFusedLocationPackage
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
 import java.io.File
@@ -41,6 +42,7 @@ class MainApplication : Application(), ReactApplication {
           // Packages that cannot be autolinked yet can be added manually here, for example:
           // add(MyReactNativePackage())
           add(PinIconRendererPackage())
+          add(AndroidFusedLocationPackage())
         }
 
       override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"

@@ -32,7 +32,6 @@ export function AdminDriverManager({
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [reassigning, setReassigning] = useState(false);
   const [promoting, setPromoting] = useState(false);
-  const [showDriverEditor, setShowDriverEditor] = useState(false);
 
   const loadDrivers = useMemo(
     () => async () => {
@@ -449,7 +448,12 @@ export function AdminDriverManager({
             <ActivityIndicator color={colors.primary} />
           </View>
         ) : drivers.length === 0 ? (
-          <Text style={styles.emptyText}>No drivers yet. Drivers will appear here once they create an account and join your company.</Text>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>No drivers yet</Text>
+            <Text style={styles.emptyText}>
+              Drivers should create an account, then request access from the driver home screen using an admin email or phone number. Their request will appear in Access requests above.
+            </Text>
+          </View>
         ) : (
           <ScrollView style={styles.driverList}>
             {drivers.map((driver) => (
@@ -714,6 +718,14 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       color: colors.mutedText,
       fontStyle: 'italic',
     },
+    emptyState: {
+      gap: 6,
+    },
+    emptyTitle: {
+      color: colors.text,
+      fontSize: 15,
+      fontWeight: '600',
+    },
     error: {
       color: colors.danger,
     },
@@ -722,5 +734,3 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
     },
   });
 }
-
-

@@ -234,8 +234,8 @@ type WorkspaceAccessRequestRow = {
 const MAX_ADDRESSES = 150;
 const MAPBOX_BATCH_LIMIT = 1000;
 const MAPBOX_FORWARD_ENDPOINT =
-  'https://api.mapbox.com/search/geocode/v6/forward?limit=1';
-const SESSION_EXPIRATION_SECONDS = 60 * 60 * 24 * 365 * 10; // ~10 years for trusted devices
+  'https://api.mapbox.com/search/geocode/v6/forward?limit=1&types=address&autocomplete=false';
+const SESSION_EXPIRATION_SECONDS = 60 * 60 * 24 * 30; // 30 days
 const MAPBOX_BATCH_ENDPOINT =
   'https://api.mapbox.com/search/geocode/v6/batch';
 const FREE_TIER_DAILY_LIMIT = 30;
@@ -292,7 +292,7 @@ const PRIVACY_POLICY_HTML = `<!doctype html>
 <li><strong>Account Details:</strong> name or alias, email address or phone number, workspace or company, and role (admin, driver, or developer).</li>
 <li><strong>Credentials:</strong> hashed passwords (never stored in plain text) and session tokens.</li>
 <li><strong>Route Data:</strong> addresses or stops assigned to you, any admin-supplied lists, and progress updates; we may normalize, deduplicate, or geocode addresses to operate the service.</li>
-<li><strong>Activity and Diagnostics:</strong> login timestamps ("last active"), error codes, device or OS version, installation identifiers, and basic usage needed to operate and troubleshoot the App.</li>
+<li><strong>Activity and Diagnostics:</strong> login timestamps ("last active"), error codes, device or OS version, and basic usage needed to operate and troubleshoot the App. The Google Maps SDK may also process request metadata, IP address, a Maps SDK-specific pseudonymous identifier, map interactions, and crash or performance data to provide and improve map services. This data is not used by us for advertising or cross-app tracking.</li>
 <li><strong>Location:</strong> when you grant foreground device location permission, we read your current GPS position to show your dot on the map. This location is used in-session and is not stored or sent to our servers for tracking.</li>
 <li><strong>Billing Flow Metadata:</strong> when you start a subscription checkout on the web, we exchange customer and workspace identifiers with our payment processor; payment card data is collected and stored by the processor (not by us).</li>
 </ol>
@@ -322,7 +322,7 @@ const PRIVACY_POLICY_HTML = `<!doctype html>
 
 <h2>Your Controls and Rights</h2>
 <ol>
-<li>You can delete your account and data in-app; password re-entry confirms identity.</li>
+<li>You can delete your account and data in-app; password re-entry confirms identity. If you cannot access the App, use our <a href="/delete-account">account deletion request page</a>.</li>
 <li>You may access or update account details in the App or by contacting us.</li>
 </ol>
 
@@ -336,10 +336,30 @@ const PRIVACY_POLICY_HTML = `<!doctype html>
 <p>We may revise this Policy to reflect operational, legal, or regulatory updates. Material updates will be communicated through reasonable notice.</p>
 
 <h2>Contact</h2>
-<p>Effective: December 2, 2025<br>
+<p>Effective: July 25, 2026<br>
 MacDonald AI, Ottawa, Ontario, Canada<br>
 Data controller: Joseph MacDonald<br>
 Requests: <a href="mailto:campbell@macdonaldautomation.com">campbell@macdonaldautomation.com</a></p>
+</body>
+</html>`;
+
+const DELETE_ACCOUNT_HTML = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Delete Your Blow-Grid Account</title><style>${LEGAL_PAGE_STYLE}</style></head>
+<body>
+<h1>Delete Your Blow-Grid Account</h1>
+<p>Blow-Grid is developed by MacDonald AI. You can permanently delete your account from the App by opening <strong>Menu</strong>, selecting <strong>Delete account</strong>, and confirming with your current password.</p>
+
+<h2>Request deletion without the App</h2>
+<p>If you cannot sign in or no longer have the App, email <a href="mailto:campbell@macdonaldautomation.com?subject=Blow-Grid%20account%20deletion%20request">campbell@macdonaldautomation.com</a> from the email address associated with your account. Use the subject <strong>Blow-Grid account deletion request</strong> and include your username and company or workspace name. We may ask for additional information to verify that the account belongs to you.</p>
+
+<h2>What is deleted</h2>
+<p>After verification, we remove your profile, credentials, active sessions, personal assignments, and related usage history from active systems. Shared workspace route data supplied or still required by your organization may be retained without your personal account association. Backups are purged on the next scheduled cycle, within 30 days.</p>
+
+<h2>Timing and subscriptions</h2>
+<p>We process verified requests promptly and normally complete active-system deletion within 7 days. If your company has a paid Stripe subscription, ask your company administrator to cancel or transfer it separately; this does not prevent deletion of your personal Blow-Grid account.</p>
+
+<p>For details, read the <a href="/privacy">Blow-Grid Privacy Policy</a>.</p>
 </body>
 </html>`;
 
@@ -348,7 +368,7 @@ const TERMS_OF_USE_HTML = `<!doctype html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blow-Grid Terms of Use</title><style>${LEGAL_PAGE_STYLE}</style></head>
 <body>
 <h1>Blow-Grid \u2014 Terms of Use</h1>
-<p><strong>Effective date:</strong> December 2, 2025<br>
+<p><strong>Effective date:</strong> July 25, 2026<br>
 <strong>Owner:</strong> MacDonald AI, Ottawa, Ontario, Canada<br>
 <strong>Contact:</strong> <a href="mailto:campbell@macdonaldautomation.com">campbell@macdonaldautomation.com</a></p>
 
@@ -598,6 +618,12 @@ export default {
 
     if (request.method === 'GET' && url.pathname === '/terms') {
       return new Response(TERMS_OF_USE_HTML, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      });
+    }
+
+    if (request.method === 'GET' && url.pathname === '/delete-account') {
+      return new Response(DELETE_ACCOUNT_HTML, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       });
     }
@@ -1025,8 +1051,9 @@ async function handleBillingGetStatus(
   try {
     billingRow = await fetchOrgBillingRow(env, workspaceId);
     if (!billingRow) {
-      billingRow = await seedOrgBillingDefaults(env, {
+      billingRow = await ensureWorkspaceBillingSeeded(env, {
         orgId: workspaceId,
+        planTier: organization?.plan_tier ?? context.authUser?.businessTier ?? 'free',
         numberOfDrivers: organization?.number_of_drivers ?? null,
         billingStatus: 'inactive',
       });
@@ -1302,7 +1329,7 @@ async function handleBillingUpdateDriverCap(
 
   let billingRow = await fetchOrgBillingRow(env, workspaceId);
   if (!billingRow) {
-    billingRow = await seedOrgBillingDefaults(env, {
+    billingRow = await ensureWorkspaceBillingSeeded(env, {
       orgId: workspaceId,
       numberOfDrivers,
       billingStatus: 'inactive',
@@ -1420,7 +1447,7 @@ async function handleBillingSyncDriverCap(
   try {
     billingRow = await fetchOrgBillingRow(env, workspaceId);
     if (!billingRow) {
-      billingRow = await seedOrgBillingDefaults(env, {
+      billingRow = await ensureWorkspaceBillingSeeded(env, {
         orgId: workspaceId,
         numberOfDrivers: targetSeatCount,
         billingStatus: 'inactive',
@@ -1795,7 +1822,20 @@ async function persistSubscriptionAccess(
     paid: true,
   };
 
-  await upsertSubscriptionAccess(env, payload);
+  // Older deployed Supabase projects may not have the optional subscription
+  // history table yet. Billing state is authoritative in org_billing, so do
+  // not reject a successful Stripe payment solely because history storage is
+  // unavailable.
+  try {
+    await upsertSubscriptionAccess(env, payload);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("PGRST205") && message.includes("subscription_access")) {
+      console.warn('subscription_access table is unavailable; continuing with org_billing activation');
+    } else {
+      throw error;
+    }
+  }
 
   if (metadata.workspaceId) {
     try {
@@ -1806,6 +1846,7 @@ async function persistSubscriptionAccess(
       });
     } catch (seatError) {
       console.error('Failed to update billing metadata after checkout', seatError);
+      throw seatError;
     }
   }
 }
@@ -3219,7 +3260,16 @@ async function handleAdminReplaceDriverStops(
     const stopsPayload: GeocodeSuccess[] = addresses.map((address, index) => {
       const key = address.trim().toLowerCase();
       const existing = knownByAddress.get(key);
-      if (existing && typeof existing.lat === 'number' && typeof existing.lng === 'number') {
+      // A cached coordinate for an address range may have been produced by a
+      // road-level geocoder result. Re-geocode ranges from their first civic
+      // number so apartment complexes land at the first building instead of
+      // the middle of the street.
+      if (
+        existing &&
+        !hasLeadingAddressRange(address) &&
+        typeof existing.lat === 'number' &&
+        typeof existing.lng === 'number'
+      ) {
         return {
           address,
           lat: existing.lat,
@@ -3505,8 +3555,9 @@ async function handleDevBootstrapWorkspace(
       planTier,
       numberOfDrivers,
     });
-    const billingRow = await seedOrgBillingDefaults(env, {
+    const billingRow = await ensureWorkspaceBillingSeeded(env, {
       orgId: workspace.id,
+      planTier,
       numberOfDrivers,
       billingStatus,
       planId,
@@ -4296,8 +4347,9 @@ async function handleAccountCreateWorkspace(
       role: nextRole,
     });
     try {
-      await seedOrgBillingDefaults(env, {
+      await ensureWorkspaceBillingSeeded(env, {
         orgId: workspace.id,
+        planTier: 'free',
         numberOfDrivers,
         billingStatus: 'inactive',
       });
@@ -4713,6 +4765,23 @@ function extractAddressesFromPayload(payload: unknown): string[] | null {
   return null;
 }
 
+function hasLeadingAddressRange(address: string): boolean {
+  return /^\d+[A-Za-z]?\s*[-\u2010-\u2015]\s*\d+[A-Za-z]?\b/.test(address.trim());
+}
+
+function normalizeAddressRangeForGeocoding(address: string): string {
+  const trimmed = address.trim();
+  const match = trimmed.match(
+    /^(\d+[A-Za-z]?)\s*[-\u2010-\u2015]\s*(\d+[A-Za-z]?)\b(.*)$/
+  );
+  if (!match) {
+    return trimmed;
+  }
+  const [, first, , rest = ''] = match;
+  const tail = rest.replace(/\s+/g, ' ').trim();
+  return tail ? `${first} ${tail}` : first;
+}
+
 async function geocodeAddresses(
   addresses: string[],
   token: string
@@ -4728,8 +4797,9 @@ async function geocodeSingle(
   address: string,
   token: string
 ): Promise<GeocodeResult> {
+  const geocodeQuery = normalizeAddressRangeForGeocoding(address);
   const url = new URL(MAPBOX_FORWARD_ENDPOINT);
-  url.searchParams.set('q', address);
+  url.searchParams.set('q', geocodeQuery);
   url.searchParams.set('access_token', token);
 
   const response = await fetch(url, {
@@ -4820,7 +4890,7 @@ async function geocodeBatch(
   addresses: string[],
   token: string
 ): Promise<GeocodeResult> {
-  const payload = addresses.map((value) => ({ q: value }));
+  const payload = addresses.map((value) => ({ q: normalizeAddressRangeForGeocoding(value) }));
 
   const response = await fetch(`${MAPBOX_BATCH_ENDPOINT}?access_token=${token}`, {
     method: 'POST',
@@ -5080,7 +5150,7 @@ async function seedOrgBillingDefaults(
     body: JSON.stringify([
       {
         org_id: input.orgId,
-        number_of_drivers: input.numberOfDrivers ?? null,
+        number_of_drivers: input.numberOfDrivers ?? 1,
         billing_status: input.billingStatus ?? 'inactive',
         plan_id: input.planId ?? null,
       },

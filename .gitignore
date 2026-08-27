@@ -43,6 +43,9 @@ crash.txt
 dump.txt
 out.txt
 *-repro-*.txt
+.artifacts/
+.codex-*.log
+.eas-build-*.log
 
 # local env files
 .env*.local

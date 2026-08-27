@@ -356,7 +356,10 @@ function CompanyShowcase({
           <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text></View>
       ) : companies.length === 0 ? (
         <View style={styles.companyEmpty}>
-          <Text style={{ color: colors.mutedText }}>You haven't set up a company yet. Create one to start managing your drivers and routes.</Text>
+          <Text style={{ color: colors.mutedText }}>
+            You have not set up a company yet. Create one to start managing your drivers and
+            routes.
+          </Text>
           {allowCreate && onCreate ? (
             <Pressable
               accessibilityRole="button"
@@ -473,7 +476,7 @@ function InfoBanner({ title, message, tone = 'info' }: InfoBannerProps) {
 }
 
 function PlannerScreen() {
-  const { user, status, refreshSession } = useAuth();
+  const { user, refreshSession } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const bumpRefreshSignal = useCallback(() => {
@@ -768,7 +771,12 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
     return result;
   }, [syncDriverSeatLimit, loadBillingStatus]);
 
-  const billingActive = billingStatus?.billingStatus === 'active';
+  // Free workspaces are intentionally usable without a Stripe subscription.
+  // The billing row is seeded as `inactive` for a free workspace, so treating
+  // only an `active` status as access would lock a newly created company out
+  // immediately after onboarding. Paid workspaces still require active billing.
+  const billingActive =
+    billingStatus?.billingStatus === 'active' || billingStatus?.planTier === 'free';
   const canSkipBillingGate = isDevUser || (user?.role === 'admin' && billingStatus === null);
 
   const menuTrigger = (
@@ -1120,7 +1128,9 @@ function AdminPlanner({ refreshing, onRefresh, refreshSignal, onRefreshSignal }:
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Your subscription is not active.</Text>
           <Text style={[styles.loadingText, { marginTop: 8 }]}>
-            Open Settings to set up billing.
+            {IS_WEB
+              ? 'Open Settings to set up billing.'
+              : 'Subscription access is managed by your company administrator.'}
           </Text>
           {billingError ? (
             <Text style={[styles.loadingText, { color: colors.danger }]}>{billingError}</Text>
@@ -1386,7 +1396,9 @@ function DriverPlanner({ refreshing, onRefresh, refreshSignal }: PlannerProps) {
             <View style={styles.sectionHeaderText}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>Create your company</Text>
               <Text style={[styles.sectionDescription, { color: colors.mutedText }]}>
-                Set up your company for free. You can upgrade anytime as your team grows.
+                {IS_WEB
+                  ? 'Set up your company for free. You can upgrade anytime as your team grows.'
+                  : 'Set up your company for free. Subscription access is managed by your company administrator.'}
               </Text>
             </View>
             <View style={styles.workspaceForm}>

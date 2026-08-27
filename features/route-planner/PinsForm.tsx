@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -25,8 +26,13 @@ type FormState =
   | { type: 'error'; message: string }
   | { type: 'success'; count: number };
 
+const isNativeMobile = Platform.OS === 'ios' || Platform.OS === 'android';
+
 function extractHouseNumber(address: string): string | null {
-  const match = address.trim().match(/^(\d+[A-Za-z0-9-]*)\b/);
+  const trimmed = address.trim();
+  const range = trimmed.match(/^(\d+[A-Za-z]?)\s*[-\u2010-\u2015]\s*(\d+[A-Za-z]?)(?=\s|,|$)/);
+  if (range) return `${range[1]}-${range[2]}`;
+  const match = trimmed.match(/^(\d+[A-Za-z0-9]*)\b/);
   return match ? match[1] : null;
 }
 
@@ -322,9 +328,13 @@ export function PinsForm({ pins, onPinsChange, onLoadingChange }: PinsFormProps)
             resetDate && !Number.isNaN(resetDate.getTime())
               ? resetDate.toLocaleTimeString()
               : null;
-          const friendly = resetLabel
-            ? `Daily limit reached on the free plan. Try again after ${resetLabel} or upgrade your plan in Settings for unlimited stops.`
-            : 'Daily limit reached on the free plan. Upgrade your plan in Settings for unlimited stops.';
+          const friendly = isNativeMobile
+            ? resetLabel
+              ? `Daily limit reached on the free plan. Try again after ${resetLabel}. Your company administrator manages plan access.`
+              : 'Daily limit reached on the free plan. Your company administrator manages plan access.'
+            : resetLabel
+              ? `Daily limit reached on the free plan. Try again after ${resetLabel} or upgrade your plan in Settings for unlimited stops.`
+              : 'Daily limit reached on the free plan. Upgrade your plan in Settings for unlimited stops.';
           throw new Error(friendly);
         }
         throw new Error(

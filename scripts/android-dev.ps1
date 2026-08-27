@@ -41,4 +41,13 @@ Write-Host "ANDROID_HOME=$env:ANDROID_HOME"
 java -version
 adb version
 
-npx expo run:android @args
+Write-Host "Running native Android install (no Metro/dev server autostart)"
+Push-Location "$PSScriptRoot\..\android"
+try {
+  .\gradlew.bat app:installDebug
+} finally {
+  Pop-Location
+}
+
+adb shell monkey -p com.macdonaldautomation.blowpin -c android.intent.category.LAUNCHER 1 | Out-Null
+Write-Host "Installed and launched debug app."

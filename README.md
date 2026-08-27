@@ -1,6 +1,6 @@
-# Blow Pins App
+# Blow-Grid
 
-This project turns newline-delimited addresses into map pins so drivers can see every stop on a map. No routing or batching is performed - only geocoding plus GPS display.
+Blow-Grid turns newline-delimited addresses into assigned map stops for snow-removal and field-service teams. The worker batches Mapbox geocoding requests (up to 1,000 addresses per upstream batch), while the app supports release-tested business manifests of up to 500 stops. It does not provide turn-by-turn navigation or route optimization.
 
 It contains two pieces:
 
@@ -19,11 +19,11 @@ npx expo start
 What you get:
 
 - **Geocode form** - paste newline-delimited addresses, hit "Geocode", and the worker responds with pins.
-- **Map preview** - native builds render the pins with react-native-maps plus the device's GPS location; the web build shows guidance and counts.
+- **Map preview** - Android uses Google Maps, iOS uses Apple MapKit, and web uses the dedicated web map implementation. Location display is optional.
 
-### Google Maps keys (native)
+### Google Maps key (Android)
 
-If the iOS/Android map shows a beige screen, the native Google tiles are missing API keys. Follow `docs/maps-sdk-setup.md` to enable the Maps SDKs, create platform-specific keys, and load them via `GOOGLE_MAPS_IOS_KEY` / `GOOGLE_MAPS_ANDROID_KEY`.
+If the Android map shows a beige screen, the Google Maps SDK key or its package/signing-certificate restriction is incorrect. Follow `docs/maps-sdk-setup.md` and load the key through `GOOGLE_MAPS_ANDROID_KEY`. iOS uses Apple MapKit and does not require a Google Maps key.
 
 API_BASE lives in features/route-planner/api.ts and points at the Cloudflare worker (default: https://api.blow-grid.com, override with EXPO_PUBLIC_API_BASE_URL).
 
@@ -209,7 +209,7 @@ curl -X POST https://api.blow-grid.com/admin/driver-stops \
 
 - `POST /billing/checkout` creates a Stripe Checkout session using the secret key and price IDs defined in `.env` (`STRIPE_SECRET_KEY`, `STRIPE_PRICE_SMALL`, etc.). Metadata records the requesting user, target workspace, and requested driver count.
 - Webhooks are verified with `STRIPE_WEBHOOK_SECRET` before updating Supabase’s `subscription_access`/`org_billing` tables, which drive the in-app billing status badge.
-- The Settings menu exposes a “Test Stripe Checkout” button that simply calls the worker endpoint and opens the returned URL, so no Stripe logic lives in the Expo bundle.
+- The web Settings menu can open Stripe Checkout through the worker. Native iOS and Android builds hide billing controls, and no Stripe payment logic or card entry exists in the Expo bundle.
 ### Database tables
 
 Seed the required tables in Supabase:

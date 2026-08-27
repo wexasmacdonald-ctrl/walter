@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { LatLng, MapPressEvent, MarkerDragStartEndEvent } from 'react-native-maps';
 
+import { useTheme } from '@/features/theme/theme-context';
 import type { StopLocationEditorProps } from './StopLocationEditor.types';
 
 export function StopLocationEditor({
@@ -9,6 +10,8 @@ export function StopLocationEditor({
   onChange,
   mapType = 'standard',
 }: StopLocationEditorProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const mapModule = useMemo(() => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -28,6 +31,14 @@ export function StopLocationEditor({
       longitude: coordinate.longitude,
       latitudeDelta: 0.01,
       longitudeDelta: 0.01,
+    }),
+    [coordinate.latitude, coordinate.longitude]
+  );
+
+  const markerCoordinate = useMemo<LatLng>(
+    () => ({
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
     }),
     [coordinate.latitude, coordinate.longitude]
   );
@@ -57,14 +68,6 @@ export function StopLocationEditor({
     );
   }
 
-  const markerCoordinate = useMemo<LatLng>(
-    () => ({
-      latitude: coordinate.latitude,
-      longitude: coordinate.longitude,
-    }),
-    [coordinate.latitude, coordinate.longitude]
-  );
-
   return (
     <View style={styles.container}>
       <MapView
@@ -83,7 +86,8 @@ export function StopLocationEditor({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: ReturnType<typeof useTheme>['colors']) {
+  return StyleSheet.create({
   container: {
     flex: 1,
     borderRadius: 16,
@@ -92,14 +96,16 @@ const styles = StyleSheet.create({
   fallbackContainer: {
     padding: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#cbd5e1',
+    borderColor: colors.border,
     gap: 8,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
   },
   fallbackTitle: {
     fontWeight: '600',
+    color: colors.text,
   },
   fallbackBody: {
-    color: '#475569',
+    color: colors.mutedText,
   },
-});
+  });
+}

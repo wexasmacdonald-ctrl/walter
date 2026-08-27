@@ -12,7 +12,7 @@ Information We Process
 1. Account Details: name or alias, email address or phone number, workspace or company, and role (admin, driver, or developer).  
 2. Credentials: hashed passwords (never stored in plain text) and session tokens.  
 3. Route Data: addresses or stops assigned to you, any admin-supplied lists, and progress updates; we may normalize, deduplicate, or geocode addresses to operate the service.  
-4. Activity and Diagnostics: login timestamps ("last active"), error codes, device or OS version, installation identifiers, and basic usage needed to operate and troubleshoot the App. If we add crash/analytics tooling, it is limited to operating and improving the App.  
+4. Activity and Diagnostics: login timestamps ("last active"), error codes, device or OS version, and basic usage needed to operate and troubleshoot the App. The Google Maps SDK may also process request metadata, IP address, a Maps SDK-specific pseudonymous identifier, map interactions, and crash or performance data to provide and improve map services. This data is not used by us for advertising or cross-app tracking.
 5. Location: when you grant foreground device location permission, we read your current GPS position to show your dot on the map. This location is used in-session and is not stored or sent to our servers for tracking.  
 6. Billing Flow Metadata: when you start a subscription checkout on the web, we exchange customer and workspace identifiers with our payment processor; payment card data is collected and stored by the processor (not by us).  
 If we handle push notifications, we store the device token only to deliver messages. We do not run advertising or cross-app tracking.
@@ -39,9 +39,9 @@ Retention
 3. Backups are purged on the next scheduled cycle (within 30 days) after an account is deleted.
 
 Your Controls and Rights  
-1. You can delete your account and data in-app; password re-entry confirms identity. When deletion is confirmed, profile data, credentials, tokens, assignments, and related history are removed from active systems and from backups on the next purge cycle.  
+1. You can delete your account and data in-app; password re-entry confirms identity. If you cannot access the App, use the account deletion request page at https://api.blow-grid.com/delete-account. When deletion is confirmed, profile data, credentials, tokens, assignments, and related history are removed from active systems and from backups on the next purge cycle.
 2. You may access or update account details in the App or by submitting a verified request through the contact information below.  
-3. iOS users manage billing on the web; no in-app purchases are processed in the iOS companion.
+3. Native iOS and Android users manage billing on the web; no in-app purchases are processed in the mobile app.
 
 Security  
 We apply administrative, technical, and physical safeguards appropriate to the data handled, including password hashing, encrypted transport (HTTPS/TLS), and access controls such as role-based restrictions. No system is entirely secure, but we monitor and improve protections.
@@ -53,7 +53,7 @@ Changes
 We may revise this Policy to reflect operational, legal, or regulatory updates. Material updates will be communicated through reasonable notice, and the "Effective" date will indicate the current version.
 
 Effective Date and Contact  
-Effective: December 2, 2025  
+Effective: July 25, 2026  
 MacDonald AI, Ottawa, Ontario, Canada  
 Data controller: Joseph MacDonald  
 Requests: campbell@macdonaldautomation.com

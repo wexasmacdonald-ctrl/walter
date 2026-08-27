@@ -1,7 +1,6 @@
 # Web Map Status (Source of Truth)
 
-Last updated: 2026-02-25  
-Main commit at update time: `d5efc015`
+Last updated: 2026-07-25
 
 ## Purpose
 This file is the only handoff doc for current web map state.
@@ -24,13 +23,6 @@ Do not create duplicate map READMEs unless explicitly requested.
 - Location attempts auto-start on mobile and are retried on map interaction (tap/dragstart).
 - Pin style is custom badge pins (white numbers, full opacity).
 - User location marker is blue/white dot marker.
-
-## Test Route
-- Isolated sandbox route exists: `/map-app`
-- File: `app/map-app.tsx`
-- Intended use: web map isolation/debugging only.
-
-If this route is no longer needed, remove it in a dedicated cleanup commit.
 
 ## Known Constraints
 - iPhone Safari Fullscreen API support is limited; fallback behavior is expected.

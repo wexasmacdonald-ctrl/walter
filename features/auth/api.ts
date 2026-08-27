@@ -774,8 +774,12 @@ function normalizeStops(stops: DriverStop[]): DriverStop[] {
 }
 
 function normalizeStop(stop: DriverStop): DriverStop {
+  const lat = typeof stop.lat === 'number' ? stop.lat : Number(stop.lat);
+  const lng = typeof stop.lng === 'number' ? stop.lng : Number(stop.lng);
   return {
     ...stop,
+    lat: Number.isFinite(lat) ? lat : null,
+    lng: Number.isFinite(lng) ? lng : null,
     status: stop.status === 'complete' ? 'complete' : 'pending',
   };
 }

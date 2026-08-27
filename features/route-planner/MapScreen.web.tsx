@@ -425,7 +425,12 @@ function extractHouseNumber(address: string | null | undefined): string | null {
   if (!address) {
     return null;
   }
-  const match = address.trim().match(/^(\d+[A-Za-z0-9-]*)\b/);
+  const trimmed = address.trim();
+  const range = trimmed.match(/^(\d+[A-Za-z]?)\s*[-\u2010-\u2015]\s*(\d+[A-Za-z]?)(?=\s|,|$)/);
+  if (range) {
+    return `${range[1]}-${range[2]}`;
+  }
+  const match = trimmed.match(/^(\d+[A-Za-z0-9]*)\b/);
   return match ? match[1] : null;
 }
 

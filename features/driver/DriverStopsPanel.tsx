@@ -24,7 +24,12 @@ const extractHouseNumber = (address: string | null | undefined): string | null =
   if (!address) {
     return null;
   }
-  const match = address.trim().match(/^(\d+[A-Za-z0-9-]*)\b/);
+  const trimmed = address.trim();
+  const range = trimmed.match(/^(\d+[A-Za-z]?)\s*[-\u2010-\u2015]\s*(\d+[A-Za-z]?)(?=\s|,|$)/);
+  if (range) {
+    return `${range[1]}-${range[2]}`;
+  }
+  const match = trimmed.match(/^(\d+[A-Za-z0-9]*)\b/);
   return match ? match[1] : null;
 };
 
@@ -56,8 +61,9 @@ export function DriverStopsPanel({ refreshSignal }: DriverStopsPanelProps) {
     setError(null);
     try {
       const data = await authApi.fetchMyStops(token);
-      // Treat every run as fresh: reset statuses to pending for this session.
-      setStops(data.map((stop) => ({ ...stop, status: 'pending' as DriverStop['status'] })));
+      // Keep the server's completion state so refresh/reopen does not undo
+      // work the driver has already recorded.
+      setStops(data);
     } catch (err) {
       setError(
         getFriendlyError(err, {
@@ -71,16 +77,16 @@ export function DriverStopsPanel({ refreshSignal }: DriverStopsPanelProps) {
 
   const handleMarkComplete = async (stopId: string) => {
     setError(null);
-    setStops((prev) =>
-      prev.map((stop) => (stop.id === stopId ? { ...stop, status: 'complete' } : stop))
-    );
+    if (!token) return;
+    const updated = await authApi.updateDriverStopStatus(token, stopId, 'complete');
+    setStops((prev) => prev.map((stop) => (stop.id === stopId ? updated : stop)));
   };
 
   const handleUndo = async (stopId: string) => {
     setError(null);
-    setStops((prev) =>
-      prev.map((stop) => (stop.id === stopId ? { ...stop, status: 'pending' } : stop))
-    );
+    if (!token) return;
+    const updated = await authApi.updateDriverStopStatus(token, stopId, 'undo');
+    setStops((prev) => prev.map((stop) => (stop.id === stopId ? updated : stop)));
   };
 
   const pins: Stop[] = useMemo(

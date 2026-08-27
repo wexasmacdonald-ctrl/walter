@@ -2,7 +2,12 @@
 
 import { SymbolWeight, SymbolViewProps } from 'expo-symbols';
 import { ComponentProps } from 'react';
-import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native';
+import {
+  OpaqueColorValue,
+  type StyleProp,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { ChevronIcon } from '@/components/icons/ChevronIcon';
@@ -39,7 +44,13 @@ export function IconSymbol({
   weight?: SymbolWeight;
 }) {
   if (name === 'chevron.right') {
-    return <ChevronIcon size={size} color={String(color)} style={style} />;
+    return (
+      <ChevronIcon
+        size={size}
+        color={String(color)}
+        style={style as StyleProp<ViewStyle>}
+      />
+    );
   }
   return <MaterialIcons color={color} size={size} name={MAPPING[name]} style={style} />;
 }

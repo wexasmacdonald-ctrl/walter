@@ -26,7 +26,7 @@ import { API_BASE } from '@/features/route-planner/api';
 
 const isNativeMobile = Platform.OS === 'ios' || Platform.OS === 'android';
 const EXISTING_CUSTOMER_NOTICE =
-  'Your subscription is managed by your company\u2019s administrator.';
+  'Subscription access is managed by your company\u2019s administrator.';
 
 type SettingsMenuProps = {
   userName: string | null | undefined;
@@ -119,8 +119,14 @@ export function SettingsMenu({
   const showTeamCodeForm = false; // invite codes removed; drivers now request access via admins
   const currentWorkspaceId = billingStatus?.orgId ?? workspaceId ?? null;
   const showDevTools = __DEV__ && userRole === 'dev' && (!!onBootstrapWorkspace || !!onAttachWorkspace);
+  const hasActiveBilling = billingStatus?.billingStatus === 'active';
+  const effectiveBusinessTier = hasActiveBilling ? 'business' : businessTier;
+  const paidPlanTier =
+    billingStatus?.planTier && billingStatus.planTier !== 'free'
+      ? billingStatus.planTier
+      : null;
   const normalizedPlanTier =
-    billingStatus?.planTier ??
+    paidPlanTier ??
     (billingStatus?.numberOfDrivers
       ? billingStatus.numberOfDrivers <= 10
         ? 'small'
@@ -130,7 +136,7 @@ export function SettingsMenu({
       : null);
   const planBadgeLabel = normalizedPlanTier
     ? `Business · ${normalizedPlanTier.charAt(0).toUpperCase()}${normalizedPlanTier.slice(1)} plan`
-    : businessTier === 'business'
+    : effectiveBusinessTier === 'business'
       ? 'Business tier'
       : 'Free tier';
   const planLimitLabel = normalizedPlanTier
@@ -589,10 +595,10 @@ export function SettingsMenu({
       <Text style={styles.profileName}>{userName ? userName : 'Your account'}</Text>
       <Text style={styles.profileRole}>{userRole}</Text>
       <Text style={styles.profilePlan}>
-        {businessTier === 'business'
+        {effectiveBusinessTier === 'business'
             ? `Company: ${businessName?.trim() || 'Business company'}`
             : businessName?.trim()
-            ? `Company: ${businessName} (free tier)`
+            ? `Company: ${businessName}`
             : 'No company selected'}
         </Text>
       </View>
@@ -610,9 +616,13 @@ export function SettingsMenu({
               </Text>
             </View>
           <Text style={styles.planDescription}>
-            {businessTier === 'business'
-              ? 'Your company includes unlimited stops.'
-              : 'Free accounts can geocode up to 30 new stops every 24 hours. Upgrade your company to business for unlimited stops.'}
+            {effectiveBusinessTier === 'business'
+              ? hasActiveBilling
+                ? 'Business access is active. Your company can geocode unlimited stops.'
+                : 'Your company includes unlimited stops.'
+              : isNativeMobile
+                ? 'Free accounts can geocode up to 30 new stops every 24 hours. Your company administrator manages plan access.'
+                : 'Free accounts can geocode up to 30 new stops every 24 hours. Upgrade your company to business for unlimited stops.'}
           </Text>
           <Text style={styles.planTeamName}>
             {businessName?.trim()
@@ -634,10 +644,15 @@ export function SettingsMenu({
     </View>
           {currentWorkspaceId ? (
             <View style={styles.driverSeatBlock}>
-              <Text style={styles.driverSeatTitle}>Driver seats & billing</Text>
+              <Text style={styles.driverSeatTitle}>
+                {isNativeMobile ? 'Driver seats' : 'Driver seats & billing'}
+              </Text>
               <Text style={styles.driverSeatHint}>
-                Keep your seat allowance aligned with the people you’ve added to this company. We’ll open Stripe only
-                when the plan needs to change.
+                {isNativeMobile
+                  ? 'Keep your seat allowance aligned with the people you\u2019ve added to this company.'
+                  : hasActiveBilling
+                    ? 'Billing is active. Review Stripe when you need to change the plan or payment method.'
+                    : 'Keep your seat allowance aligned with the people you\u2019ve added to this company. We\u2019ll open Stripe when the plan needs to change.'}
               </Text>
               <View style={styles.driverSeatMetaRow}>
                 <View style={styles.driverSeatMeta}>
@@ -659,6 +674,8 @@ export function SettingsMenu({
               {driverSeatError ? <Text style={styles.errorText}>{driverSeatError}</Text> : null}
               <View style={styles.driverSeatActions}>
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Sync driver seats with members"
                   style={({ pressed }) => [
                     styles.driverSeatButton,
                     pressed && styles.driverSeatButtonPressed,
@@ -675,6 +692,8 @@ export function SettingsMenu({
                 </Pressable>
                 {!isNativeMobile ? (
                   <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Review billing in Stripe"
                     style={({ pressed }) => [
                       styles.driverSeatSecondaryButton,
                       pressed && styles.driverSeatButtonPressed,
@@ -834,6 +853,8 @@ export function SettingsMenu({
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Display</Text>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Appearance, ${isDark ? 'dark mode' : 'light mode'}`}
           style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
           onPress={toggleTheme}
         >
@@ -847,6 +868,8 @@ export function SettingsMenu({
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account</Text>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Account details"
           style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
           onPress={handleOpenProfile}
         >
@@ -856,6 +879,8 @@ export function SettingsMenu({
           </View>
         </Pressable>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Change password"
           style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
           onPress={handleOpenPassword}
         >
@@ -865,6 +890,8 @@ export function SettingsMenu({
           </View>
         </Pressable>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
           style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
           onPress={handleSignOut}
         >
@@ -875,6 +902,8 @@ export function SettingsMenu({
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Privacy</Text>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Delete account"
           style={({ pressed }) => [
             styles.destructiveItem,
             pressed && styles.destructiveItemPressed,
@@ -895,11 +924,21 @@ export function SettingsMenu({
       <View style={styles.legalFooter}>
         <Text style={styles.legalFooterText}>
           Legal:{' '}
-          <Text style={styles.legalFooterLink} onPress={handleOpenTerms}>
+          <Text
+            accessibilityRole="link"
+            accessibilityLabel="Terms of Use"
+            style={styles.legalFooterLink}
+            onPress={handleOpenTerms}
+          >
             Terms of Use
           </Text>{' '}
           |{' '}
-          <Text style={styles.legalFooterLink} onPress={handleOpenPrivacy}>
+          <Text
+            accessibilityRole="link"
+            accessibilityLabel="Privacy Policy"
+            style={styles.legalFooterLink}
+            onPress={handleOpenPrivacy}
+          >
             Privacy Policy
           </Text>
         </Text>
@@ -959,6 +998,8 @@ export function SettingsMenu({
           {profileError ? <Text style={styles.errorText}>{profileError}</Text> : null}
           <View style={styles.formActions}>
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Cancel account details changes"
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
               onPress={() => setView('main')}
               disabled={processing === 'profile'}
@@ -966,6 +1007,8 @@ export function SettingsMenu({
               <Text style={styles.secondaryButtonText}>Cancel</Text>
             </Pressable>
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Save account details changes"
               style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
               onPress={handleSaveProfile}
               disabled={processing === 'profile'}
@@ -1020,6 +1063,8 @@ export function SettingsMenu({
       {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
       <View style={styles.formActions}>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Cancel password change"
           style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
           onPress={() => setView('main')}
           disabled={processing === 'password'}
@@ -1027,6 +1072,8 @@ export function SettingsMenu({
           <Text style={styles.secondaryButtonText}>Cancel</Text>
         </Pressable>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Update password"
           style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}
           onPress={handleSavePassword}
           disabled={processing === 'password'}
@@ -1127,6 +1174,8 @@ export function SettingsMenu({
                 ) : null}
                 <View style={styles.confirmActions}>
                   <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel account deletion"
                     style={({ pressed }) => [
                       styles.confirmCancelButton,
                       pressed && styles.confirmCancelButtonPressed,
@@ -1137,6 +1186,8 @@ export function SettingsMenu({
                     <Text style={styles.confirmCancelText}>Cancel</Text>
                   </Pressable>
                   <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Confirm account deletion"
                     style={({ pressed }) => [
                       styles.confirmDeleteButton,
                       pressed && styles.confirmDeleteButtonPressed,

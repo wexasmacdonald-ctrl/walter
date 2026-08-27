@@ -1,6 +1,4 @@
-// Requires IOS_GOOGLE_MAPS_API_KEY to be set in expo.dev Project Secrets
 export default ({ config }) => {
-  const iosGoogleMapsApiKey = process.env.IOS_GOOGLE_MAPS_API_KEY ?? '';
   const androidGoogleMapsApiKey =
     process.env.GOOGLE_MAPS_ANDROID_KEY ??
     process.env.EXPO_PUBLIC_GOOGLE_API_KEY ??
@@ -10,7 +8,7 @@ export default ({ config }) => {
     ...config,
     name: 'Blow-Grid',
     slug: 'my-app',
-    version: '1.1.0',
+    version: '1.1.3',
     orientation: 'default',
     icon: './assets/images/icon.png',
     scheme: 'blowgrid',
@@ -19,11 +17,8 @@ export default ({ config }) => {
     newArchEnabled: true,
     ios: {
       bundleIdentifier: 'com.macdonaldautomation.blowpin',
-      buildNumber: '2',
-      supportsTablet: true,
-      config: {
-        googleMapsApiKey: iosGoogleMapsApiKey,
-      },
+      buildNumber: '27',
+      supportsTablet: false,
       infoPlist: {
         NSLocationWhenInUseUsageDescription:
           'Blow-Grid uses your location to show where you are relative to your stops on the map.',
@@ -32,7 +27,8 @@ export default ({ config }) => {
     },
     android: {
       package: 'com.macdonaldautomation.blowpin',
-      versionCode: 24,
+      versionCode: 38,
+      allowBackup: false,
       adaptiveIcon: {
         backgroundColor: '#E6F4FE',
         foregroundImage: './assets/images/android-icon-foreground.png',
@@ -41,10 +37,16 @@ export default ({ config }) => {
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
       permissions: [
-        'ACCESS_COARSE_LOCATION',
-        'ACCESS_FINE_LOCATION',
         'android.permission.ACCESS_COARSE_LOCATION',
         'android.permission.ACCESS_FINE_LOCATION',
+      ],
+      blockedPermissions: [
+        'android.permission.SYSTEM_ALERT_WINDOW',
+        'android.permission.READ_EXTERNAL_STORAGE',
+        'android.permission.WRITE_EXTERNAL_STORAGE',
+        'android.permission.RECEIVE_BOOT_COMPLETED',
+        'android.permission.FOREGROUND_SERVICE',
+        'android.permission.WAKE_LOCK',
       ],
       ...(androidGoogleMapsApiKey
         ? {
@@ -85,7 +87,9 @@ export default ({ config }) => {
       [
         'expo-location',
         {
-          locationAlwaysAndWhenInUsePermission:
+          locationAlwaysAndWhenInUsePermission: false,
+          locationAlwaysPermission: false,
+          locationWhenInUsePermission:
             'Blow-Grid uses your location to show where you are relative to your stops on the map.',
         },
       ],
@@ -102,7 +106,6 @@ export default ({ config }) => {
         },
       ],
       'expo-web-browser',
-      './plugins/with-react-native-maps',
     ],
     experiments: {
       typedRoutes: true,

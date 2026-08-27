@@ -184,7 +184,23 @@ export function AdminDriverDetail({
       try {
         setLoadingStops(true);
         const result = await authApi.fetchDriverStops(token, driverId, activeWorkspaceId);
-        setStops(result);
+        const needsPinRepair = result.some(
+          (stop) => !Number.isFinite(stop.lat) || !Number.isFinite(stop.lng)
+        );
+        if (needsPinRepair && result.length > 0) {
+          // Older stop records can contain addresses without persisted
+          // coordinates. Reuse the normal save/geocode path once so the
+          // driver map receives real pins instead of silently rendering zero.
+          const repaired = await authApi.saveDriverStops(
+            token,
+            driverId,
+            result.map((stop) => stop.address),
+            activeWorkspaceId
+          );
+          setStops(repaired);
+        } else {
+          setStops(result);
+        }
     } catch (err) {
       setError(
         getFriendlyError(err, {
@@ -457,9 +473,13 @@ export function AdminDriverDetail({
 
   const handleStartLocationEdit = (stop: DriverStop) => {
     const latitude =
-      typeof stop.lat === 'number' ? stop.lat : DEFAULT_COORDINATE.latitude;
+      typeof stop.lat === 'number' && Number.isFinite(stop.lat) && stop.lat >= -90 && stop.lat <= 90
+        ? stop.lat
+        : DEFAULT_COORDINATE.latitude;
     const longitude =
-      typeof stop.lng === 'number' ? stop.lng : DEFAULT_COORDINATE.longitude;
+      typeof stop.lng === 'number' && Number.isFinite(stop.lng) && stop.lng >= -180 && stop.lng <= 180
+        ? stop.lng
+        : DEFAULT_COORDINATE.longitude;
     setActiveStopId(stop.id);
     setPinSaveMessage(null);
     setPinSaveTone(null);
@@ -1131,6 +1151,7 @@ export function AdminDriverDetail({
                 value={addText}
                 onChangeText={setAddText}
                 placeholder={'123 Main St, City, ST\n456 Pine Ave, Town, ST'}
+                placeholderTextColor={colors.mutedText}
                 autoCorrect={false}
                 autoCapitalize="none"
                 editable={!saving}
@@ -2128,7 +2149,8 @@ function createStyles(colors: ReturnType<typeof useTheme>['colors'], isDark: boo
       alignItems: 'center',
     },
     pinModalWebWrapper: {
-      position: 'fixed',
+      // React Native's types omit CSS `fixed`, which react-native-web supports.
+      position: 'fixed' as any,
       top: 0,
       left: 0,
       right: 0,
